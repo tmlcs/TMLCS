@@ -1,4 +1,4 @@
-<h2 align="left">Hi 👋! My name is TMLCS and I'm a FULL-STACK DEV</h2>
+<h2 align="left">Hi 👋! My name is TMLCS and I'm a Full-Stacks DEV</h2>
 
 ###
 
