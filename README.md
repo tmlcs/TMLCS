@@ -1,4 +1,4 @@
-[<h2 align="left">Hi 👋! My name is TMLCS and I'm a Full-Stacks DEV</h2>
+<h2 align="left">Hi 👋! My name is TMLCS and I'm a Full-Stacks DEV</h2>
 
 ###
 
@@ -118,4 +118,3 @@
 <img src="https://raw.githubusercontent.com/tmlcs/tmlcs/output/snake.svg" alt="Snake animation" />
 
 ###
-](https://github.com/tmlcs/TMLCS/blob/main/README.md)
