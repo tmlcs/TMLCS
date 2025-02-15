@@ -95,11 +95,11 @@
 
 ###
 
-<img align="right" height="150" src="https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExY3RmMTBvOHd5MGk3YXNhdHpkOXk2bDdpMGpnNGt6b3pleDE2cTA2OCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/XDd5b7NUbS1C1PMjUl/giphy.gif"  />
+<img align="left" height="150" src="https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExY3RmMTBvOHd5MGk3YXNhdHpkOXk2bDdpMGpnNGt6b3pleDE2cTA2OCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/XDd5b7NUbS1C1PMjUl/giphy.gif"  />
 
 ###
 
-<div align="left">
+<div align="right">
   <img src="https://raw.githubusercontent.com/maurodesouza/profile-readme-generator/master/src/assets/icons/social/gmail/default.svg" width="52" height="40" alt="gmail logo"  />
   <img src="https://raw.githubusercontent.com/maurodesouza/profile-readme-generator/master/src/assets/icons/social/instagram/default.svg" width="52" height="40" alt="instagram logo"  />
   <img src="https://raw.githubusercontent.com/maurodesouza/profile-readme-generator/master/src/assets/icons/social/twitter/default.svg" width="52" height="40" alt="twitter logo"  />
