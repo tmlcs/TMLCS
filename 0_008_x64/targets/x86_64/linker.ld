@@ -5,7 +5,7 @@ PHDRS
 
 {
 
-    kernel_load PT_LOAD AT(0x100000) FLAGS(7); /* RWE */
+    kernel_load PT_LOAD AT(0x1000) FLAGS(7); /* RWE */
 
 }
 
@@ -15,24 +15,19 @@ SECTIONS
 
 {
 
-	. = 0x100000; /* Set the base virtual and physical address for the kernel */
+	. = 0x1000; /* Set the base virtual and physical address for the kernel */
 
-
+    .multiboot_header : ALIGN(4K)
+    {
+        KEEP(*(.multiboot_header))
+    } : kernel_load
 
 	.text : ALIGN(4K)
-
 	{
-
-		KEEP(*(.multiboot_header))
-
 		*(.multiboot)
-
 		*(.text*)
-
 		*(.rodata)
-
 		*(.eh_frame)
-
 	} : kernel_load
 
 

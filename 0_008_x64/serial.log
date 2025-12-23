@@ -1,0 +1,55 @@
+[INFO] Serial port initialized.
+[INFO] kernel_main entered.
+[INFO] Magic Number: 
+[INFO] 920085129
+[INFO] Multiboot Structure Ptr: 
+[INFO] 1056336
+[INFO] Welcome to GLOBEX by TMLCS (NW OS V:0.0002a) 64-bit kernel
+[INFO] Total memory detected: 
+[INFO] 134086656
+[INFO]  bytes.
+[INFO] PMM initialized.
+[INFO] Total pages: 
+[INFO] Marked kernel section as used: addr=
+[INFO] 4096
+[INFO] , size=
+[INFO] 24
+[INFO]  bytes.
+[INFO] Marked kernel section as used: addr=
+[INFO] 8192
+[INFO] , size=
+[INFO] 11968
+[INFO]  bytes.
+[INFO] Marked kernel section as used: addr=
+[INFO] 20480
+[INFO] , size=
+[INFO] 49
+[INFO]  bytes.
+[INFO] Marked kernel section as used: addr=
+[INFO] 20536
+[INFO] , size=
+[INFO] 8
+[INFO]  bytes.
+[INFO] Marked kernel section as used: addr=
+[INFO] 20544
+[INFO] , size=
+[INFO] 8
+[INFO]  bytes.
+[INFO] Marked kernel section as used: addr=
+[INFO] 24576
+[INFO] , size=
+[INFO] 36872
+[INFO]  bytes.
+[INFO] PMM: Free memory: 
+[INFO] 267726848
+[INFO]  bytes.
+[INFO] PMM: Used memory: 
+[INFO] 8446744073575911424
+[INFO]  bytes.
+[INFO] Heap initialized.
+[INFO] Heap start: 
+[INFO] Heap end: 
+[INFO] Heap: Testing malloc/free...
+[INFO] Heap: Allocated 100 bytes.
+[INFO] Heap: Freed 100 bytes.
+[INFO] IDT loaded.

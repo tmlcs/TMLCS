@@ -68,3 +68,10 @@ build-x86_64-verbose: $(kernel_object_files) $(x86_64_object_files)
 	$(GRUB) --verbose /usr/lib/grub/i386-pc -o $(ISO_FILE) targets/x86_64/iso
 
 -include $(kernel_dependency_files) $(x86_64_cpp_dependency_files)
+
+.PHONY: clean
+clean:
+	rm -rf $(BUILD_DIR) dist
+
+run:
+	qemu-system-x86_64 -cdrom $(ISO_FILE) -serial file:serial.log

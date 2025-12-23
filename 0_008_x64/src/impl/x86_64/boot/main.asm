@@ -1,9 +1,17 @@
 global start
 extern long_mode_start
+extern outb
+extern inb
+global multiboot_magic
+global multiboot_info_ptr
 
 section .text
 bits 32
 start:
+    ; Store Multiboot magic number (eax) and info structure address (ebx)
+    mov [multiboot_magic], eax
+    mov [multiboot_info_ptr], ebx
+
 	mov esp, stack_top
 
 	call check_multiboot
@@ -14,7 +22,12 @@ start:
 	call enable_paging
 
 	lgdt [gdt64.pointer]
-	mov ebx, gdt64.data_segment
+	
+	; Restore Multiboot magic number and info structure pointer
+	; These were saved at the start of 'start'
+	mov eax, [multiboot_magic]
+	mov ebx, [multiboot_info_ptr]
+
 	jmp gdt64.code_segment:long_mode_start
 
 	hlt
@@ -108,15 +121,49 @@ enable_paging:
 	ret
 
 panic:
-    ; print the message from esi
+    ; Initialize serial port (if not already)
+    mov dx, 0x3F8 + 1
+    mov al, 0x00
+    out dx, al    ; Disable all interrupts
+    mov dx, 0x3F8 + 3
+    mov al, 0x80
+    out dx, al    ; Enable DLAB (set baud rate divisor)
+    mov dx, 0x3F8 + 0
+    mov al, 0x03
+    out dx, al    ; Set divisor to 3 (lo byte) 38400 baud
+    mov dx, 0x3F8 + 1
+    mov al, 0x00
+    out dx, al    ;                  (hi byte)
+    mov dx, 0x3F8 + 3
+    mov al, 0x03
+    out dx, al    ; 8 bits, no parity, 1 stop bit, Disable DLAB
+    mov dx, 0x3F8 + 2
+    mov al, 0xC7
+    out dx, al    ; Enable FIFO, clear them, with 14-byte threshold
+    mov dx, 0x3F8 + 4
+    mov al, 0x0B
+    out dx, al    ; IRQs enabled, RTS/DSR set
+
+    ; print the message from esi to VGA and serial
     mov edi, 0xb8000
     mov ah, 0x4f
 .loop:
     lodsb
     test al, al
     jz .done
+    ; Print to VGA
     mov [edi], ax
     add edi, 2
+    ; Print to Serial
+    push eax
+    mov dx, 0x3F8 + 5
+.wait_serial:
+    in al, dx
+    test al, 0x20
+    jz .wait_serial
+    pop eax
+    mov dx, 0x3F8
+    out dx, al
     jmp .loop
 .done:
     hlt
@@ -132,6 +179,11 @@ page_table_l2:
 stack_bottom:
 	resb 4096 * 4
 stack_top:
+
+multiboot_magic:
+    resd 1
+multiboot_info_ptr:
+    resd 1
 
 section .rodata
 panic_no_multiboot:

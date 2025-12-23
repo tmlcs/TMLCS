@@ -1,6 +1,7 @@
 #ifndef GDT_H
 #define GDT_H
 
+#include <stdint.h> // Include for fixed-width integer types
 #include <types.h>
 
 class GDT {

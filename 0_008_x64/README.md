@@ -35,6 +35,8 @@ Build for x86 (other architectures may come in the future):
 
 To leave the build environment, enter `exit`.
 
+readelf -S dist/x86_64/kernel.bin
+
 ## Emulate
 
 You can emulate your operating system using [Qemu](https://www.qemu.org/): (Don't forget to [add qemu to your path](https://dev.to/whaleshark271/using-qemu-on-windows-10-home-edition-4062#:~:text=2.-,Add%20Qemu%20path%20to%20environment%20variables%20settings,-Copy%20the%20Qemu)!)
