@@ -1,8 +1,8 @@
 #ifndef PRINT_H
 #define PRINT_H
 
-#include <stdint.h>  // Usa <stdint.h> en lugar de <cstdint>
-#include <stddef.h>  // Usa <stddef.h> en lugar de <cstddef>
+#include <stdint.h>
+#include <stddef.h>
 
 enum PrintColor {
     PRINT_COLOR_BLACK = 0,

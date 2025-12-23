@@ -14,6 +14,7 @@ start:
 	call enable_paging
 
 	lgdt [gdt64.pointer]
+	mov ebx, gdt64.data_segment
 	jmp gdt64.code_segment:long_mode_start
 
 	hlt
@@ -23,8 +24,8 @@ check_multiboot:
 	jne .no_multiboot
 	ret
 .no_multiboot:
-	mov al, "M"
-	jmp error
+	mov esi, panic_no_multiboot
+	jmp panic
 
 check_cpuid:
 	pushfd
@@ -41,8 +42,8 @@ check_cpuid:
 	je .no_cpuid
 	ret
 .no_cpuid:
-	mov al, "C"
-	jmp error
+	mov esi, panic_no_cpuid
+	jmp panic
 
 check_long_mode:
 	mov eax, 0x80000000
@@ -57,8 +58,8 @@ check_long_mode:
 	
 	ret
 .no_long_mode:
-	mov al, "L"
-	jmp error
+	mov esi, panic_no_long_mode
+	jmp panic
 
 setup_page_tables:
 	mov eax, page_table_l3
@@ -106,13 +107,19 @@ enable_paging:
 
 	ret
 
-error:
-	; print "ERR: X" where X is the error code
-	mov dword [0xb8000], 0x4f524f45
-	mov dword [0xb8004], 0x4f3a4f52
-	mov dword [0xb8008], 0x4f204f20
-	mov byte  [0xb800a], al
-	hlt
+panic:
+    ; print the message from esi
+    mov edi, 0xb8000
+    mov ah, 0x4f
+.loop:
+    lodsb
+    test al, al
+    jz .done
+    mov [edi], ax
+    add edi, 2
+    jmp .loop
+.done:
+    hlt
 
 section .bss
 align 4096
@@ -127,10 +134,19 @@ stack_bottom:
 stack_top:
 
 section .rodata
+panic_no_multiboot:
+    db "PANIC: No Multiboot!", 0
+panic_no_cpuid:
+    db "PANIC: CPUID not supported!", 0
+panic_no_long_mode:
+    db "PANIC: Long mode not supported!", 0
+
 gdt64:
 	dq 0 ; zero entry
 .code_segment: equ $ - gdt64
-	dq (1 << 43) | (1 << 44) | (1 << 47) | (1 << 53) ; code segment
+	dq (1 << 41) | (1 << 43) | (1 << 44) | (1 << 47) | (1 << 53) ; code segment
+.data_segment: equ $ - gdt64
+	dq (1 << 41) | (1 << 44) | (1 << 47) ; data segment
 .pointer:
 	dw $ - gdt64 - 1 ; length
 	dq gdt64 ; address

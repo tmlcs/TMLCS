@@ -1,5 +1,22 @@
 #include "print.h"
 
+static void* _memmove(void* dst, const void* src, size_t n) {
+    unsigned char* d = (unsigned char*)dst;
+    const unsigned char* s = (const unsigned char*)src;
+    if (d < s) {
+        while (n--) {
+            *d++ = *s++;
+        }
+    } else {
+        const unsigned char* lasts = s + (n - 1);
+        unsigned char* lastd = d + (n - 1);
+        while (n--) {
+            *lastd-- = *lasts--;
+        }
+    }
+    return dst;
+}
+
 const static size_t NUM_COLS = 80;
 const static size_t NUM_ROWS = 25;
 
@@ -13,15 +30,17 @@ size_t col = 0;
 size_t row = 0;
 uint8_t color = PRINT_COLOR_WHITE | (PRINT_COLOR_BLACK << 4);
 
-void clear_row(size_t row) {
-    Char empty = {
-        ' ', // character
-        color // color
-    };
-
-    for (size_t col = 0; col < NUM_COLS; col++) {
-        buffer[col + NUM_COLS * row] = empty;
+static void* _memsetw(void* buf, int c, size_t n) {
+    unsigned short* p = (unsigned short*)buf;
+    while (n--) {
+        *p++ = (unsigned short)c;
     }
+    return buf;
+}
+
+void clear_row(size_t row) {
+    unsigned short empty = ' ' | (color << 8);
+    _memsetw(&buffer[NUM_COLS * row], empty, NUM_COLS);
 }
 
 void print_clear() {
@@ -38,14 +57,8 @@ void print_newline() {
         return;
     }
 
-    for (size_t r = 1; r < NUM_ROWS; r++) {
-        for (size_t c = 0; c < NUM_COLS; c++) {
-            Char character = buffer[c + NUM_COLS * r];
-            buffer[c + NUM_COLS * (r - 1)] = character;
-        }
-    }
-
-    clear_row(NUM_ROWS - 1); // Corrected from NUM_COLS - 1 to NUM_ROWS - 1
+    _memmove(&buffer[0], &buffer[NUM_COLS], NUM_COLS * (NUM_ROWS - 1) * 2);
+    clear_row(NUM_ROWS - 1);
 }
 
 void print_char(char character) {
@@ -67,14 +80,8 @@ void print_char(char character) {
 }
 
 void print_str(const char* str) {
-    for (size_t i = 0; ; i++) {
-        char character = static_cast<uint8_t>(str[i]);
-
-        if (character == '\0') {
-            return;
-        }
-
-        print_char(character);
+    while (*str != '\0') {
+        print_char(*str++);
     }
 }
 
