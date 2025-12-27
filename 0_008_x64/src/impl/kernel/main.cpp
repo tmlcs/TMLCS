@@ -1,13 +1,16 @@
 #include "print.h"
-#include "serial.h"
-#include "log.h"
-#include "idt.h"
-#include "interrupts.h" // Include interrupts.h
-#include "pic.h" // Include pic.h
-#include "multiboot2.h" // Include multiboot2.h
-#include "pmm.h" // Include pmm.h
-#include "vmm.h" // Include vmm.h
-#include "heap.h" // Include heap.h
+#include "drivers/serial.h"
+#include "utils/log.h"
+#include "cpu/idt.h"
+#include "cpu/interrupts.h"
+#include "cpu/pic.h"
+#include "multiboot2.h"
+#include "memory/pmm.h"
+#include "memory/vmm.h"
+#include "memory/heap.h"
+#include "utils/timer.h"
+#include "drivers/keyboard.h" // New include
+#include "io.h"       // New include
 
 typedef void (*constructor)();
 extern "C" constructor start_ctors;
@@ -67,20 +70,17 @@ extern "C" void kernel_main(const void* multiboot_structure_ptr, unsigned int ma
     Serial::init(); // Initialize serial early for logging
     Log::info("Serial port initialized.");
 
-    Log::info("kernel_main entered.");
-    Log::info("Magic Number: ");
-    Log::info(Log::uint64_to_string(magic_number));
-    Log::info("Multiboot Structure Ptr: ");
-    Log::info(Log::uint64_to_string((uint64_t)multiboot_structure_ptr));
+    Interrupts::init(); // Initialize interrupt handlers
+    Timer::init(100);   // Initialize timer with 100 Hz frequency
+    Keyboard::init();   // Initialize keyboard driver
 
-    print_clear();
-    print_set_color(PRINT_COLOR_LIGHT_RED, PRINT_COLOR_BLACK);
-    Log::info("Welcome to GLOBEX by TMLCS (NW OS V:0.0002a) 64-bit kernel");
+    Log::info("kernel_main entered.");
+    Log::info("Magic Number: %d", magic_number);
+    Log::info("Multiboot Structure Ptr: %x", (uint64_t)multiboot_structure_ptr);
     
     // Check Multiboot magic number
     if (magic_number != MULTIBOOT2_BOOTLOADER_MAGIC) {
-        Log::critical("Invalid Multiboot magic number!");
-        asm volatile ("hlt");
+        Log::panic("Invalid Multiboot magic number! Expected %x, got %x", MULTIBOOT2_BOOTLOADER_MAGIC, magic_number);
     }
 
     // Parse Multiboot structure
@@ -106,13 +106,10 @@ extern "C" void kernel_main(const void* multiboot_structure_ptr, unsigned int ma
     }
 
     if (total_memory_bytes == 0) {
-        Log::critical("Could not determine total memory from Multiboot!");
-        asm volatile ("hlt");
+        Log::panic("Could not determine total memory from Multiboot!");
     }
 
-    Log::info("Total memory detected: ");
-    Log::info(Log::uint64_to_string(total_memory_bytes));
-    Log::info(" bytes.");
+    Log::info("Total memory detected: %d bytes.", total_memory_bytes);
 
     // Initialize PMM
     // Place bitmap at a known address, e.g., 16MB (0x1000000)
@@ -145,11 +142,7 @@ extern "C" void kernel_main(const void* multiboot_structure_ptr, unsigned int ma
                 // Mark only allocatable sections as used
                 if ((shdr->flags & MB_ELF_SHF_ALLOC) && shdr->addr != 0) {
                     PMM::mark_region_used(shdr->addr, shdr->size);
-                    Log::info("Marked kernel section as used: addr=");
-                    Log::info(Log::uint64_to_string(shdr->addr));
-                    Log::info(", size=");
-                    Log::info(Log::uint64_to_string(shdr->size));
-                    Log::info(" bytes.");
+                    Log::info("Marked kernel section as used: addr=%x, size=%d bytes.", shdr->addr, shdr->size);
                 }
             }
             break; // Found ELF sections, no need to continue
@@ -160,12 +153,8 @@ extern "C" void kernel_main(const void* multiboot_structure_ptr, unsigned int ma
     uint64_t pmm_bitmap_size = (total_memory_bytes / PMM::PAGE_SIZE / 8) + PMM::PAGE_SIZE;
     PMM::mark_region_used(pmm_bitmap_address, pmm_bitmap_size);
 
-    Log::info("PMM: Free memory: ");
-    Log::info(Log::uint64_to_string(PMM::get_free_memory()));
-    Log::info(" bytes.");
-    Log::info("PMM: Used memory: ");
-    Log::info(Log::uint64_to_string(PMM::get_used_memory()));
-    Log::info(" bytes.");
+    Log::info("PMM: Free memory: %d bytes.", PMM::get_free_memory());
+    Log::info("PMM: Used memory: %d bytes.", PMM::get_used_memory());
 
     // Initialize Heap
     uint64_t heap_start = pmm_bitmap_address + pmm_bitmap_size;
@@ -176,9 +165,9 @@ extern "C" void kernel_main(const void* multiboot_structure_ptr, unsigned int ma
     Log::info("Heap: Testing malloc/free...");
     void* test_ptr1 = Heap::malloc(100);
     if (test_ptr1) {
-        Log::info("Heap: Allocated 100 bytes.");
+        Log::info("Heap: Allocated 100 bytes at %x.", (uint64_t)test_ptr1);
         Heap::free(test_ptr1);
-        Log::info("Heap: Freed 100 bytes.");
+        Log::info("Heap: Freed 100 bytes from %x.", (uint64_t)test_ptr1);
     } else {
         Log::error("Heap: Failed to allocate 100 bytes.");
     }
@@ -225,10 +214,18 @@ extern "C" void kernel_main(const void* multiboot_structure_ptr, unsigned int ma
     idt.SetGate(0x2F, (uint64_t)isr0x2F, 0x08, 0x8E);
 
     PIC::remap(0x20, 0x28); // Remap PIC IRQs to start at 0x20 and 0x28
-    PIC::disable();         // Disable PIC for now (will enable later when needed)
+    // PIC::disable();         // Disable PIC for now (will enable later when needed)
+
+    // Unmask IRQ1 (keyboard)
+    outb(0x21, inb(0x21) & ~0x02); // Clear the second bit (IRQ1) of the master PIC data register
 
     idt.Load(); // Load the IDT
     asm volatile ("sti"); // Enable interrupts
-
-    asm volatile ("hlt");
+    
+    print_clear();
+    print_set_color(PRINT_COLOR_LIGHT_RED, PRINT_COLOR_BLACK);
+    Log::info("Welcome to GLOBEX by TMLCS (NW OS V:0.0002a) 64-bit kernel");
+    print_str("Welcome to GLOBEX by TMLCS (NW OS V:0.0002a) 64-bit kernel");
+    
+    Log::panic("Kernel halted unexpectedly.");
 }

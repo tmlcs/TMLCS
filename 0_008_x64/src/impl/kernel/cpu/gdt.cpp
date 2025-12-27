@@ -1,4 +1,4 @@
-#include "gdt.h"
+#include "cpu/gdt.h"
 
 GDT::SegmentDescriptor::SegmentDescriptor(uint32_t base, uint32_t limit, uint8_t access, uint8_t granularity) {
     this->base_low = base & 0xFFFF;

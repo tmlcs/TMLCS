@@ -1,4 +1,4 @@
-#include "pic.h"
+#include "cpu/pic.h"
 #include <io.h> // For outb and inb
 
 // PIC ports

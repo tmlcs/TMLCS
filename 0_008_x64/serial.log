@@ -1,55 +1,53 @@
 [INFO] Serial port initialized.
+[INFO] Interrupt handlers initialized.
+[INFO] Timer initialized with frequency: 100 Hz
+[INFO] Keyboard driver initialized.
 [INFO] kernel_main entered.
-[INFO] Magic Number: 
-[INFO] 920085129
-[INFO] Multiboot Structure Ptr: 
-[INFO] 1056336
-[INFO] Welcome to GLOBEX by TMLCS (NW OS V:0.0002a) 64-bit kernel
-[INFO] Total memory detected: 
-[INFO] 134086656
-[INFO]  bytes.
+[INFO] Magic Number: 920085129
+[INFO] Multiboot Structure Ptr: 0x102428
+[INFO] Total memory detected: 134086656 bytes.
 [INFO] PMM initialized.
-[INFO] Total pages: 
-[INFO] Marked kernel section as used: addr=
-[INFO] 4096
-[INFO] , size=
-[INFO] 24
-[INFO]  bytes.
-[INFO] Marked kernel section as used: addr=
-[INFO] 8192
-[INFO] , size=
-[INFO] 11968
-[INFO]  bytes.
-[INFO] Marked kernel section as used: addr=
-[INFO] 20480
-[INFO] , size=
-[INFO] 49
-[INFO]  bytes.
-[INFO] Marked kernel section as used: addr=
-[INFO] 20536
-[INFO] , size=
-[INFO] 8
-[INFO]  bytes.
-[INFO] Marked kernel section as used: addr=
-[INFO] 20544
-[INFO] , size=
-[INFO] 8
-[INFO]  bytes.
-[INFO] Marked kernel section as used: addr=
-[INFO] 24576
-[INFO] , size=
-[INFO] 36872
-[INFO]  bytes.
-[INFO] PMM: Free memory: 
-[INFO] 267726848
-[INFO]  bytes.
-[INFO] PMM: Used memory: 
-[INFO] 8446744073575911424
-[INFO]  bytes.
+[INFO] Total pages: 32736
+[INFO] Marked kernel section as used: addr=0x1000, size=24 bytes.
+[INFO] Marked kernel section as used: addr=0x2000, size=17272 bytes.
+[INFO] Marked kernel section as used: addr=0x7000, size=49 bytes.
+[INFO] Marked kernel section as used: addr=0x7038, size=8 bytes.
+[INFO] Marked kernel section as used: addr=0x7040, size=8 bytes.
+[INFO] Marked kernel section as used: addr=0x8000, size=36872 bytes.
+[INFO] PMM: Free memory: 133632000 bytes.
+[INFO] PMM: Used memory: 454656 bytes.
 [INFO] Heap initialized.
-[INFO] Heap start: 
-[INFO] Heap end: 
+[INFO] Heap start: 0x1001FFC
+[INFO] Heap end: 0x100BFFC
 [INFO] Heap: Testing malloc/free...
-[INFO] Heap: Allocated 100 bytes.
-[INFO] Heap: Freed 100 bytes.
+[INFO] Heap: Allocated 100 bytes at 0x100200C.
+[INFO] Heap: Freed 100 bytes from 0x100200C.
 [INFO] IDT loaded.
+[INFO] Welcome to GLOBEX by TMLCS (NW OS V:0.0002a) 64-bit kernel
+[INFO] Serial port initialized.
+[INFO] Interrupt handlers initialized.
+[INFO] Timer initialized with frequency: 100 Hz
+[INFO] Keyboard driver initialized.
+[INFO] kernel_main entered.
+[INFO] Magic Number: 920085129
+[INFO] Multiboot Structure Ptr: 0x102428
+[INFO] Total memory detected: 134086656 bytes.
+[INFO] PMM initialized.
+[INFO] Total pages: 32736
+[INFO] Marked kernel section as used: addr=0x1000, size=24 bytes.
+[INFO] Marked kernel section as used: addr=0x2000, size=17272 bytes.
+[INFO] Marked kernel section as used: addr=0x7000, size=49 bytes.
+[INFO] Marked kernel section as used: addr=0x7038, size=8 bytes.
+[INFO] Marked kernel section as used: addr=0x7040, size=8 bytes.
+[INFO] Marked kernel section as used: addr=0x8000, size=36872 bytes.
+[INFO] PMM: Free memory: 133632000 bytes.
+[INFO] PMM: Used memory: 454656 bytes.
+[INFO] Heap initialized.
+[INFO] Heap start: 0x1001FFC
+[INFO] Heap end: 0x100BFFC
+[INFO] Heap: Testing malloc/free...
+[INFO] Heap: Allocated 100 bytes at 0x100200C.
+[INFO] Heap: Freed 100 bytes from 0x100200C.
+[INFO] IDT loaded.
+[INFO] Welcome to GLOBEX by TMLCS (NW OS V:0.0002a) 64-bit kernel
+[CRITICAL] Kernel halted unexpectedly.

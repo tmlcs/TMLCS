@@ -1,5 +1,5 @@
-#include "pmm.h"
-#include "log.h"
+#include "memory/pmm.h"
+#include "utils/log.h"
 #include "print.h" // For debugging output to VGA if needed
 
 // Global variables for PMM
@@ -37,11 +37,10 @@ namespace PMM {
         for (uint64_t i = (total_pages / 64) * 64; i < total_pages; ++i) {
             set_bit(i);
         }
+        used_pages = total_pages; // Initialize used_pages to total_pages after marking all as used
 
         Log::info("PMM initialized.");
-        Log::info("Total pages: ");
-        // TODO: Convert total_pages to string for logging
-        // Log::info(total_pages);
+        Log::info("Total pages: %d", total_pages);
     }
 
     void mark_region_used(uint64_t base, uint64_t length) {
@@ -76,7 +75,7 @@ namespace PMM {
                 return i * PAGE_SIZE;
             }
         }
-        Log::error("PMM: Out of memory!");
+        Log::error("PMM: Out of memory! Could not allocate a page of size %d bytes.", PAGE_SIZE);
         return 0; // Out of memory
     }
 
@@ -86,7 +85,7 @@ namespace PMM {
             clear_bit(page_num);
             used_pages--;
         } else {
-            Log::warning("PMM: Attempted to free an already free page.");
+            Log::warning("PMM: Attempted to free an already free page at %x.", page_address);
         }
     }
 

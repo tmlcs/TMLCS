@@ -1,5 +1,5 @@
-#include "idt.h"
-#include "log.h"
+#include "cpu/idt.h"
+#include "utils/log.h"
 
 // Assembly function to load the IDT
 extern "C" void lidt(IDT::IDT_ptr* idt_ptr);

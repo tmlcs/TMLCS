@@ -1,6 +1,6 @@
-#include "vmm.h"
-#include "pmm.h"
-#include "log.h"
+#include "memory/vmm.h"
+#include "memory/pmm.h"
+#include "utils/log.h"
 
 // Assembly function to invalidate TLB entry
 extern "C" void invlpg(uint64_t virtual_address);
@@ -18,7 +18,7 @@ namespace VMM {
         if (!pdpt && create_if_not_present) {
             pdpt = (uint64_t*)PMM::allocate_page();
             if (!pdpt) {
-                Log::error("VMM: Failed to allocate PDPT page.");
+                Log::error("VMM: Failed to allocate PDPT page for virtual address %x.", virtual_address);
                 return nullptr;
             }
             for (int i = 0; i < 512; ++i) pdpt[i] = 0; // Clear new page
@@ -31,7 +31,7 @@ namespace VMM {
         if (!pd && create_if_not_present) {
             pd = (uint64_t*)PMM::allocate_page();
             if (!pd) {
-                Log::error("VMM: Failed to allocate PD page.");
+                Log::error("VMM: Failed to allocate PD page for virtual address %x.", virtual_address);
                 return nullptr;
             }
             for (int i = 0; i < 512; ++i) pd[i] = 0; // Clear new page
@@ -44,7 +44,7 @@ namespace VMM {
         if (!pt && create_if_not_present) {
             pt = (uint64_t*)PMM::allocate_page();
             if (!pt) {
-                Log::error("VMM: Failed to allocate PT page.");
+                Log::error("VMM: Failed to allocate PT page for virtual address %x.", virtual_address);
                 return nullptr;
             }
             for (int i = 0; i < 512; ++i) pt[i] = 0; // Clear new page
@@ -73,7 +73,7 @@ namespace VMM {
             *pte = physical_address | flags | PAGE_PRESENT;
             invlpg(virtual_address); // Invalidate TLB entry
         } else {
-            Log::error("VMM: Failed to map page.");
+            Log::error("VMM: Failed to map page %x to %x.", virtual_address, physical_address);
         }
     }
 
@@ -84,7 +84,7 @@ namespace VMM {
             *pte = 0; // Clear the entry
             invlpg(virtual_address); // Invalidate TLB entry
         } else {
-            Log::warning("VMM: Attempted to unmap a non-existent page.");
+            Log::warning("VMM: Attempted to unmap a non-existent page at %x.", virtual_address);
         }
     }
 

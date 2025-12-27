@@ -1,7 +1,6 @@
 # Variables
 CC := x86_64-elf-g++
 CCFLAGS := -Wall -Wextra -Werror -fno-use-cxa-atexit -nostdlib -fno-builtin -fno-rtti -fno-exceptions -fno-leading-underscore -ffreestanding -I src/intf
-DEPFLAGS := -MMD -MP
 AS := nasm
 ASFLAGS := -f elf64
 LD := x86_64-elf-ld
