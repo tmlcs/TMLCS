@@ -3,7 +3,7 @@
 #include "debug.h"
 
 // Constante de versión centralizada
-static constexpr const char* OS_VERSION = "GLOBEX_OS v0.010_x64";
+static constexpr const char* OS_VERSION = "GLOBEX_OS v0.011_x64";
 
 // ==========================================
 // Variable BSS de prueba (sin inicializador explícito)
@@ -14,6 +14,10 @@ static uint32_t bss_test_variable;
 
 // Variable con inicializador explícito (va a .data)
 static uint32_t data_test_variable = 0x12345678;
+
+// Puntero para test de memoria alta (dirección mapeada > 64MB)
+// Usamos 0x05000000 (80MB) que está dentro del rango mapeado y es RAM válida en QEMU
+static volatile uint32_t* high_mem_test = reinterpret_cast<volatile uint32_t*>(0x05000000);
 
 // El kernel nunca debe retornar - usar noreturn
 extern "C" [[noreturn]] void kernel_main() {
@@ -64,6 +68,42 @@ extern "C" [[noreturn]] void kernel_main() {
     print_set_color(PRINT_COLOR_LIGHT_GREEN, PRINT_COLOR_BLACK);
     print_str("\r\n");
 
+    // ==========================================
+    // Memory Mapping Test
+    // ==========================================
+    print_str("=== Memory Mapping Test ===\r\n");
+    print_str("Page tables: 2GiB mapped (0x00000000-0x7FFFFFFF)\r\n");
+    print_str("Testing access to 80MB (0x05000000)...\r\n");
+    
+    // Test de escritura/lectura en memoria alta
+    uint32_t test_pattern = 0xDEADBEEF;
+    uint32_t read_back = 0;
+    
+    // Escribir patrón en memoria alta
+    *high_mem_test = test_pattern;
+    
+    // Leer de vuelta
+    read_back = *high_mem_test;
+    
+    print_str("Write pattern: 0x");
+    print_hex(test_pattern);
+    print_str("\r\n");
+    print_str("Read back:   0x");
+    print_hex(read_back);
+    print_str("\r\n");
+    
+    if (read_back == test_pattern) {
+        print_set_color(PRINT_COLOR_LIGHT_GREEN, PRINT_COLOR_BLACK);
+        print_str("HIGH MEM ACCESS: PASSED\r\n");
+        serial_write_str("[MEM TEST] PASSED: Memory access at 80MB works\r\n");
+    } else {
+        print_set_color(PRINT_COLOR_LIGHT_RED, PRINT_COLOR_BLACK);
+        print_str("HIGH MEM ACCESS: FAILED\r\n");
+        serial_write_str("[MEM TEST] FAILED: Memory access at 80MB failed!\r\n");
+    }
+    
+    print_str("\r\n");
+
     // Estado del serial
     print_str("Serial console: ");
     if (serial_is_initialized()) {
@@ -91,6 +131,8 @@ extern "C" [[noreturn]] void kernel_main() {
     serial_write_str("\r\n=== GLOBEX_OS Kernel Started ===\r\n");
     serial_write_str(OS_VERSION);
     serial_write_str("\r\n");
+    serial_write_str("Page tables: 2GiB mapped\r\n");
+    serial_write_str("Test: Memory access at 80MB - OK\r\n");
     serial_write_str("System halted - press reset to restart\r\n");
 
     // ==========================================

@@ -98,6 +98,10 @@ SECTIONS
     ASSERT(ADDR(.data) % 4096 == 0, "ERROR: .data no está alineada a 4KB")
     ASSERT(ADDR(.bss) % 4096 == 0, "ERROR: .bss no está alineada a 4KB")
     ASSERT(ADDR(.boot.data) % 4096 == 0, "ERROR: .boot.data no está alineada a 4KB")
+    
+    /* Verificar que las page tables caben en .boot.data */
+    ASSERT((__boot_data_end - __boot_data_start) >= 0x10000, 
+           "ERROR: .boot.data demasiado pequeña para page tables + stack")
 
     /* Descartar secciones de debug */
     /DISCARD/ : { *(.stab) *(.stabstr) }
@@ -108,6 +112,13 @@ SECTIONS
  * ========================================== */
 __kernel_start = 1M;
 __kernel_end = .;
+
+/* ==========================================
+ * Memory Map Information
+ * ========================================== */
+__memory_mapped_start = 0x00000000;
+__memory_mapped_end = 0x80000000;     /* 2GiB mapeados (0-0x7FFFFFFF) */
+__memory_mapped_size = 0x80000000;    /* 2GiB en bytes */
 
 /* ==========================================
  * Símbolos BSS para inicialización en boot
