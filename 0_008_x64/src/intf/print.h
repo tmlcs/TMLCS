@@ -5,19 +5,19 @@
 #include <stddef.h>
 
 /* ==========================================
- * Guardas para linkage C/C++ mixto
- * ESENCIAL en kernel development
+ * C/C++ linkage guards
+ * ESSENTIAL for kernel development
  * ========================================== */
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /* ==========================================
- * Colores VGA para modo texto
+ * VGA Text Mode Colors
  * ==========================================
- * El color VGA es un byte donde:
- * - Bits 0-3: Color de foreground
- * - Bits 4-7: Color de background
+ * VGA color is one byte where:
+ * - Bits 0-3: Foreground color
+ * - Bits 4-7: Background color
  */
 typedef enum PrintColor {
     PRINT_COLOR_BLACK = 0,
@@ -39,111 +39,111 @@ typedef enum PrintColor {
 } PrintColor_t;
 
 /* ==========================================
- * API de funciones de print
+ * Print function API
  * ========================================== */
 
 /**
- * @brief Detectar hardware VGA antes de usar funciones de print
- * @return true si VGA disponible, false si no
- * @note Debe llamarse antes de print_clear() o cualquier función de print
+ * @brief Detect VGA hardware before using print functions
+ * @return true if VGA available, false otherwise
+ * @note Must be called before print_clear() or any print function
  */
 bool print_detect(void);
 
 /**
- * @brief Limpiar la pantalla completa y resetear cursor
- * @note Requiere que print_detect() haya sido llamado previamente
+ * @brief Clear entire screen and reset cursor
+ * @note Requires print_detect() to be called beforehand
  */
 void print_clear(void);
 
 /**
- * @brief Imprimir un solo caracter
- * @param character Caracter a imprimir (soporta '\n', '\r', '\t')
+ * @brief Print a single character
+ * @param character Character to print (supports '\n', '\r', '\t')
  */
 void print_char(char character);
 
 /**
- * @brief Imprimir string null-terminated
- * @param string Puntero a string (validado internamente para NULL)
+ * @brief Print null-terminated string
+ * @param string Pointer to string (internally validated for NULL)
  */
 void print_str(const char* string);
 
 /**
- * @brief Configurar colores de foreground y background
- * @param foreground Color de foreground (0-15). Valores válidos: PRINT_COLOR_*
- * @param background Color de background (0-15). Valores válidos: PRINT_COLOR_*
- * 
- * @note Si foreground o background están fuera de rango (>15), se usa el color
- *       por defecto (texto blanco sobre fondo negro) de forma segura.
- * @note Esta función es safe para usar con valores no validados - no causa UB.
- * @note Los valores se enmascaran con 0x0F para asegurar compatibilidad.
- * 
+ * @brief Set foreground and background colors
+ * @param foreground Foreground color (0-15). Valid values: PRINT_COLOR_*
+ * @param background Background color (0-15). Valid values: PRINT_COLOR_*
+ *
+ * @note If foreground or background are out of range (>15), default color
+ *       (white text on black background) is used safely.
+ * @note This function is safe to use with unvalidated values - no UB.
+ * @note Values are masked with 0x0F for compatibility.
+ *
  * @example
  *     print_set_color(PRINT_COLOR_WHITE, PRINT_COLOR_BLACK);  // OK
- *     print_set_color(255, 100);  // Invalid - usa default (white on black)
+ *     print_set_color(255, 100);  // Invalid - uses default (white on black)
  */
 void print_set_color(uint8_t foreground, uint8_t background);
 
 /**
- * @brief Imprimir un entero de 32-bit en hexadecimal
- * @param value Valor a imprimir (sin signo)
+ * @brief Print 32-bit unsigned integer in hexadecimal
+ * @param value Value to print (unsigned)
  */
 void print_hex(uint32_t value);
 
 /**
- * @brief Imprimir un entero de 32-bit en decimal
- * @param value Valor a imprimir (sin signo)
+ * @brief Print 32-bit unsigned integer in decimal
+ * @param value Value to print (unsigned)
  */
 void print_dec(uint32_t value);
 
 /**
- * @brief Imprimir un entero de 64-bit en hexadecimal
- * @param value Valor a imprimir (sin signo)
- * @note Imprime 16 dígitos hexadecimales con prefijo "0x"
+ * @brief Print 64-bit unsigned integer in hexadecimal
+ * @param value Value to print (unsigned)
+ * @note Prints 16 hexadecimal digits with "0x" prefix
  */
 void print_hex64(uint64_t value);
 
 /**
- * @brief Imprimir un entero de 64-bit en decimal
- * @param value Valor a imprimir (sin signo)
- * @note Soporta valores hasta 18,446,744,073,709,551,615
+ * @brief Print 64-bit unsigned integer in decimal
+ * @param value Value to print (unsigned)
+ * @note Supports values up to 18,446,744,073,709,551,615
  */
 void print_dec64(uint64_t value);
 
 /**
- * @brief Imprimir un entero de 32-bit en decimal con signo
- * @param value Valor a imprimir (con signo)
- * @note Maneja valores negativos con prefijo '-'
+ * @brief Print 32-bit signed integer in decimal
+ * @param value Value to print (signed)
+ * @note Handles negative values with '-' prefix
  */
 void print_dec_signed(int32_t value);
 
 /**
- * @brief Imprimir un entero de 64-bit en decimal con signo
- * @param value Valor a imprimir (con signo)
- * @note Maneja valores negativos con prefijo '-'
+ * @brief Print 64-bit signed integer in decimal
+ * @param value Value to print (signed)
+ * @note Handles negative values with '-' prefix
  */
 void print_dec64_signed(int64_t value);
 
 /**
- * @brief Obtener posición actual del cursor
- * @param col Puntero para almacenar columna (puede ser NULL)
- * @param row Puntero para almacenar fila (puede ser NULL)
- * @note Si col o row son NULL, no se escribe en ese parámetro
+ * @brief Get current cursor position
+ * @param col Pointer to store column (can be NULL)
+ * @param row Pointer to store row (can be NULL)
+ * @note If col or row are NULL, that parameter is not written
  */
 void print_get_cursor(size_t* col, size_t* row);
 
 /**
- * @brief Obtener colores actuales
- * @param fg Puntero para almacenar foreground (puede ser NULL)
- * @param bg Puntero para almacenar background (puede ser NULL)
- * @note Los valores están en rango 0-15
+ * @brief Get current colors
+ * @param fg Pointer to store foreground (can be NULL)
+ * @param bg Pointer to store background (can be NULL)
+ * @note Values are in range 0-15
  */
 void print_get_color(uint8_t* fg, uint8_t* bg);
 
 /**
- * @brief Establecer posición del cursor
- * @param col Nueva columna (0-79)
- * @param row Nueva fila (0-24)
- * @note Valida límites antes de establecer posición
+ * @brief Set cursor position
+ * @param col New column (0-79)
+ * @param row New row (0-24)
+ * @note Validates bounds before setting position
  */
 void print_set_cursor(size_t col, size_t row);
 
