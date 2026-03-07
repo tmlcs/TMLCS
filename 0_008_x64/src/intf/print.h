@@ -95,6 +95,34 @@ void print_hex(uint32_t value);
  */
 void print_dec(uint32_t value);
 
+/**
+ * @brief Imprimir un entero de 64-bit en hexadecimal
+ * @param value Valor a imprimir (sin signo)
+ * @note Imprime 16 dígitos hexadecimales con prefijo "0x"
+ */
+void print_hex64(uint64_t value);
+
+/**
+ * @brief Imprimir un entero de 64-bit en decimal
+ * @param value Valor a imprimir (sin signo)
+ * @note Soporta valores hasta 18,446,744,073,709,551,615
+ */
+void print_dec64(uint64_t value);
+
+/**
+ * @brief Imprimir un entero de 32-bit en decimal con signo
+ * @param value Valor a imprimir (con signo)
+ * @note Maneja valores negativos con prefijo '-'
+ */
+void print_dec_signed(int32_t value);
+
+/**
+ * @brief Imprimir un entero de 64-bit en decimal con signo
+ * @param value Valor a imprimir (con signo)
+ * @note Maneja valores negativos con prefijo '-'
+ */
+void print_dec64_signed(int64_t value);
+
 #ifdef __cplusplus
 }
 #endif

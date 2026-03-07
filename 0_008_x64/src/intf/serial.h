@@ -139,6 +139,20 @@ void serial_write_dec(uint32_t value);
 void serial_write_dec64(uint64_t value);
 
 /**
+ * @brief Escribir un entero de 32-bit en decimal con signo por serial
+ * @param value Valor con signo a escribir
+ * @note Maneja valores negativos con prefijo '-'
+ */
+void serial_write_dec_signed(int32_t value);
+
+/**
+ * @brief Escribir un entero de 64-bit en decimal con signo por serial
+ * @param value Valor de 64-bit con signo a escribir
+ * @note Maneja valores negativos con prefijo '-'
+ */
+void serial_write_dec64_signed(int64_t value);
+
+/**
  * @brief Leer un caracter de serial (non-blocking)
  * @param data Puntero para almacenar el dato leído
  * @return 1 si hay dato disponible, 0 si no

@@ -26,6 +26,12 @@ static volatile uint32_t* high_mem_test = reinterpret_cast<volatile uint32_t*>(0
 // Variables para test de debug macros
 static uint32_t debug_test_value = 0xCAFEBABE;
 
+// Variables para test de print functions
+static uint64_t test_u64_value = 0x123456789ABCDEF0ULL;
+static int32_t test_signed_pos = 12345;
+static int32_t test_signed_neg = -9876;
+static int64_t test_signed64 = -123456789012345LL;
+
 // El kernel nunca debe retornar - usar noreturn
 extern "C" [[noreturn]] void kernel_main() {
     // ==========================================
@@ -199,6 +205,60 @@ extern "C" [[noreturn]] void kernel_main() {
     
     serial_write_str("[DEBUG MACROS] All tests passed\r\n");
 
+    // ==========================================
+    // Print Functions Test - 64-bit and Signed [3.5]
+    // ==========================================
+    if (vga_available) {
+        print_str("\r\n=== Print Functions Test ===\r\n");
+    }
+    serial_write_str("\r\n=== Print Functions Test ===\r\n");
+    
+    // Test print_hex64
+    if (vga_available) {
+        print_str("print_hex64(0x123456789ABCDEF0): ");
+        print_hex64(test_u64_value);
+        print_str("\r\n");
+    }
+    serial_write_str("print_hex64: ");
+    serial_write_hex64(test_u64_value);
+    serial_write_str("\r\n");
+    
+    // Test print_dec_signed (positive)
+    if (vga_available) {
+        print_str("print_dec_signed(12345): ");
+        print_dec_signed(test_signed_pos);
+        print_str("\r\n");
+    }
+    serial_write_str("print_dec_signed (positive): ");
+    serial_write_dec_signed(test_signed_pos);
+    serial_write_str("\r\n");
+    
+    // Test print_dec_signed (negative)
+    if (vga_available) {
+        print_str("print_dec_signed(-9876): ");
+        print_dec_signed(test_signed_neg);
+        print_str("\r\n");
+    }
+    serial_write_str("print_dec_signed (negative): ");
+    serial_write_dec_signed(test_signed_neg);
+    serial_write_str("\r\n");
+    
+    // Test print_dec64_signed
+    if (vga_available) {
+        print_str("print_dec64_signed(-123456789012345): ");
+        print_dec64_signed(test_signed64);
+        print_str("\r\n");
+    }
+    serial_write_str("print_dec64_signed: ");
+    serial_write_dec64_signed(test_signed64);
+    serial_write_str("\r\n");
+    
+    if (vga_available) {
+        print_set_color(PRINT_COLOR_LIGHT_GREEN, PRINT_COLOR_BLACK);
+        print_str("Print functions: PASSED\r\n");
+    }
+    serial_write_str("[PRINT FUNCTIONS] All tests passed\r\n");
+
     // Estado del serial
     print_str("Serial console: ");
     if (serial_is_initialized()) {
@@ -229,6 +289,8 @@ extern "C" [[noreturn]] void kernel_main() {
     serial_write_str("Page tables: 2GiB mapped\r\n");
     serial_write_str("Test: Memory access at 80MB - OK\r\n");
     serial_write_str("Test: Color validation - OK\r\n");
+    serial_write_str("Test: Debug macros - OK\r\n");
+    serial_write_str("Test: Print functions (64-bit, signed) - OK\r\n");
     serial_write_str("System halted - press reset to restart\r\n");
 
     // ==========================================

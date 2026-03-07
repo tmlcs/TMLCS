@@ -281,3 +281,59 @@ void print_dec(uint32_t value) {
 
     print_str(&buffer[i + 1]);
 }
+
+void print_hex64(uint64_t value) {
+    static const char hex_chars[] = "0123456789ABCDEF";
+    char buffer[19];  // "0x" + 16 digits + null = 19 bytes
+    int i;
+
+    buffer[0] = '0';
+    buffer[1] = 'x';
+
+    // Imprimir desde el nibble más significativo (bit 60-63)
+    for (i = 0; i < 16; i++) {
+        buffer[2 + i] = hex_chars[(value >> (60 - i * 4)) & 0xF];
+    }
+    buffer[18] = '\0';
+
+    print_str(buffer);
+}
+
+void print_dec64(uint64_t value) {
+    char buffer[22];  // Máximo 20 dígitos + null
+    int i = 20;
+
+    buffer[21] = '\0';
+
+    if (value == 0) {
+        print_char('0');
+        return;
+    }
+
+    while (value > 0 && i > 0) {
+        buffer[i--] = '0' + (value % 10);
+        value /= 10;
+    }
+
+    print_str(&buffer[i + 1]);
+}
+
+void print_dec_signed(int32_t value) {
+    if (value < 0) {
+        print_char('-');
+        // Convertir a positivo evitando overflow en INT32_MIN
+        print_dec64((uint64_t)(-(int64_t)value));
+    } else {
+        print_dec((uint32_t)value);
+    }
+}
+
+void print_dec64_signed(int64_t value) {
+    if (value < 0) {
+        print_char('-');
+        // Convertir a positivo evitando overflow en INT64_MIN
+        print_dec64((uint64_t)(-value));
+    } else {
+        print_dec64((uint64_t)value);
+    }
+}

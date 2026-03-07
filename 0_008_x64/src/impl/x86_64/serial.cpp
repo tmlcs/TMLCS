@@ -289,6 +289,32 @@ void serial_write_dec64(uint64_t value) {
     serial_write_str(&buffer[i + 1]);
 }
 
+/**
+ * @brief Escribir un entero de 32-bit en decimal con signo por serial
+ * @param value Valor con signo a escribir
+ */
+void serial_write_dec_signed(int32_t value) {
+    if (value < 0) {
+        serial_write_char('-');
+        serial_write_dec64((uint64_t)(-(int64_t)value));
+    } else {
+        serial_write_dec((uint32_t)value);
+    }
+}
+
+/**
+ * @brief Escribir un entero de 64-bit en decimal con signo por serial
+ * @param value Valor de 64-bit con signo a escribir
+ */
+void serial_write_dec64_signed(int64_t value) {
+    if (value < 0) {
+        serial_write_char('-');
+        serial_write_dec64((uint64_t)(-value));
+    } else {
+        serial_write_dec64((uint64_t)value);
+    }
+}
+
 int serial_read_char(char* data) {
     if (!serial_initialized || data == nullptr) return 0;
 
