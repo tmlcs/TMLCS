@@ -1,9 +1,10 @@
 #include "print.h"
 #include "serial.h"
+#include "panic.h"
 #include "debug.h"
 
 // Constante de versión centralizada
-static constexpr const char* OS_VERSION = "GLOBEX_OS v0.011_x64";
+static constexpr const char* OS_VERSION = "GLOBEX_OS v0.012_x64";
 
 // ==========================================
 // Variable BSS de prueba (sin inicializador explícito)
@@ -24,85 +25,127 @@ extern "C" [[noreturn]] void kernel_main() {
     // ==========================================
     // Inicializar serial primero (más seguro que VGA)
     // ==========================================
-    serial_init_default();
+    if (!serial_init_default()) {
+        // Serial falló - intentar panic por VGA directamente
+        // Escribir directamente al buffer VGA sin usar funciones
+        volatile uint16_t* vga = reinterpret_cast<volatile uint16_t*>(0xB8000);
+        const char* msg = "FATAL: Serial init failed";
+        for (size_t i = 0; msg[i] != '\0' && i < 80; i++) {
+            vga[i] = (0x4F << 8) | msg[i];  // White on red
+        }
+        for (;;) {
+            __asm__ volatile ("hlt");
+        }
+    }
 
     // ==========================================
     // Detectar hardware VGA
     // ==========================================
-    print_detect();
+    bool vga_available = print_detect();
+    
+    if (!vga_available) {
+        // VGA no disponible - continuar solo con serial
+        serial_write_str("[WARNING] VGA not detected, serial only mode\r\n");
+    }
 
     // Inicializar VGA (solo si detectado)
-    print_clear();
-    print_set_color(PRINT_COLOR_LIGHT_GREEN, PRINT_COLOR_BLACK);
+    if (vga_available) {
+        print_clear();
+        print_set_color(PRINT_COLOR_LIGHT_GREEN, PRINT_COLOR_BLACK);
+    }
 
     // Mensaje inicial VGA
-    print_str("Welcome to ");
-    print_str(OS_VERSION);
-    print_str("\r\n");
-    print_str("64-bit kernel on C++!\r\n");
-    print_str("\r\n");
+    if (vga_available) {
+        print_str("Welcome to ");
+        print_str(OS_VERSION);
+        print_str("\r\n");
+        print_str("64-bit kernel on C++!\r\n");
+        print_str("\r\n");
+    }
 
     // ==========================================
     // BSS Initialization Test
     // ==========================================
-    print_str("=== BSS Initialization Test ===\r\n");
-    
-    print_str("BSS variable (should be 0x00000000): 0x");
-    print_hex(bss_test_variable);
-    print_str("\r\n");
-    
-    print_str("DATA variable (should be 0x12345678): 0x");
-    print_hex(data_test_variable);
-    print_str("\r\n");
-    
+    if (vga_available) {
+        print_str("=== BSS Initialization Test ===\r\n");
+
+        print_str("BSS variable (should be 0x00000000): 0x");
+        print_hex(bss_test_variable);
+        print_str("\r\n");
+
+        print_str("DATA variable (should be 0x12345678): 0x");
+        print_hex(data_test_variable);
+        print_str("\r\n");
+    }
+
     if (bss_test_variable == 0) {
-        print_set_color(PRINT_COLOR_LIGHT_GREEN, PRINT_COLOR_BLACK);
-        print_str("BSS INIT: PASSED\r\n");
+        if (vga_available) {
+            print_set_color(PRINT_COLOR_LIGHT_GREEN, PRINT_COLOR_BLACK);
+            print_str("BSS INIT: PASSED\r\n");
+        }
         serial_write_str("[BSS TEST] PASSED: BSS initialized to zero\r\n");
     } else {
-        print_set_color(PRINT_COLOR_LIGHT_RED, PRINT_COLOR_BLACK);
-        print_str("BSS INIT: FAILED\r\n");
+        // BSS no se inicializó correctamente - error fatal
+        if (vga_available) {
+            print_set_color(PRINT_COLOR_LIGHT_RED, PRINT_COLOR_BLACK);
+            print_str("BSS INIT: FAILED\r\n");
+        }
         serial_write_str("[BSS TEST] FAILED: BSS not zeroed!\r\n");
+        panic("BSS initialization failed", bss_test_variable);
     }
-    
-    print_set_color(PRINT_COLOR_LIGHT_GREEN, PRINT_COLOR_BLACK);
-    print_str("\r\n");
+
+    if (vga_available) {
+        print_set_color(PRINT_COLOR_LIGHT_GREEN, PRINT_COLOR_BLACK);
+        print_str("\r\n");
+    }
 
     // ==========================================
     // Memory Mapping Test
     // ==========================================
-    print_str("=== Memory Mapping Test ===\r\n");
-    print_str("Page tables: 2GiB mapped (0x00000000-0x7FFFFFFF)\r\n");
-    print_str("Testing access to 80MB (0x05000000)...\r\n");
-    
+    if (vga_available) {
+        print_str("=== Memory Mapping Test ===\r\n");
+        print_str("Page tables: 2GiB mapped (0x00000000-0x7FFFFFFF)\r\n");
+        print_str("Testing access to 80MB (0x05000000)...\r\n");
+    }
+
     // Test de escritura/lectura en memoria alta
     uint32_t test_pattern = 0xDEADBEEF;
     uint32_t read_back = 0;
-    
+
     // Escribir patrón en memoria alta
     *high_mem_test = test_pattern;
-    
+
     // Leer de vuelta
     read_back = *high_mem_test;
-    
-    print_str("Write pattern: 0x");
-    print_hex(test_pattern);
-    print_str("\r\n");
-    print_str("Read back:   0x");
-    print_hex(read_back);
-    print_str("\r\n");
-    
+
+    if (vga_available) {
+        print_str("Write pattern: 0x");
+        print_hex(test_pattern);
+        print_str("\r\n");
+        print_str("Read back:   0x");
+        print_hex(read_back);
+        print_str("\r\n");
+    }
+
     if (read_back == test_pattern) {
-        print_set_color(PRINT_COLOR_LIGHT_GREEN, PRINT_COLOR_BLACK);
-        print_str("HIGH MEM ACCESS: PASSED\r\n");
+        if (vga_available) {
+            print_set_color(PRINT_COLOR_LIGHT_GREEN, PRINT_COLOR_BLACK);
+            print_str("HIGH MEM ACCESS: PASSED\r\n");
+        }
         serial_write_str("[MEM TEST] PASSED: Memory access at 80MB works\r\n");
     } else {
-        print_set_color(PRINT_COLOR_LIGHT_RED, PRINT_COLOR_BLACK);
-        print_str("HIGH MEM ACCESS: FAILED\r\n");
+        // Memory access falló - error fatal
+        if (vga_available) {
+            print_set_color(PRINT_COLOR_LIGHT_RED, PRINT_COLOR_BLACK);
+            print_str("HIGH MEM ACCESS: FAILED\r\n");
+        }
         serial_write_str("[MEM TEST] FAILED: Memory access at 80MB failed!\r\n");
+        panic("Memory mapping test failed", read_back);
     }
-    
-    print_str("\r\n");
+
+    if (vga_available) {
+        print_str("\r\n");
+    }
 
     // Estado del serial
     print_str("Serial console: ");
