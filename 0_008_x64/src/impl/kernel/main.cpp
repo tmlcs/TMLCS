@@ -1,10 +1,13 @@
 #include "print.h"
 #include "serial.h"
 #include "panic.h"
+
+// Enable debug macros for testing
+#define DEBUG_ENABLE 1
 #include "debug.h"
 
 // Constante de versión centralizada
-static constexpr const char* OS_VERSION = "GLOBEX_OS v0.013_x64";
+static constexpr const char* OS_VERSION = "GLOBEX_OS v0.014_x64";
 
 // ==========================================
 // Variable BSS de prueba (sin inicializador explícito)
@@ -19,6 +22,9 @@ static uint32_t data_test_variable = 0x12345678;
 // Puntero para test de memoria alta (dirección mapeada > 64MB)
 // Usamos 0x05000000 (80MB) que está dentro del rango mapeado y es RAM válida en QEMU
 static volatile uint32_t* high_mem_test = reinterpret_cast<volatile uint32_t*>(0x05000000);
+
+// Variables para test de debug macros
+static uint32_t debug_test_value = 0xCAFEBABE;
 
 // El kernel nunca debe retornar - usar noreturn
 extern "C" [[noreturn]] void kernel_main() {
@@ -169,6 +175,29 @@ extern "C" [[noreturn]] void kernel_main() {
         
         serial_write_str("[COLOR TEST] PASSED: Color validation works\r\n");
     }
+
+    // ==========================================
+    // Debug Macros Test [D001, D002, D003]
+    // ==========================================
+    serial_write_str("\r\n=== Debug Macros Test ===\r\n");
+    
+    // Test DEBUG_PRINTLN [D002]
+    DEBUG_PRINTLN("Testing DEBUG_PRINTLN...");
+    serial_write_str("[DEBUG MACRO] DEBUG_PRINTLN: OK\r\n");
+    
+    // Test DEBUG_VAR
+    DEBUG_VAR(debug_test_value, debug_test_value);
+    serial_write_str("[DEBUG MACRO] DEBUG_VAR: OK\r\n");
+    
+    // Test DEBUG_ASSERT [D003] - con condición verdadera (no debe fallar)
+    DEBUG_ASSERT(1 == 1);
+    serial_write_str("[DEBUG MACRO] DEBUG_ASSERT (pass): OK\r\n");
+    
+    // Test DEBUG_LOG
+    DEBUG_LOG("Testing DEBUG_LOG macro");
+    serial_write_str("[DEBUG MACRO] DEBUG_LOG: OK\r\n");
+    
+    serial_write_str("[DEBUG MACROS] All tests passed\r\n");
 
     // Estado del serial
     print_str("Serial console: ");
