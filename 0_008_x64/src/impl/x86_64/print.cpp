@@ -104,11 +104,16 @@ void clear_row(size_t row) {
         return;  // Validación: VGA debe estar detectado y row válido
     }
 
-    // Optimización: escribir ambos bytes (character + color) juntos
-    // Usar acceso directo al buffer volatile
+    // Optimización: escribir ambos bytes (character + color) como un solo u16
+    // VGA text mode: cada celda es 2 bytes (char: low byte, color: high byte)
+    // Esto reduce los accesos a memoria de 160 (80*2) a 80 writes u16
+    const uint16_t clear_word = static_cast<uint16_t>(' ') | (static_cast<uint16_t>(current_color) << 8);
+    
+    // reinterpret_cast del buffer como uint16_t* para writes de 2 bytes
+    volatile uint16_t* row_ptr = reinterpret_cast<volatile uint16_t*>(&vga_buffer[vga_index(row, 0)]);
+    
     for (size_t c = 0; c < VGA_COLS; c++) {
-        vga_buffer[vga_index(row, c)].character = ' ';
-        vga_buffer[vga_index(row, c)].color = current_color;
+        row_ptr[c] = clear_word;
     }
     memory_barrier();  // Prevenir reordering después de writes a hardware
 }
