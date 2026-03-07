@@ -323,6 +323,38 @@ extern "C" [[noreturn]] void kernel_main() {
     }
     serial_write_str("[QUERY FUNCTIONS] All tests passed\r\n");
 
+    // ==========================================
+    // Serial Signed Numbers Test [3.7]
+    // ==========================================
+    serial_write_str("\r\n=== Serial Signed Numbers Test ===\r\n");
+    
+    // Test serial_write_dec_signed() - positive
+    serial_write_str("serial_write_dec_signed(42): ");
+    serial_write_dec_signed(42);
+    serial_write_str("\r\n");
+    
+    // Test serial_write_dec_signed() - negative
+    serial_write_str("serial_write_dec_signed(-1234): ");
+    serial_write_dec_signed(-1234);
+    serial_write_str("\r\n");
+    
+    // Test serial_write_dec_signed() - zero
+    serial_write_str("serial_write_dec_signed(0): ");
+    serial_write_dec_signed(0);
+    serial_write_str("\r\n");
+    
+    // Test serial_write_dec64_signed() - large negative
+    serial_write_str("serial_write_dec64_signed(-9876543210): ");
+    serial_write_dec64_signed(-9876543210LL);
+    serial_write_str("\r\n");
+    
+    // Test serial_write_dec64_signed() - INT64_MIN edge case
+    serial_write_str("serial_write_dec64_signed(INT64_MIN): ");
+    serial_write_dec64_signed(-9223372036854775807LL - 1);
+    serial_write_str("\r\n");
+    
+    serial_write_str("[SERIAL SIGNED] All tests passed\r\n");
+
     // Estado del serial
     print_str("Serial console: ");
     if (serial_is_initialized()) {
@@ -356,6 +388,7 @@ extern "C" [[noreturn]] void kernel_main() {
     serial_write_str("Test: Debug macros - OK\r\n");
     serial_write_str("Test: Print functions (64-bit, signed) - OK\r\n");
     serial_write_str("Test: Query functions (cursor, color) - OK\r\n");
+    serial_write_str("Test: Serial signed numbers - OK\r\n");
     serial_write_str("System halted - press reset to restart\r\n");
 
     // ==========================================
