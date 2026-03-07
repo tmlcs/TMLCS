@@ -7,7 +7,7 @@
 #include "debug.h"
 
 // Constante de versión centralizada
-static constexpr const char* OS_VERSION = "GLOBEX_OS v0.014_x64";
+static constexpr const char* OS_VERSION = "GLOBEX_OS v0.015_x64";
 
 // ==========================================
 // Variable BSS de prueba (sin inicializador explícito)
@@ -355,6 +355,87 @@ extern "C" [[noreturn]] void kernel_main() {
     
     serial_write_str("[SERIAL SIGNED] All tests passed\r\n");
 
+    // ==========================================
+    // Hardware Information Test [3.8]
+    // ==========================================
+    serial_write_str("\r\n=== Hardware Information Test ===\r\n");
+    
+    // Test directo de CPUID
+    uint32_t test_eax, test_ebx, test_ecx, test_edx;
+    
+    // CPUID leaf 0: Vendor ID
+    __asm__ volatile (
+        "cpuid"
+        : "=a"(test_eax), "=b"(test_ebx), "=c"(test_ecx), "=d"(test_edx)
+        : "a"(0)
+        : "memory"
+    );
+    
+    serial_write_str("CPU Max Leaf: ");
+    serial_write_hex(test_eax);
+    serial_write_str("\r\n");
+    
+    // Vendor string
+    serial_write_str("Vendor: ");
+    const char* vendor = (const char*)&test_ebx;
+    for (int i = 0; i < 4 && vendor[i]; i++) serial_write_char(vendor[i]);
+    vendor = (const char*)&test_edx;
+    for (int i = 0; i < 4 && vendor[i]; i++) serial_write_char(vendor[i]);
+    vendor = (const char*)&test_ecx;
+    for (int i = 0; i < 4 && vendor[i]; i++) serial_write_char(vendor[i]);
+    serial_write_str("\r\n");
+    
+    // CPUID leaf 1: Processor Info
+    __asm__ volatile (
+        "cpuid"
+        : "=a"(test_eax), "=b"(test_ebx), "=c"(test_ecx), "=d"(test_edx)
+        : "a"(1)
+        : "memory"
+    );
+    
+    uint32_t stepping = test_eax & 0xF;
+    uint32_t model = (test_eax >> 4) & 0xF;
+    uint32_t family = (test_eax >> 8) & 0xF;
+    
+    serial_write_str("Family: ");
+    serial_write_dec(family);
+    serial_write_str(", Model: ");
+    serial_write_dec(model);
+    serial_write_str(", Stepping: ");
+    serial_write_dec(stepping);
+    serial_write_str("\r\n");
+    
+    // CPUID leaf 0x80000000: Extended leaf check
+    __asm__ volatile (
+        "cpuid"
+        : "=a"(test_eax), "=b"(test_ebx), "=c"(test_ecx), "=d"(test_edx)
+        : "a"(0x80000000)
+        : "memory"
+    );
+    
+    uint32_t max_extended = test_eax;
+    
+    // CPUID leaf 0x80000001: Long mode check
+    int has_long_mode = 0;
+    if (max_extended >= 0x80000001) {
+        __asm__ volatile (
+            "cpuid"
+            : "=a"(test_eax), "=b"(test_ebx), "=c"(test_ecx), "=d"(test_edx)
+            : "a"(0x80000001)
+            : "memory"
+        );
+        has_long_mode = (test_edx >> 29) & 1;
+    }
+    
+    serial_write_str("Long Mode (64-bit): ");
+    if (has_long_mode) {
+        serial_write_str("Supported\r\n");
+    } else {
+        serial_write_str("NOT Supported\r\n");
+    }
+    
+    serial_write_str("[HARDWARE INFO] CPU detection complete\r\n");
+
     // Estado del serial
     print_str("Serial console: ");
     if (serial_is_initialized()) {
@@ -389,6 +470,7 @@ extern "C" [[noreturn]] void kernel_main() {
     serial_write_str("Test: Print functions (64-bit, signed) - OK\r\n");
     serial_write_str("Test: Query functions (cursor, color) - OK\r\n");
     serial_write_str("Test: Serial signed numbers - OK\r\n");
+    serial_write_str("Test: Hardware info (CPUID) - OK\r\n");
     serial_write_str("System halted - press reset to restart\r\n");
 
     // ==========================================
