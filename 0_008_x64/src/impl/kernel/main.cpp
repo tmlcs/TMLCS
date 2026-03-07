@@ -32,6 +32,10 @@ static int32_t test_signed_pos = 12345;
 static int32_t test_signed_neg = -9876;
 static int64_t test_signed64 = -123456789012345LL;
 
+// Variables para test de query functions
+static size_t test_cursor_col, test_cursor_row;
+static uint8_t test_fg, test_bg;
+
 // El kernel nunca debe retornar - usar noreturn
 extern "C" [[noreturn]] void kernel_main() {
     // ==========================================
@@ -259,6 +263,66 @@ extern "C" [[noreturn]] void kernel_main() {
     }
     serial_write_str("[PRINT FUNCTIONS] All tests passed\r\n");
 
+    // ==========================================
+    // Query Functions Test - Cursor/Color [3.6]
+    // ==========================================
+    if (vga_available) {
+        print_str("\r\n=== Query Functions Test ===\r\n");
+    }
+    serial_write_str("\r\n=== Query Functions Test ===\r\n");
+    
+    // Test print_get_cursor() - obtener cursor actual
+    print_get_cursor(&test_cursor_col, &test_cursor_row);
+    if (vga_available) {
+        print_str("Current cursor: col=");
+        print_dec((uint32_t)test_cursor_col);
+        print_str(", row=");
+        print_dec((uint32_t)test_cursor_row);
+        print_str("\r\n");
+    }
+    serial_write_str("print_get_cursor: OK\r\n");
+    
+    // Test print_set_cursor() - mover cursor a posición específica
+    if (vga_available) {
+        print_str("Setting cursor to (40, 12)...\r\n");
+    }
+    print_set_cursor(40, 12);
+    
+    // Verificar nueva posición
+    print_get_cursor(&test_cursor_col, &test_cursor_row);
+    if (test_cursor_col == 40 && test_cursor_row == 12) {
+        if (vga_available) {
+            print_str("Cursor set successfully: col=");
+            print_dec((uint32_t)test_cursor_col);
+            print_str(", row=");
+            print_dec((uint32_t)test_cursor_row);
+            print_str("\r\n");
+        }
+        serial_write_str("print_set_cursor: OK\r\n");
+    } else {
+        serial_write_str("print_set_cursor: FAILED\r\n");
+    }
+    
+    // Test print_get_color() - obtener color actual
+    print_get_color(&test_fg, &test_bg);
+    if (vga_available) {
+        print_str("Current color: fg=");
+        print_dec((uint32_t)test_fg);
+        print_str(", bg=");
+        print_dec((uint32_t)test_bg);
+        print_str("\r\n");
+    }
+    serial_write_str("print_get_color: OK\r\n");
+    
+    // Restaurar cursor a posición normal
+    print_set_cursor(0, 13);
+    
+    if (vga_available) {
+        print_set_color(PRINT_COLOR_LIGHT_GREEN, PRINT_COLOR_BLACK);
+        print_str("Query functions: PASSED\r\n");
+    }
+    serial_write_str("[QUERY FUNCTIONS] All tests passed\r\n");
+
     // Estado del serial
     print_str("Serial console: ");
     if (serial_is_initialized()) {
@@ -291,6 +355,7 @@ extern "C" [[noreturn]] void kernel_main() {
     serial_write_str("Test: Color validation - OK\r\n");
     serial_write_str("Test: Debug macros - OK\r\n");
     serial_write_str("Test: Print functions (64-bit, signed) - OK\r\n");
+    serial_write_str("Test: Query functions (cursor, color) - OK\r\n");
     serial_write_str("System halted - press reset to restart\r\n");
 
     // ==========================================

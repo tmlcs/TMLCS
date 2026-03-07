@@ -337,3 +337,44 @@ void print_dec64_signed(int64_t value) {
         print_dec64((uint64_t)value);
     }
 }
+
+/* ==========================================
+ * Funciones de Consulta [3.6]
+ * ========================================== */
+
+void print_get_cursor(size_t* col, size_t* row) {
+    memory_barrier();
+    if (col != nullptr) {
+        *col = cursor_col;
+    }
+    if (row != nullptr) {
+        *row = cursor_row;
+    }
+    memory_barrier();
+}
+
+void print_get_color(uint8_t* fg, uint8_t* bg) {
+    memory_barrier();
+    if (fg != nullptr) {
+        *fg = current_color & 0x0F;  // Extraer foreground (bits 0-3)
+    }
+    if (bg != nullptr) {
+        *bg = (current_color >> 4) & 0x0F;  // Extraer background (bits 4-7)
+    }
+    memory_barrier();
+}
+
+void print_set_cursor(size_t col, size_t row) {
+    // Validar límites antes de establecer
+    if (col >= VGA_COLS) {
+        col = VGA_COLS - 1;
+    }
+    if (row >= VGA_ROWS) {
+        row = VGA_ROWS - 1;
+    }
+    
+    memory_barrier();
+    cursor_col = col;
+    cursor_row = row;
+    memory_barrier();
+}

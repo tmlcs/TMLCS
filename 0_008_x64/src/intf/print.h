@@ -123,6 +123,30 @@ void print_dec_signed(int32_t value);
  */
 void print_dec64_signed(int64_t value);
 
+/**
+ * @brief Obtener posición actual del cursor
+ * @param col Puntero para almacenar columna (puede ser NULL)
+ * @param row Puntero para almacenar fila (puede ser NULL)
+ * @note Si col o row son NULL, no se escribe en ese parámetro
+ */
+void print_get_cursor(size_t* col, size_t* row);
+
+/**
+ * @brief Obtener colores actuales
+ * @param fg Puntero para almacenar foreground (puede ser NULL)
+ * @param bg Puntero para almacenar background (puede ser NULL)
+ * @note Los valores están en rango 0-15
+ */
+void print_get_color(uint8_t* fg, uint8_t* bg);
+
+/**
+ * @brief Establecer posición del cursor
+ * @param col Nueva columna (0-79)
+ * @param row Nueva fila (0-24)
+ * @note Valida límites antes de establecer posición
+ */
+void print_set_cursor(size_t col, size_t row);
+
 #ifdef __cplusplus
 }
 #endif
