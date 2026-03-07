@@ -1,4 +1,5 @@
 #include "print.h"
+#include "string.h"
 
 // ==========================================
 // Memory Barrier Macro
@@ -150,21 +151,20 @@ void print_newline(void) {
     }
 
     // Scroll: mover filas 1..24 a filas 0..23
-    // Optimización: usar memcpy-style copy en lugar de byte por byte
-    for (size_t r = 1; r < VGA_ROWS; r++) {
+    // Optimización: copiar fila por fila usando accesos u16 (2 bytes por acceso)
+    // En lugar de 4 accesos byte por acceso, usamos 1 acceso u16 por columna
+    
+    // Copiar filas 1..24 a filas 0..23
+    for (size_t r = 0; r < VGA_ROWS - 1; r++) {
+        volatile uint16_t* dst = reinterpret_cast<volatile uint16_t*>(&vga_buffer[vga_index(r, 0)]);
+        const volatile uint16_t* src = reinterpret_cast<const volatile uint16_t*>(&vga_buffer[vga_index(r + 1, 0)]);
+        
+        // Copiar 80 columnas × 2 bytes = 80 u16 accesses
         for (size_t c = 0; c < VGA_COLS; c++) {
-            size_t src_idx = vga_index(r, c);
-            size_t dst_idx = vga_index(r - 1, c);
-
-            // Lectura volatile explícita por campo - evita reordering
-            uint8_t ch = vga_buffer[src_idx].character;
-            uint8_t col = vga_buffer[src_idx].color;
-
-            // Escritura volatile explícita por campo
-            vga_buffer[dst_idx].character = ch;
-            vga_buffer[dst_idx].color = col;
+            dst[c] = src[c];
         }
     }
+    memory_barrier();
 
     clear_row(VGA_ROWS - 1);
     memory_barrier();
