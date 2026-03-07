@@ -143,12 +143,12 @@ error:
 	hlt
 
 ; ==========================================
-; Boot BSS Section - Page tables y stack (NOBITS)
+; Boot Data Section - Page tables y stack (NO inicializar)
 ; ==========================================
 ; Esta sección es NOBITS - no ocupa espacio en el archivo
-; y no se inicializa a cero
+; y NO se inicializa a cero (separada de .bss)
 ; ==========================================
-section .bss.boot nobits
+section .boot.data nobits
 align 4096
 page_table_l4:
 	resb 4096

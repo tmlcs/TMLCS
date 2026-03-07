@@ -227,3 +227,38 @@ void print_set_color(uint8_t foreground, uint8_t background) {
     current_color = (foreground & 0x0F) | ((background & 0x0F) << 4);
     memory_barrier();  // Asegurar que el cambio de color se propague
 }
+
+void print_hex(uint32_t value) {
+    static const char hex_chars[] = "0123456789ABCDEF";
+    char buffer[11];  // "0x" + 8 digits + null = 11 bytes
+    int i;
+
+    buffer[0] = '0';
+    buffer[1] = 'x';
+
+    for (i = 0; i < 8; i++) {
+        buffer[2 + i] = hex_chars[(value >> (28 - i * 4)) & 0xF];
+    }
+    buffer[10] = '\0';
+
+    print_str(buffer);
+}
+
+void print_dec(uint32_t value) {
+    char buffer[12];  // Máximo 10 dígitos + null
+    int i = 10;
+
+    buffer[11] = '\0';
+
+    if (value == 0) {
+        print_char('0');
+        return;
+    }
+
+    while (value > 0 && i > 0) {
+        buffer[i--] = '0' + (value % 10);
+        value /= 10;
+    }
+
+    print_str(&buffer[i + 1]);
+}

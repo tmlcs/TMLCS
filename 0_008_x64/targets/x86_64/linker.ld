@@ -60,9 +60,8 @@ SECTIONS
     /* ==========================================
      * Uninitialized Data - BSS (zero-initialized)
      * ==========================================
-     * NOTA: Las page tables y stack del boot code están en .bss.boot
-     * para evitar que se inicialicen a cero. Solo las variables C++
-     * sin inicializador explícito van a .bss y deben inicializarse.
+     * Esta sección será inicializada a cero por el código de boot.
+     * Solo variables C/C++ sin inicializador explícito van aquí.
      * ========================================== */
     .bss : ALIGN(4K)
     {
@@ -74,16 +73,20 @@ SECTIONS
     } :data
 
     /* ==========================================
-     * Boot BSS - Page tables y stack (NOBITS, NO inicializar)
+     * Boot Data - Page tables y stack (NO inicializar)
      * ==========================================
-     * Esta sección contiene las page tables y el stack definidos
-     * en main.asm. Es NOBITS y no se inicializa a cero.
+     * Esta sección contiene las page tables y el stack del boot code.
+     * Es NOBITS (no ocupa espacio en archivo) pero NO debe inicializarse
+     * a cero porque contiene datos configurados en tiempo de boot.
+     * 
+     * Separada de .bss para permitir zero-initialization seguro del BSS.
      * ========================================== */
-    .bss.boot : ALIGN(4K)
+    .boot.data : ALIGN(4K)
     {
-        __bss_boot_start = .;
-        *(.bss.boot)
-        __bss_boot_end = .;
+        __boot_data_start = .;
+        *(.boot.data)
+        *(.bss.boot)  /* Compatibilidad con código existente */
+        __boot_data_end = .;
     } :data
 
     /* ==========================================
@@ -94,6 +97,7 @@ SECTIONS
     ASSERT(ADDR(.rodata) % 4096 == 0, "ERROR: .rodata no está alineada a 4KB")
     ASSERT(ADDR(.data) % 4096 == 0, "ERROR: .data no está alineada a 4KB")
     ASSERT(ADDR(.bss) % 4096 == 0, "ERROR: .bss no está alineada a 4KB")
+    ASSERT(ADDR(.boot.data) % 4096 == 0, "ERROR: .boot.data no está alineada a 4KB")
 
     /* Descartar secciones de debug */
     /DISCARD/ : { *(.stab) *(.stabstr) }

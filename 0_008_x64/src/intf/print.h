@@ -74,6 +74,18 @@ void print_str(const char* string);
  */
 void print_set_color(uint8_t foreground, uint8_t background);
 
+/**
+ * @brief Imprimir un entero de 32-bit en hexadecimal
+ * @param value Valor a imprimir (sin signo)
+ */
+void print_hex(uint32_t value);
+
+/**
+ * @brief Imprimir un entero de 32-bit en decimal
+ * @param value Valor a imprimir (sin signo)
+ */
+void print_dec(uint32_t value);
+
 #ifdef __cplusplus
 }
 #endif
