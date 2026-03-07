@@ -6,6 +6,9 @@
 #define DEBUG_ENABLE 1
 #include "debug.h"
 
+// Include constants for magic numbers [PC005]
+#include "constants.h"
+
 // Constante de versión centralizada
 static constexpr const char* OS_VERSION = "GLOBEX_OS v0.015_x64";
 
@@ -44,9 +47,9 @@ extern "C" [[noreturn]] void kernel_main() {
     if (!serial_init_default()) {
         // Serial falló - intentar panic por VGA directamente
         // Escribir directamente al buffer VGA sin usar funciones
-        volatile uint16_t* vga = reinterpret_cast<volatile uint16_t*>(0xB8000);
+        volatile uint16_t* vga = reinterpret_cast<volatile uint16_t*>(VGA_BUFFER_ADDRESS);
         const char* msg = "FATAL: Serial init failed";
-        for (size_t i = 0; msg[i] != '\0' && i < 80; i++) {
+        for (size_t i = 0; msg[i] != '\0' && i < VGA_COLS; i++) {
             vga[i] = (0x4F << 8) | msg[i];  // White on red
         }
         for (;;) {

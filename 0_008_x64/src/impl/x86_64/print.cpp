@@ -1,5 +1,6 @@
 #include "print.h"
 #include "string.h"
+#include "constants.h"
 
 // ==========================================
 // Memory Barrier Macro
@@ -7,14 +8,6 @@
 // Previene que el compilador/CPU reordene accesos a memoria
 // ESENCIAL para hardware MMIO y variables compartidas
 #define memory_barrier() __asm__ volatile ("" ::: "memory")
-
-// ==========================================
-// Constantes VGA Text Mode
-// ==========================================
-static constexpr size_t VGA_COLS = 80;
-static constexpr size_t VGA_ROWS = 25;
-static constexpr size_t VGA_BUFFER_SIZE = VGA_COLS * VGA_ROWS;
-static constexpr uintptr_t VGA_BUFFER_ADDRESS = 0xB8000;
 
 // ==========================================
 // Estructura de caracter VGA (packed para 2 bytes)
