@@ -1,5 +1,7 @@
 global start
 extern long_mode_start
+extern __bss_start
+extern __bss_end
 
 section .text
 bits 32
@@ -13,10 +15,36 @@ start:
 	call setup_page_tables
 	call enable_paging
 
+    ; NOTA: BSS initialization se hace en long mode (main64.asm)
+    ; call zero_bss
+
 	lgdt [gdt64.pointer]
 	jmp gdt64.code_segment:long_mode_start
 
 	hlt
+
+; ==========================================
+; zero_bss - Inicializar sección BSS a cero
+; ==========================================
+; @brief Ceros la sección BSS antes del salto a long mode
+; @note Esencial para variables globales sin inicializador explícito
+; ==========================================
+zero_bss:
+	push eax
+	push ecx
+	push edi
+	
+	mov edi, __bss_start
+	mov ecx, __bss_end
+	sub ecx, edi
+	shr ecx, 2          ; Convertir bytes a dwords
+	xor eax, eax
+	rep stosd           ; Llenar con ceros
+	
+	pop edi
+	pop ecx
+	pop eax
+	ret
 
 check_multiboot:
 	cmp eax, 0x36d76289
@@ -114,7 +142,13 @@ error:
 	mov byte  [0xb800a], al
 	hlt
 
-section .bss
+; ==========================================
+; Boot BSS Section - Page tables y stack (NOBITS)
+; ==========================================
+; Esta sección es NOBITS - no ocupa espacio en el archivo
+; y no se inicializa a cero
+; ==========================================
+section .bss.boot nobits
 align 4096
 page_table_l4:
 	resb 4096
@@ -123,7 +157,7 @@ page_table_l3:
 page_table_l2:
 	resb 4096
 stack_bottom:
-	resb 4096 * 4
+	resb 4096 * 16              ; 64KB stack (increased from 16KB for safety margin)
 stack_top:
 
 section .rodata
@@ -134,3 +168,8 @@ gdt64:
 .pointer:
 	dw $ - gdt64 - 1 ; length
 	dq gdt64 ; address
+
+; ==========================================
+; Sección .note.GNU-stack para eliminar warning del linker
+; ==========================================
+section .note.GNU-stack noexec

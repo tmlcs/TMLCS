@@ -18,3 +18,8 @@ header_start:
     dd 8
 
 header_end:
+
+; ==========================================
+; Sección .note.GNU-stack para eliminar warning del linker
+; ==========================================
+section .note.GNU-stack noexec
