@@ -62,6 +62,11 @@ static inline bool is_valid_position(size_t row, size_t col) {
     return (row < VGA_ROWS) && (col < VGA_COLS);
 }
 
+// Validar rango de color VGA (0-15)
+static inline bool is_valid_color(uint8_t color) {
+    return color <= 15;
+}
+
 // ==========================================
 // Detección de hardware VGA
 // ==========================================
@@ -223,7 +228,16 @@ void print_str(const char* str) {
 }
 
 void print_set_color(uint8_t foreground, uint8_t background) {
-    // Mask para asegurar valores válidos (0-15)
+    // Validación de rango (0-15) para colores VGA
+    // Si los valores están fuera de rango, usar defaults (white on black)
+    if (!is_valid_color(foreground) || !is_valid_color(background)) {
+        // Valores inválidos - usar default y retornar
+        current_color = (PRINT_COLOR_WHITE & 0x0F) | ((PRINT_COLOR_BLACK & 0x0F) << 4);
+        memory_barrier();
+        return;
+    }
+    
+    // Valores válidos - aplicar máscara y combinar
     current_color = (foreground & 0x0F) | ((background & 0x0F) << 4);
     memory_barrier();  // Asegurar que el cambio de color se propague
 }

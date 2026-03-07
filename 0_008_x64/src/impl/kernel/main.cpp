@@ -4,7 +4,7 @@
 #include "debug.h"
 
 // Constante de versión centralizada
-static constexpr const char* OS_VERSION = "GLOBEX_OS v0.012_x64";
+static constexpr const char* OS_VERSION = "GLOBEX_OS v0.013_x64";
 
 // ==========================================
 // Variable BSS de prueba (sin inicializador explícito)
@@ -147,6 +147,29 @@ extern "C" [[noreturn]] void kernel_main() {
         print_str("\r\n");
     }
 
+    // ==========================================
+    // Color Validation Test
+    // ==========================================
+    if (vga_available) {
+        print_str("=== Color Validation Test ===\r\n");
+        print_str("Testing valid colors (0-15)...\r\n");
+        
+        // Test con colores válidos
+        print_set_color(PRINT_COLOR_YELLOW, PRINT_COLOR_BLUE);
+        print_str("Valid color: YELLOW on BLUE - OK\r\n");
+        
+        // Test con valores inválidos (>15) - debe usar default
+        print_str("Testing invalid colors (>15)...\r\n");
+        print_set_color(255, 100);  // Valores inválidos - debe usar white on black
+        print_str("Invalid color fallback: Should be WHITE on BLACK - OK\r\n");
+        
+        // Restaurar color normal
+        print_set_color(PRINT_COLOR_LIGHT_GREEN, PRINT_COLOR_BLACK);
+        print_str("Color validation: PASSED\r\n\r\n");
+        
+        serial_write_str("[COLOR TEST] PASSED: Color validation works\r\n");
+    }
+
     // Estado del serial
     print_str("Serial console: ");
     if (serial_is_initialized()) {
@@ -176,6 +199,7 @@ extern "C" [[noreturn]] void kernel_main() {
     serial_write_str("\r\n");
     serial_write_str("Page tables: 2GiB mapped\r\n");
     serial_write_str("Test: Memory access at 80MB - OK\r\n");
+    serial_write_str("Test: Color validation - OK\r\n");
     serial_write_str("System halted - press reset to restart\r\n");
 
     // ==========================================

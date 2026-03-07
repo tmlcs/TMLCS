@@ -69,8 +69,17 @@ void print_str(const char* string);
 
 /**
  * @brief Configurar colores de foreground y background
- * @param foreground Color de foreground (0-15)
- * @param background Color de background (0-15)
+ * @param foreground Color de foreground (0-15). Valores válidos: PRINT_COLOR_*
+ * @param background Color de background (0-15). Valores válidos: PRINT_COLOR_*
+ * 
+ * @note Si foreground o background están fuera de rango (>15), se usa el color
+ *       por defecto (texto blanco sobre fondo negro) de forma segura.
+ * @note Esta función es safe para usar con valores no validados - no causa UB.
+ * @note Los valores se enmascaran con 0x0F para asegurar compatibilidad.
+ * 
+ * @example
+ *     print_set_color(PRINT_COLOR_WHITE, PRINT_COLOR_BLACK);  // OK
+ *     print_set_color(255, 100);  // Invalid - usa default (white on black)
  */
 void print_set_color(uint8_t foreground, uint8_t background);
 
