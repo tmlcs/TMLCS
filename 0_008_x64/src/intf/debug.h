@@ -30,6 +30,7 @@ extern "C" {
 #define DEBUG_PRINT(str) serial_write_str(str)
 #define DEBUG_PRINT_CHAR(c) serial_write_char(c)
 #define DEBUG_PRINT_HEX(val) serial_write_hex(val)
+#define DEBUG_PRINT_HEX64(val) serial_write_hex64(val)
 #define DEBUG_PRINT_DEC(val) serial_write_dec(val)
 
 /**
@@ -130,6 +131,7 @@ extern "C" {
 #define DEBUG_PRINT(str) ((void)0)
 #define DEBUG_PRINT_CHAR(c) ((void)0)
 #define DEBUG_PRINT_HEX(val) ((void)0)
+#define DEBUG_PRINT_HEX64(val) ((void)0)
 #define DEBUG_PRINT_DEC(val) ((void)0)
 #define DEBUG_LOG(msg) ((void)0)
 #define DEBUG_VAR(name, val) ((void)0)

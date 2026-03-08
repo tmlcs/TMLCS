@@ -161,7 +161,50 @@ setup_page_tables:
     cmp ecx, 512            ; 512 entries × 2MiB = 1GiB
     jne .map_loop_1
 
+    ; ==========================================
+    ; VERIFICATION: Read back critical entries
+    ; ==========================================
+    ; Verify L4[0] -> L3 mapping was written correctly
+    mov eax, [page_table_l4]
+    mov ebx, eax
+    and ebx, 0xFFF          ; Mask to get flags only
+    cmp ebx, 0b11           ; Should be present + writable
+    jne .page_table_error
+    
+    ; Verify L3[0] -> L2_0 mapping
+    mov eax, [page_table_l3]
+    mov ebx, eax
+    and ebx, 0xFFF
+    cmp ebx, 0b11
+    jne .page_table_error
+    
+    ; Verify L3[1] -> L2_1 mapping
+    mov eax, [page_table_l3 + 8]  ; Entry 1 is at offset 8 bytes
+    mov ebx, eax
+    and ebx, 0xFFF
+    cmp ebx, 0b11
+    jne .page_table_error
+    
+    ; Verify first L2 entry (2MiB huge page)
+    mov eax, [page_table_l2_0]
+    mov ebx, eax
+    and ebx, 0b10000011     ; present + writable + huge page
+    cmp ebx, 0b10000011
+    jne .page_table_error
+    
+    ; Verify last L2_0 entry (entry 511 = 0x3FE00000)
+    mov eax, [page_table_l2_0 + 511 * 8]
+    mov ebx, eax
+    and ebx, 0xFFFFF000     ; Mask to get address only
+    cmp ebx, 0x3FE00000     ; Should map to 0x3FE00000
+    jne .page_table_error
+
     ret
+
+.page_table_error:
+    ; Display "PTE" (Page Table Error) on VGA
+    mov dword [0xb8000], 0x4f455450  ; "PTE" in red on white
+    hlt
 
 enable_paging:
 	; pass page table location to cpu

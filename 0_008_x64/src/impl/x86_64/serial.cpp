@@ -104,10 +104,32 @@ int serial_init(uint16_t port, uint32_t baud) {
      * Validación de parámetros - CRÍTICO
      * Prevenir división por cero y I/O inválido
      * ========================================== */
+    
+    /* Validate baud rate is not zero */
     if (baud == 0) {
         serial_failed = 1;
         serial_error_code = SERIAL_ERROR_INIT_FAIL;
         return 0;  // Invalid parameter: baud rate cannot be zero
+    }
+
+    /* ==========================================
+     * Validate baud rate range [HIGH-004]
+     * ==========================================
+     * Standard UART baud rates:
+     *   - Minimum: 110 baud (divisor = 1047)
+     *   - Maximum: 115200 baud (divisor = 1)
+     * 
+     * Common rates: 110, 300, 600, 1200, 2400, 4800, 9600, 
+     *               14400, 19200, 38400, 57600, 115200
+     * 
+     * Out-of-range rates cause:
+     *   - Very low baud: divisor > 65535 (truncation, wrong rate)
+     *   - Very high baud: divisor = 0 (undefined behavior)
+     * ========================================== */
+    if (baud < 110 || baud > 115200) {
+        serial_failed = 1;
+        serial_error_code = SERIAL_ERROR_INIT_FAIL;
+        return 0;  // Invalid baud rate: must be 110-115200
     }
 
     if (!is_valid_serial_port(port)) {
@@ -141,31 +163,32 @@ int serial_init(uint16_t port, uint32_t baud) {
      * Fórmula: divisor = 115200 / baud
      * Para 115200: divisor = 1
      * Para 9600: divisor = 12
-     * Nota: baud ya está validado como != 0
+     * Para 110: divisor = 1047
+     * Nota: baud ya está validado en rango 110-115200
      */
     uint16_t divisor = 115200 / baud;
     outb(port + SERIAL_DLL, (divisor & 0xFF));       /* Low byte */
     outb(port + SERIAL_DLM, (divisor >> 8) & 0xFF);  /* High byte */
-    
+
     /* Configurar 8 bits, no parity, 1 stop bit (8N1) y deshabilitar DLAB */
     outb(port + SERIAL_LCR, SERIAL_LCR_8N1);
-    
+
     /* Habilitar FIFOs (16550), clear them, set 14 byte threshold */
     outb(port + SERIAL_FCR, 0x07);
-    
+
     /* Configurar modem: DTR + RTS + OUT2 (enable interrupts) */
     outb(port + SERIAL_MCR, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2);
-    
+
     /* Limpiar buffer de recepción leyendo cualquier dato pendiente */
     (void)inb(port + SERIAL_RBR);
-    
+
     /* Pequeño delay para asegurar que el UART esté listo */
     for (volatile int i = 0; i < 1000; i++) {
         __asm__ volatile ("nop");
     }
-    
+
     serial_initialized = 1;
-    
+
     return 1;
 }
 

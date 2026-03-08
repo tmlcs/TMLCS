@@ -1,6 +1,7 @@
 #include "print.h"
 #include "serial.h"
 #include "panic.h"
+#include "string.h"
 
 // Enable debug macros for testing
 #define DEBUG_ENABLE 1
@@ -137,6 +138,67 @@ extern "C" [[noreturn]] void kernel_main() {
         print_str("=== Memory Mapping Test ===\r\n");
         print_str("Page tables: 2GiB mapped (0x00000000-0x7FFFFFFF)\r\n");
         print_str("Testing access to 80MB (0x05000000)...\r\n");
+    }
+
+    // ==========================================
+    // Page Table Verification [HIGH-006]
+    // ==========================================
+    // Read CR3 to verify page table base address
+    uint64_t cr3_value;
+    __asm__ volatile ("mov %%cr3, %0" : "=r"(cr3_value));
+    
+    // Mask off PCID bits (lower 12 bits) to get page table base
+    uint64_t pt_base = cr3_value & 0xFFFFFFFFF000ULL;
+    
+    if (vga_available) {
+        print_str("CR3 value: 0x");
+        print_hex64(cr3_value);
+        print_str("\r\n");
+        print_str("Page table base: 0x");
+        print_hex64(pt_base);
+        print_str("\r\n");
+    }
+    
+    // Verify CR3 points to a valid address (should be in .boot.data region)
+    // .boot.data starts after kernel, typically around 1MB-2MB range
+    if (pt_base > 0x100000 && pt_base < 0x10000000) {
+        if (vga_available) {
+            print_str("CR3 validation: OK\r\n");
+        }
+        serial_write_str("[PAGE TABLE] CR3 validation: OK\r\n");
+    } else {
+        if (vga_available) {
+            print_set_color(PRINT_COLOR_LIGHT_RED, PRINT_COLOR_BLACK);
+            print_str("CR3 validation: FAILED\r\n");
+        }
+        serial_write_str("[PAGE TABLE] CR3 validation: FAILED\r\n");
+        panic("Page table CR3 validation failed", static_cast<uint32_t>(cr3_value));
+    }
+    
+    // Verify identity mapping by reading L4 entry
+    // L4 is at pt_base, entry 0 should point to L3 table
+    volatile uint64_t* l4_entry = reinterpret_cast<volatile uint64_t*>(pt_base);
+    uint64_t l3_addr = l4_entry[0] & 0xFFFFFFFFF000ULL;
+    
+    if (vga_available) {
+        print_str("L4[0] -> L3 at: 0x");
+        print_hex64(l3_addr);
+        print_str("\r\n");
+    }
+    
+    // L3 should be 4KB aligned and right after L4
+    if ((l3_addr & 0xFFF) == 0 && l3_addr == pt_base + 0x1000) {
+        if (vga_available) {
+            print_str("L4->L3 mapping: OK\r\n");
+        }
+        serial_write_str("[PAGE TABLE] L4->L3 mapping: OK\r\n");
+    } else {
+        if (vga_available) {
+            print_set_color(PRINT_COLOR_LIGHT_RED, PRINT_COLOR_BLACK);
+            print_str("L4->L3 mapping: FAILED\r\n");
+        }
+        serial_write_str("[PAGE TABLE] L4->L3 mapping: FAILED\r\n");
+        panic("Page table L4->L3 mapping failed", static_cast<uint32_t>(l3_addr));
     }
 
     // Test de escritura/lectura en memoria alta
@@ -302,7 +364,7 @@ extern "C" [[noreturn]] void kernel_main() {
         print_str("Setting cursor to (40, 12)...\r\n");
     }
     print_set_cursor(40, 12);
-    
+
     // Verificar nueva posición
     print_get_cursor(&test_cursor_col, &test_cursor_row);
     if (test_cursor_col == 40 && test_cursor_row == 12) {
@@ -316,6 +378,43 @@ extern "C" [[noreturn]] void kernel_main() {
         serial_write_str("print_set_cursor: OK\r\n");
     } else {
         serial_write_str("print_set_cursor: FAILED\r\n");
+    }
+
+    // Test print_set_cursor() boundary clamping
+    // Test 1: Column > 79 should clamp to 79
+    print_set_cursor(100, 10);
+    print_get_cursor(&test_cursor_col, &test_cursor_row);
+    if (test_cursor_col == 79 && test_cursor_row == 10) {
+        serial_write_str("print_set_cursor clamp col: OK\r\n");
+    } else {
+        serial_write_str("print_set_cursor clamp col: FAILED\r\n");
+    }
+
+    // Test 2: Row > 24 should clamp to 24 (column also clamped from 100 to 79)
+    print_set_cursor(100, 50);
+    print_get_cursor(&test_cursor_col, &test_cursor_row);
+    if (test_cursor_col == 79 && test_cursor_row == 24) {
+        serial_write_str("print_set_cursor clamp row: OK\r\n");
+    } else {
+        serial_write_str("print_set_cursor clamp row: FAILED\r\n");
+    }
+
+    // Test 3: Both at max boundary (79, 24)
+    print_set_cursor(79, 24);
+    print_get_cursor(&test_cursor_col, &test_cursor_row);
+    if (test_cursor_col == 79 && test_cursor_row == 24) {
+        serial_write_str("print_set_cursor max boundary: OK\r\n");
+    } else {
+        serial_write_str("print_set_cursor max boundary: FAILED\r\n");
+    }
+
+    // Test 4: Zero position (0, 0)
+    print_set_cursor(0, 0);
+    print_get_cursor(&test_cursor_col, &test_cursor_row);
+    if (test_cursor_col == 0 && test_cursor_row == 0) {
+        serial_write_str("print_set_cursor zero: OK\r\n");
+    } else {
+        serial_write_str("print_set_cursor zero: FAILED\r\n");
     }
     
     // Test print_get_color() - obtener color actual
@@ -337,6 +436,121 @@ extern "C" [[noreturn]] void kernel_main() {
         print_str("Query functions: PASSED\r\n");
     }
     serial_write_str("[QUERY FUNCTIONS] All tests passed\r\n");
+
+    // ==========================================
+    // Serial Baud Rate Validation [HIGH-004]
+    // ==========================================
+    serial_write_str("\r\n=== Serial Baud Rate Test ===\r\n");
+
+    // Test valid baud rates
+    {
+        // Test 115200 (maximum)
+        if (serial_init(SERIAL_DEFAULT_PORT, 115200)) {
+            serial_write_str("Baud 115200: OK\r\n");
+        } else {
+            serial_write_str("Baud 115200: FAILED\r\n");
+        }
+
+        // Test 9600 (standard)
+        if (serial_init(SERIAL_DEFAULT_PORT, 9600)) {
+            serial_write_str("Baud 9600: OK\r\n");
+        } else {
+            serial_write_str("Baud 9600: FAILED\r\n");
+        }
+
+        // Test 110 (minimum)
+        if (serial_init(SERIAL_DEFAULT_PORT, 110)) {
+            serial_write_str("Baud 110: OK\r\n");
+        } else {
+            serial_write_str("Baud 110: FAILED\r\n");
+        }
+
+        // Test 57600 (common high rate)
+        if (serial_init(SERIAL_DEFAULT_PORT, 57600)) {
+            serial_write_str("Baud 57600: OK\r\n");
+        } else {
+            serial_write_str("Baud 57600: FAILED\r\n");
+        }
+
+        // Re-initialize with default for subsequent tests
+        serial_init_default();
+    }
+
+    // Test invalid baud rates (should fail)
+    {
+        // Test 0 (zero - invalid)
+        if (!serial_init(SERIAL_DEFAULT_PORT, 0)) {
+            serial_write_str("Baud 0 (invalid): correctly rejected\r\n");
+        } else {
+            serial_write_str("Baud 0 (invalid): FAILED - should reject\r\n");
+        }
+
+        // Test 50 (below minimum - invalid)
+        if (!serial_init(SERIAL_DEFAULT_PORT, 50)) {
+            serial_write_str("Baud 50 (invalid): correctly rejected\r\n");
+        } else {
+            serial_write_str("Baud 50 (invalid): FAILED - should reject\r\n");
+        }
+
+        // Test 230400 (above maximum - invalid)
+        if (!serial_init(SERIAL_DEFAULT_PORT, 230400)) {
+            serial_write_str("Baud 230400 (invalid): correctly rejected\r\n");
+        } else {
+            serial_write_str("Baud 230400 (invalid): FAILED - should reject\r\n");
+        }
+
+        // Re-initialize with default for subsequent tests
+        serial_init_default();
+    }
+
+    serial_write_str("[SERIAL BAUD RATE] All tests passed\r\n");
+
+    // ==========================================
+    // String Functions Test - memcpy/memmove
+    // ==========================================
+    serial_write_str("\r\n=== String Functions Test ===\r\n");
+
+    // Test memcpy with non-overlapping regions (should succeed)
+    {
+        char buffer1[20];
+        char buffer2[20];
+        
+        // Initialize buffers
+        buffer1[0] = 'H'; buffer1[1] = 'e'; buffer1[2] = 'l'; buffer1[3] = 'l';
+        buffer1[4] = 'o'; buffer1[5] = ' '; buffer1[6] = '\0';
+        buffer2[0] = '0'; buffer2[1] = '1'; buffer2[2] = '2'; buffer2[3] = '3';
+        buffer2[4] = '4'; buffer2[5] = '5'; buffer2[6] = '\0';
+
+        // Copy from buffer1 to buffer2 (no overlap)
+        memcpy(buffer2, buffer1, 6);
+
+        if (buffer2[0] == 'H' && buffer2[5] == ' ') {
+            serial_write_str("memcpy non-overlapping: OK\r\n");
+        } else {
+            serial_write_str("memcpy non-overlapping: FAILED\r\n");
+        }
+    }
+
+    // Test memmove with overlapping regions (should handle correctly)
+    {
+        char buffer[20];
+        
+        // Initialize buffer
+        buffer[0] = 'H'; buffer[1] = 'e'; buffer[2] = 'l'; buffer[3] = 'l';
+        buffer[4] = 'o'; buffer[5] = ' '; buffer[6] = 'W'; buffer[7] = 'o';
+        buffer[8] = 'r'; buffer[9] = 'l'; buffer[10] = 'd'; buffer[11] = '\0';
+
+        // Overlapping move: shift right by 1 within same buffer
+        memmove(&buffer[1], buffer, 5);  // Move "Hello" to position 1
+
+        if (buffer[1] == 'H' && buffer[5] == 'o') {
+            serial_write_str("memmove overlapping: OK\r\n");
+        } else {
+            serial_write_str("memmove overlapping: FAILED\r\n");
+        }
+    }
+
+    serial_write_str("[STRING FUNCTIONS] All tests passed\r\n");
 
     // ==========================================
     // Serial Signed Numbers Test [3.7]

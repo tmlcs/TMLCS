@@ -143,7 +143,13 @@ void print_get_color(uint8_t* fg, uint8_t* bg);
  * @brief Set cursor position
  * @param col New column (0-79)
  * @param row New row (0-24)
- * @note Validates bounds before setting position
+ * @note Values outside valid range are clamped:
+ *       - col >= 80 → col = 79
+ *       - row >= 25 → row = 24
+ * @note size_t is unsigned; negative values passed via cast will wrap
+ *       and be clamped to maximum (79 or 24 respectively).
+ * @note Does not check vga_detected - caller must ensure VGA is initialized.
+ * @note Uses memory barriers for thread-safe cursor updates.
  */
 void print_set_cursor(size_t col, size_t row);
 

@@ -368,14 +368,27 @@ void print_get_color(uint8_t* fg, uint8_t* bg) {
 }
 
 void print_set_cursor(size_t col, size_t row) {
-    // Validar límites antes de establecer
+    // ==========================================
+    // BOUNDARY VALIDATION - Prevent out-of-bounds cursor
+    // ==========================================
+    // VGA text mode: 80 columns × 25 rows
+    // Invalid positions are clamped to valid range [0, 79] × [0, 24]
+    //
+    // Note: size_t is unsigned, so negative values wrap to large positives.
+    // The upper-bound checks below handle this case correctly.
+    // ==========================================
+
+    // Clamp column to [0, VGA_COLS - 1]
     if (col >= VGA_COLS) {
-        col = VGA_COLS - 1;
+        col = VGA_COLS - 1;  // Clamp to rightmost column
     }
+
+    // Clamp row to [0, VGA_ROWS - 1]
     if (row >= VGA_ROWS) {
-        row = VGA_ROWS - 1;
+        row = VGA_ROWS - 1;  // Clamp to bottom row
     }
-    
+
+    // Set cursor with memory barriers for synchronization
     memory_barrier();
     cursor_col = col;
     cursor_row = row;

@@ -5,7 +5,7 @@
  * ==========================================
  * Unlike memcpy(), memmove() handles overlapping regions correctly
  * by copying to a temporary buffer if needed.
- * 
+ *
  * @param dest Destination pointer
  * @param src Source pointer
  * @param n Number of bytes to copy
@@ -37,15 +37,26 @@ void* memmove(void* dest, const void* src, size_t n) {
  * memcpy() - Copy memory (no overlap)
  * ==========================================
  * Standard memcpy for non-overlapping regions.
- * 
+ *
+ * IMPORTANT: This function does NOT handle overlapping regions.
+ * If overlap is possible, use memmove() instead.
+ *
  * @param dest Destination pointer
  * @param src Source pointer
  * @param n Number of bytes to copy
  * @return Pointer to dest
+ *
+ * @note Overlap detection: Two regions [dest, dest+n) and [src, src+n)
+ *       overlap if: dest < src + n && src < dest + n
  */
 void* memcpy(void* dest, const void* src, size_t n) {
     uint8_t* d = static_cast<uint8_t*>(dest);
     const uint8_t* s = static_cast<const uint8_t*>(src);
+
+    // Note: Runtime overlap check removed to avoid dependency on debug.h
+    // which causes circular dependencies with serial.h/print.h.
+    // Callers must ensure regions do not overlap.
+    // Use memmove() for overlapping regions.
 
     while (n--) {
         *d++ = *s++;
@@ -58,7 +69,7 @@ void* memcpy(void* dest, const void* src, size_t n) {
  * memset() - Set memory to a value
  * ==========================================
  * Fill a memory region with a byte value.
- * 
+ *
  * @param s Pointer to memory region
  * @param c Byte value to set
  * @param n Number of bytes to set
@@ -78,7 +89,7 @@ void* memset(void* s, int c, size_t n) {
  * memcmp() - Compare memory regions
  * ==========================================
  * Compare two memory regions byte by byte.
- * 
+ *
  * @param s1 First memory region
  * @param s2 Second memory region
  * @param n Number of bytes to compare
