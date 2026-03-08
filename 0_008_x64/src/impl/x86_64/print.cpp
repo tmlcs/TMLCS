@@ -1,5 +1,6 @@
 #include "print.h"
 #include "string.h"
+#include "hex_utils.h"
 #include "constants.h"
 
 // ==========================================
@@ -203,11 +204,35 @@ void print_char(char character) {
     }
 
     if (is_valid_position(row, col)) {
-        // Escritura directa para evitar problemas con volatile
-        vga_buffer[vga_index(row, col)].character = static_cast<uint8_t>(character);
-        vga_buffer[vga_index(row, col)].color = current_color;
+        // ==========================================
+        // ATOMIC VGA CELL WRITE - Fix CRIT-005
+        // ==========================================
+        // Write character and color as a SINGLE 16-bit atomic operation
+        // to prevent flickering or corrupted characters.
+        //
+        // VGA cell format (little-endian x86_64):
+        //   Byte 0 (low):  character (ASCII)
+        //   Byte 1 (high): color attribute
+        //
+        // This prevents the hardware from reading intermediate state
+        // where character != color (flickering/corruption).
+        // ==========================================
+        const size_t idx = vga_index(row, col);
+        const uint16_t cell_value = 
+            static_cast<uint16_t>(static_cast<uint8_t>(character)) |
+            (static_cast<uint16_t>(current_color) << 8);
+        
+        // Single atomic 16-bit write to VGA buffer
+        volatile uint16_t* cell_ptr = reinterpret_cast<volatile uint16_t*>(
+            &vga_buffer[idx]);
+        *cell_ptr = cell_value;
+        
+        // Memory barrier AFTER write to ensure it completes
+        memory_barrier();
+        
+        // Update cursor position
         cursor_col = col + 1;
-        memory_barrier();  // Asegurar que el write se complete antes de continuar
+        memory_barrier();
     }
 }
 
@@ -241,18 +266,11 @@ void print_set_color(uint8_t foreground, uint8_t background) {
 }
 
 void print_hex(uint32_t value) {
-    static const char hex_chars[] = "0123456789ABCDEF";
     char buffer[11];  // "0x" + 8 digits + null = 11 bytes
-    int i;
-
-    buffer[0] = '0';
-    buffer[1] = 'x';
-
-    for (i = 0; i < 8; i++) {
-        buffer[2 + i] = hex_chars[(value >> (28 - i * 4)) & 0xF];
-    }
-    buffer[10] = '\0';
-
+    
+    // Use shared utility function from string.cpp (DRY principle)
+    uint32_to_hex_string(buffer, value);
+    
     print_str(buffer);
 }
 
@@ -276,19 +294,11 @@ void print_dec(uint32_t value) {
 }
 
 void print_hex64(uint64_t value) {
-    static const char hex_chars[] = "0123456789ABCDEF";
     char buffer[19];  // "0x" + 16 digits + null = 19 bytes
-    int i;
-
-    buffer[0] = '0';
-    buffer[1] = 'x';
-
-    // Imprimir desde el nibble más significativo (bit 60-63)
-    for (i = 0; i < 16; i++) {
-        buffer[2 + i] = hex_chars[(value >> (60 - i * 4)) & 0xF];
-    }
-    buffer[18] = '\0';
-
+    
+    // Use shared utility function from string.cpp (DRY principle)
+    uint64_to_hex_string(buffer, value);
+    
     print_str(buffer);
 }
 

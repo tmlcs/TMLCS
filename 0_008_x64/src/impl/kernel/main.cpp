@@ -42,6 +42,18 @@ static uint8_t test_fg, test_bg;
 // El kernel nunca debe retornar - usar noreturn
 extern "C" [[noreturn]] void kernel_main() {
     // ==========================================
+    // CRITICAL: BSS Initialization Verification
+    // ==========================================
+    // This ASSERT runs BEFORE any other initialization to catch
+    // boot code bugs early. If BSS is not zeroed, the boot code
+    // has a critical bug and we fail immediately.
+    //
+    // bss_test_variable is a static uint32_t without explicit initializer,
+    // so it MUST be in .bss section and MUST be zeroed by boot code.
+    // ==========================================
+    DEBUG_ASSERT(bss_test_variable == 0);
+
+    // ==========================================
     // Inicializar serial primero (más seguro que VGA)
     // ==========================================
     if (!serial_init_default()) {

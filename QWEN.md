@@ -1,295 +1,175 @@
-# GLOBEX_OS - 64-bit Kernel Development
+# GLOBEX_OS - Project Context
 
 ## Project Overview
 
-**GLOBEX_OS** is a hobby operating system kernel written from scratch in **C++** and **x86_64 assembly**. This project implements a 64-bit kernel that boots via Multiboot, sets up paging, and enters long mode.
+**GLOBEX_OS** is a 64-bit hobby operating system kernel written in C++ and x86_64 assembly. It is a freestanding kernel (no standard library) that boots via Multiboot2 and runs on x86_64 architecture.
 
-- **Architecture:** x86_64 (AMD64)
-- **Languages:** C++ (freestanding), NASM Assembly
-- **Boot Protocol:** Multiboot2
-- **Based on:** [YouTube tutorial series](https://www.youtube.com/playlist?list=PLZQftyCk7_SeZRitx5MjBKzTtvk0pHMtp) by David Callanan
-- **License:** BSD 3-Clause
+### Key Characteristics
 
----
+- **Architecture**: x86_64 (64-bit long mode)
+- **Language**: C++ (freestanding, no stdlib) and NASM assembly
+- **Boot**: Multiboot2-compliant (GRUB-compatible)
+- **License**: BSD 3-Clause
+- **Current Version**: v0.015_x64 (development branch)
 
-## Architecture Overview
+### Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      GLOBEX_OS Kernel                        │
-├─────────────────────────────────────────────────────────────┤
-│  Application Layer                                           │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │  kernel/main.cpp - kernel_main() entry point        │    │
-│  └─────────────────────────────────────────────────────┘    │
-├─────────────────────────────────────────────────────────────┤
-│  Hardware Abstraction Layer                                  │
-│  ┌─────────────────┐  ┌─────────────────┐                   │
-│  │  VGA Text Mode  │  │  UART Serial    │                   │
-│  │  (print.h/cpp)  │  │  (serial.h/cpp) │                   │
-│  │  - 80x25 text   │  │  - COM1 115200  │                   │
-│  │  - Colors       │  │  - Debug output │                   │
-│  └─────────────────┘  └─────────────────┘                   │
-├─────────────────────────────────────────────────────────────┤
-│  Boot Section (x86_64/boot/)                                 │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │  header.asm  - Multiboot2 header                    │    │
-│  │  main.asm    - 32-bit protected mode, paging setup  │    │
-│  │  main64.asm  - 64-bit long mode entry               │    │
-│  └─────────────────────────────────────────────────────┘    │
-├─────────────────────────────────────────────────────────────┤
-│  Hardware                                                    │
-│  VGA Buffer @ 0xB8000  │  UART COM1 @ 0x3F8                 │
-└─────────────────────────────────────────────────────────────┘
+0_008_x64/
+├── src/
+│   ├── intf/          # Public API headers (C-compatible)
+│   │   ├── constants.h   # VGA, Multiboot, memory constants
+│   │   ├── debug.h       # Debug macros (DEBUG_PRINT, DEBUG_ASSERT, etc.)
+│   │   ├── panic.h       # Kernel panic functions
+│   │   ├── print.h       # VGA text mode output API
+│   │   ├── serial.h      # UART serial port API
+│   │   └── string.h      # String utilities
+│   └── impl/
+│       ├── kernel/      # Kernel entry point
+│       │   └── main.cpp    # kernel_main() - OS initialization & tests
+│       └── x86_64/      # x86_64-specific implementations
+│           ├── boot/       # Boot assembly (Multiboot header, 64-bit entry)
+│           ├── panic.cpp   # Panic implementation
+│           ├── print.cpp   # VGA text mode driver
+│           ├── serial.cpp  # UART 16550 driver
+│           └── string.cpp  # String utilities
+├── targets/
+│   └── x86_64/
+│       ├── linker.ld    # Linker script (kernel at 1MB, 2GiB identity mapped)
+│       └── iso/         # ISO build directory (GRUB structure)
+├── Makefile             # Build system (g++, nasm, ld, grub-mkrescue)
+└── dist/                # Build outputs (ISO, kernel.bin)
 ```
 
----
+### Memory Layout
+
+- **Kernel Load Address**: 1MB (0x100000)
+- **Mapped Memory**: 2GiB identity-mapped (0x00000000 - 0x7FFFFFFF)
+- **Page Size**: 4KB standard, 2MB large pages
+- **VGA Buffer**: 0xB8000 (text mode 80x25)
 
 ## Building and Running
 
 ### Prerequisites
 
-- **Docker** - Build environment containerization
-- **QEMU** - x86_64 system emulation (`qemu-system-x86_64`)
-- **Text Editor** - VS Code or similar
+Required tools (verify with `make verify-tools`):
+- `g++` - C++ compiler (freestanding mode)
+- `nasm` - Assembly compiler
+- `ld` - GNU linker
+- `grub-mkrescue` - GRUB ISO creator
+- `qemu-system-x86_64` - QEMU emulator
 
-### Setup Build Environment
+### Build Commands
 
-```bash
-# Build the Docker image (one-time setup)
-docker build buildenv -t myos-buildenv
-```
+| Command | Description |
+|---------|-------------|
+| `make build-x86_64` | Build kernel for x86_64 (default target) |
+| `make run` | Build and run in QEMU |
+| `make run-debug` | Run with debug output (guest errors, unimp) |
+| `make run-serial` | Run with serial output to `serial_output.log` |
+| `make run-stdio` | Run with serial on stdio (interactive debugging) |
+| `make clean` | Remove build artifacts (`build/`, `*.bin`) |
+| `make distclean` | Remove all generated files (including `dist/`) |
+| `make rebuild` | Clean and rebuild |
+| `make verify-tools` | Check if all required tools are available |
+| `make help` | Show all available targets |
 
-### Enter Build Environment
+### Compiler Flags
 
-```bash
-# Linux/macOS
-docker run --rm -it -v "$(pwd)":/root/env myos-buildenv
-
-# Windows (PowerShell)
-docker run --rm -it -v "${pwd}:/root/env" myos-buildenv
-
-# Windows (CMD)
-docker run --rm -it -v "%cd%":/root/env myos-buildenv
-```
-
-### Build Targets
-
-```bash
-# Build the kernel ISO
-make build-x86_64
-
-# Run in QEMU
-make run
-
-# Run with debug output (guest errors, unimplemented)
-make run-debug
-
-# Run with serial output to file
-make run-serial
-# Output: serial_output.log
-
-# Run with serial on stdio (interactive)
-make run-stdio
-```
-
-### Emulate Manually
-
-```bash
-qemu-system-x86_64 -cdrom dist/x86_64/kernel.iso
-```
-
-If QEMU fails to find BIOS files:
-```bash
-# Windows
-qemu-system-x86_64 -cdrom dist/x86_64/kernel.iso -L "C:\Program Files\qemu"
-
-# Linux
-qemu-system-x86_64 -cdrom dist/x86_64/kernel.iso -L /usr/share/qemu/
-```
-
----
-
-## Directory Structure
-
-```
-GLOBEX_OS/
-├── 0_008_x64/                    # Main kernel source
-│   ├── Makefile                  # Build configuration
-│   ├── README.md                 # Tutorial reference
-│   ├── src/
-│   │   ├── intf/                 # Public interfaces (headers)
-│   │   │   ├── debug.h           # Debug macros (serial-based)
-│   │   │   ├── print.h           # VGA text mode API
-│   │   │   └── serial.h          # UART 16550 driver API
-│   │   └── impl/                 # Implementations
-│   │       ├── kernel/
-│   │       │   └── main.cpp      # kernel_main() entry point
-│   │       └── x86_64/
-│   │           ├── boot/
-│   │           │   ├── header.asm    # Multiboot2 header
-│   │           │   ├── main.asm      # 32-bit boot code
-│   │           │   └── main64.asm    # 64-bit entry point
-│   │           ├── print.cpp     # VGA text mode driver
-│   │           └── serial.cpp    # UART serial driver
-│   └── targets/x86_64/
-│       ├── linker.ld             # Linker script (kernel @ 1MB)
-│       └── iso/
-│           └── boot/
-│               └── grub.cfg      # GRUB configuration
-├── LICENSE                       # BSD 3-Clause
-├── README.md                     # Developer profile
-└── SECURITY.md                   # Security policy
-```
-
----
-
-## Technical Details
-
-### Boot Process
-
-1. **Multiboot2 Header** (`header.asm`)
-   - Magic: `0xe85250d6`
-   - Architecture: Protected mode (0)
-   - Loaded at 1MB physical address
-
-2. **32-bit Protected Mode** (`main.asm`)
-   - Validate Multiboot magic number
-   - Check CPUID support
-   - Verify Long Mode support
-   - Setup 4-level page tables (2MiB pages)
-   - Enable PAE and Long Mode
-   - Jump to 64-bit code segment
-
-3. **64-bit Long Mode** (`main64.asm`)
-   - Zero-initialize BSS section
-   - Call `kernel_main()` in C++
-
-### Memory Layout
-
-```
-0x00000000 - 0x000FFFFF : Real Mode / BIOS Areas
-0x00100000 - 0x00AFFFFF : Kernel Code/Data (loaded at 1MB)
-0x00B80000 - 0x00B8FFFF : VGA Text Buffer (80x25 text mode)
-0x00B90000 - ...        : Available RAM
-```
-
-### VGA Text Mode
-
-- **Buffer:** 80 columns × 25 rows = 2000 characters
-- **Address:** `0xB8000` (memory-mapped I/O)
-- **Format:** Each character = 2 bytes (ASCII + attribute)
-- **Colors:** 16 foreground × 16 background (4-bit each)
-
-### Serial Console (UART 16550)
-
-- **Port:** COM1 (`0x3F8`)
-- **Baud Rate:** 115200
-- **Configuration:** 8N1 (8 data, no parity, 1 stop)
-- **Use Case:** Debug output, logging, interactive console
-
-### Compiler Configuration
-
+The kernel uses strict freestanding compilation:
 ```makefile
-CFLAGS := -ffreestanding        # No hosted environment
-          -fno-exceptions       # No C++ exceptions
-          -fno-rtti             # No runtime type info
-          -fno-stack-protector  # No stack canaries
-          -nostdlib             # No standard library
-          -nostartfiles         # No startup files
-          -O2                   # Optimization level 2
-          -Wall -Wextra -Wpedantic  # Strict warnings
-          -Werror               # Warnings as errors
+CFLAGS := -ffreestanding -fno-exceptions -fno-rtti \
+          -fno-stack-protector -nostdlib -nostartfiles \
+          -O2 -Wall -Wextra -Wpedantic -Werror \
+          -I src/intf
 ```
-
----
-
-## Debugging
-
-### Serial Debug Output
-
-Enable debug macros in `debug.h`:
-
-```c
-#define DEBUG_ENABLE 1
-```
-
-Use debug macros:
-
-```c
-DEBUG_PRINT("Value: ");
-DEBUG_VAR(my_var, value);
-DEBUG_BREAK();
-```
-
-### QEMU Debug Options
-
-```bash
-# Log guest errors and unimplemented features
-make run-debug
-
-# Serial output to file
-make run-serial
-cat serial_output.log
-
-# Serial on stdio (interactive)
-make run-stdio
-```
-
-### Common Debug Scenarios
-
-| Symptom | Possible Cause |
-|---------|----------------|
-| Triple fault | Invalid GDT/IDT, stack overflow |
-| No output | VGA not detected, serial not initialized |
-| "ERR: X" on screen | Boot error (M=Multiboot, C=CPUID, L=Long Mode) |
-
----
 
 ## Development Conventions
 
-### Code Style
+### Code Structure
 
-- **Naming:** `snake_case` for functions/variables, `PascalCase` for types/enums
-- **Headers:** Include guards with `#ifndef HEADER_NAME_H`
-- **Comments:** Doxygen-style for public APIs, inline for complex logic
-- **Extern C:** All headers use `extern "C"` for C/C++ compatibility
+1. **Interface/Implementation Split**:
+   - `src/intf/` - Public headers with C linkage (`extern "C"`)
+   - `src/impl/` - Implementation files (C++ and assembly)
 
-### Kernel Constraints
+2. **Header Guards**: All headers use `#ifndef` guards with `extern "C"` for C++ compatibility
 
-- **No standard library** - All functionality must be implemented from scratch
-- **No dynamic allocation** - No heap/malloc in early kernel
-- **No exceptions/RTTI** - Disabled at compile time
-- **Volatile for MMIO** - Hardware registers must be `volatile`
-- **Noreturn for kernel_main** - Kernel never returns
+3. **Naming Conventions**:
+   - Constants: `UPPER_SNAKE_CASE` (e.g., `VGA_BUFFER_ADDRESS`)
+   - Functions: `snake_case` with module prefix (e.g., `print_set_color`, `serial_write_str`)
+   - Types: `PascalCase` with `_t` suffix (e.g., `PrintColor_t`)
 
-### Safety Practices
+### Debugging
 
-1. **Null checks** - Validate pointers before dereferencing
-2. **Bounds checking** - Validate array indices
-3. **Volatile access** - Use `volatile` for hardware MMIO
-4. **Memory barriers** - Prevent reordering with `__asm__ volatile`
+The project uses compile-time debug macros controlled by `DEBUG_ENABLE`:
 
----
+```cpp
+#define DEBUG_ENABLE 1
+#include "debug.h"
 
-## Key Files Reference
+DEBUG_PRINTLN("Message");
+DEBUG_VAR(myVar, value);      // Prints: "[DEBUG] myVar = 0xCAFEBABE"
+DEBUG_ASSERT(condition);      // Breaks if false
+DEBUG_LOG("Info message");
+DEBUG_PRINTF("Fmt: %x %s", val, str);  // Limited format support
+```
 
-| File | Purpose |
-|------|---------|
-| `src/intf/print.h` | VGA text mode API |
-| `src/intf/serial.h` | UART driver API with register definitions |
-| `src/intf/debug.h` | Debug macros (conditional compilation) |
-| `src/impl/kernel/main.cpp` | Kernel entry point |
-| `src/impl/x86_64/boot/header.asm` | Multiboot2 header |
-| `src/impl/x86_64/boot/main.asm` | 32-bit boot sequence |
-| `targets/x86_64/linker.ld` | Linker script (sections, memory layout) |
-| `Makefile` | Build system (Docker, QEMU integration) |
+### Testing Practices
 
----
+The kernel includes self-tests in `kernel_main()`:
+- BSS initialization verification
+- Memory mapping tests (high memory access)
+- Color validation
+- Debug macro tests
+- Print function tests (64-bit, signed numbers)
+- Query function tests (cursor, color)
+- Serial output tests
+- Hardware detection (CPUID)
 
-## Resources
+### Error Handling
 
-- **Tutorial Series:** [YouTube Playlist](https://www.youtube.com/playlist?list=PLZQftyCk7_SeZRitx5MjBKzTtvk0pHMtp)
-- **Source Repository:** [GitHub](https://github.com/davidcallanan/yt-os-series)
-- **Pre-built ISOs:** [os-series-isos](https://github.com/davidcallanan/os-series-isos)
-- **Support:** [Patreon](http://patreon.com/codepulse)
+- **Kernel Panic**: Use `panic()` or `panic_simple()` for fatal errors
+- **Assertions**: Use `DEBUG_ASSERT()` for development-time checks
+- **No Exceptions**: C++ exceptions are disabled (`-fno-exceptions`)
+
+### Git Workflow
+
+- **Main branch**: `dev` (development)
+- **Commit style**: Conventional commits with issue tracking
+  - `feat(phase4): Add constants.h for magic numbers [PC005, H002]`
+  - `docs(phase4): Translate public API comments to English [MNT001]`
+  - `chore(phase4): Update GRUB menu entry name [GRUB001]`
+
+## Key Components
+
+### VGA Text Mode Driver (`print.h`/`print.cpp`)
+
+- 80x25 text mode at 0xB8000
+- 16 colors (4-bit foreground + 4-bit background)
+- Functions: `print_str()`, `print_char()`, `print_hex()`, `print_dec()`, `print_hex64()`, `print_dec_signed()`, `print_dec64_signed()`
+- Query functions: `print_get_cursor()`, `print_get_color()`, `print_set_cursor()`
+
+### Serial Driver (`serial.h`/`serial.cpp`)
+
+- UART 16550 compatible
+- Default: COM1 (0x3F8) at 115200 baud
+- Functions mirror VGA driver for dual-output debugging
+- Supports signed 32-bit and 64-bit decimal output
+
+### Boot Process
+
+1. **Multiboot2 Header** (`header.asm`) - GRUB identification
+2. **Boot Assembly** (`main.asm`, `main64.asm`) - Protected mode to long mode transition
+3. **Linker Script** (`linker.ld`) - Memory layout with explicit segment permissions
+4. **Kernel Entry** (`kernel_main()`) - C++ initialization and tests
+
+### Memory Sections
+
+| Section | Purpose | Permissions |
+|---------|---------|-------------|
+| `.boot` | Multiboot header | R+X |
+| `.text` | Code | R+X |
+| `.rodata` | Constants, strings | R |
+| `.data` | Initialized globals | R+W |
+| `.bss` | Zero-initialized globals | R+W |
+| `.boot.data` | Page tables, boot stack | R+W (NOBITS) |

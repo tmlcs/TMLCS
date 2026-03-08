@@ -1,4 +1,6 @@
 #include "serial.h"
+#include "print.h"
+#include "hex_utils.h"
 
 /* ==========================================
  * Timeout Configuration
@@ -9,6 +11,15 @@
 #define SERIAL_MAX_WAIT 100000
 
 /* ==========================================
+ * Serial Error Codes
+ * ==========================================
+ */
+#define SERIAL_ERROR_NONE       0
+#define SERIAL_ERROR_TIMEOUT    1
+#define SERIAL_ERROR_INIT_FAIL  2
+#define SERIAL_ERROR_NULL_PTR   3
+
+/* ==========================================
  * Estado del driver serial
  * ==========================================
  * VOLATILE: These variables track hardware state and must not
@@ -16,6 +27,9 @@
  */
 static volatile int serial_initialized = 0;
 static volatile uint16_t serial_port = 0;
+static volatile int serial_failed = 0;        /* CRITICAL: Separate flag for failures */
+static volatile uint32_t serial_error_code = SERIAL_ERROR_NONE;
+static volatile uint32_t serial_timeout_count = 0;
 
 /* ==========================================
  * Funciones de I/O de bajo nivel
@@ -91,17 +105,28 @@ int serial_init(uint16_t port, uint32_t baud) {
      * Prevenir división por cero y I/O inválido
      * ========================================== */
     if (baud == 0) {
+        serial_failed = 1;
+        serial_error_code = SERIAL_ERROR_INIT_FAIL;
         return 0;  // Invalid parameter: baud rate cannot be zero
     }
 
     if (!is_valid_serial_port(port)) {
+        serial_failed = 1;
+        serial_error_code = SERIAL_ERROR_INIT_FAIL;
         return 0;  // Invalid port: must be COM1-COM4
     }
 
     /* Verificar que el puerto físicamente existe */
     if (!serial_port_exists(port)) {
+        serial_failed = 1;
+        serial_error_code = SERIAL_ERROR_INIT_FAIL;
         return 0;  // Port does not exist or is not a UART
     }
+
+    /* Reset error state on successful init */
+    serial_failed = 0;
+    serial_error_code = SERIAL_ERROR_NONE;
+    serial_timeout_count = 0;
 
     /* Guardar puerto */
     serial_port = port;
@@ -156,7 +181,7 @@ int serial_is_initialized(void) {
  * @brief Esperar hasta que se pueda escribir con timeout
  * @param timeout Número máximo de iteraciones (0 = SERIAL_MAX_WAIT)
  * @return true si el transmitter está vacío, false si timeout
- * 
+ *
  * Usa busy-wait con límite para prevenir hangs infinitos
  */
 static bool serial_wait_transmit_empty_timeout(uint32_t timeout) {
@@ -177,8 +202,27 @@ static bool serial_wait_transmit_empty_timeout(uint32_t timeout) {
         __asm__ volatile ("nop");
     }
 
-    /* Timeout: asumir que el hardware falló y marcar como no inicializado */
-    serial_initialized = 0;
+    /* ==========================================
+     * TIMEOUT - Hardware failure detected
+     * ==========================================
+     * CRITICAL: Do NOT silently clear serial_initialized.
+     * Instead:
+     *   1. Set serial_failed flag
+     *   2. Record error code
+     *   3. Increment timeout counter for diagnostics
+     *   4. Report failure via VGA if available
+     * ========================================== */
+    serial_failed = 1;
+    serial_error_code = SERIAL_ERROR_TIMEOUT;
+    serial_timeout_count++;
+
+    /* Report failure via VGA if available */
+    if (print_detect()) {
+        print_set_color(PRINT_COLOR_YELLOW, PRINT_COLOR_BLACK);
+        print_str("[SERIAL TIMEOUT] Hardware not responding!\r\n");
+        print_set_color(PRINT_COLOR_LIGHT_GREEN, PRINT_COLOR_BLACK);
+    }
+
     return false;
 }
 
@@ -188,6 +232,7 @@ void serial_wait_transmit_empty(void) {
 }
 
 void serial_write_char(char data) {
+    /* Check if serial is initialized OR failed (for graceful degradation) */
     if (!serial_initialized) {
         return;  /* Serial not initialized or failed */
     }
@@ -195,6 +240,7 @@ void serial_write_char(char data) {
     /* Esperar hasta que el transmitter holding register esté vacío */
     if (!serial_wait_transmit_empty_timeout(SERIAL_MAX_WAIT)) {
         /* Timeout occurred - hardware may have failed */
+        /* Do NOT retry indefinitely - let caller decide what to do */
         return;
     }
 
@@ -203,7 +249,11 @@ void serial_write_char(char data) {
 }
 
 void serial_write_str(const char* str) {
-    if (str == nullptr) return;  // C++ style null check
+    if (str == nullptr) {
+        serial_failed = 1;
+        serial_error_code = SERIAL_ERROR_NULL_PTR;
+        return;
+    }
 
     while (*str) {
         serial_write_char(*str);
@@ -212,17 +262,10 @@ void serial_write_str(const char* str) {
 }
 
 void serial_write_hex(uint32_t value) {
-    static const char hex_chars[] = "0123456789ABCDEF";
     char buffer[11];  /* "0x" + 8 digits + null */
-    int i;
     
-    buffer[0] = '0';
-    buffer[1] = 'x';
-    
-    for (i = 0; i < 8; i++) {
-        buffer[2 + i] = hex_chars[(value >> (28 - i * 4)) & 0xF];
-    }
-    buffer[10] = '\0';
+    // Use shared utility function from hex_utils.h (DRY principle)
+    uint32_to_hex_string(buffer, value);
     
     serial_write_str(buffer);
 }
@@ -251,18 +294,11 @@ void serial_write_dec(uint32_t value) {
  * @param value Valor de 64-bit a escribir
  */
 void serial_write_hex64(uint64_t value) {
-    static const char hex_chars[] = "0123456789ABCDEF";
     char buffer[19];  // "0x" + 16 digits + null = 19 bytes
-    int i;
-
-    buffer[0] = '0';
-    buffer[1] = 'x';
-
-    for (i = 0; i < 16; i++) {
-        buffer[2 + i] = hex_chars[(value >> (60 - i * 4)) & 0xF];
-    }
-    buffer[18] = '\0';
-
+    
+    // Use shared utility function from hex_utils.h (DRY principle)
+    uint64_to_hex_string(buffer, value);
+    
     serial_write_str(buffer);
 }
 
@@ -325,4 +361,80 @@ int serial_read_char(char* data) {
     }
 
     return 0;
+}
+
+/* ==========================================
+ * Public API - Error Reporting Functions
+ * ==========================================
+ * These functions allow the kernel to diagnose serial port issues
+ * without silent failures.
+ * ========================================== */
+
+/**
+ * @brief Check if serial port has failed
+ * @return 1 if failed, 0 if OK or not initialized
+ *
+ * A failed serial port may still have been initialized successfully,
+ * but encountered a hardware error during operation (e.g., timeout).
+ */
+int serial_has_failed(void) {
+    return serial_failed;
+}
+
+/**
+ * @brief Get the last serial error code
+ * @return Error code (0 = none, 1 = timeout, 2 = init fail, 3 = null ptr)
+ *
+ * Error codes:
+ *   SERIAL_ERROR_NONE (0)      - No error
+ *   SERIAL_ERROR_TIMEOUT (1)   - Hardware timeout (not responding)
+ *   SERIAL_ERROR_INIT_FAIL (2) - Initialization failed
+ *   SERIAL_ERROR_NULL_PTR (3)  - Null pointer passed to function
+ */
+uint32_t serial_get_error_code(void) {
+    return serial_error_code;
+}
+
+/**
+ * @brief Get the count of timeout errors
+ * @return Number of timeouts since initialization
+ *
+ * This counter increments each time a serial operation times out.
+ * Useful for diagnosing intermittent hardware issues.
+ */
+uint32_t serial_get_timeout_count(void) {
+    return serial_timeout_count;
+}
+
+/**
+ * @brief Clear the serial error state
+ *
+ * Resets the failed flag and error code.
+ * Useful for recovery attempts or re-initialization.
+ */
+void serial_clear_error(void) {
+    serial_failed = 0;
+    serial_error_code = SERIAL_ERROR_NONE;
+}
+
+/**
+ * @brief Get a human-readable error message
+ * @return Static string describing the error
+ *
+ * @note Returns English strings only.
+ * @note String is static - do not free or modify.
+ */
+const char* serial_get_error_string(uint32_t error_code) {
+    switch (error_code) {
+        case SERIAL_ERROR_NONE:
+            return "No error";
+        case SERIAL_ERROR_TIMEOUT:
+            return "Serial hardware timeout (not responding)";
+        case SERIAL_ERROR_INIT_FAIL:
+            return "Serial initialization failed";
+        case SERIAL_ERROR_NULL_PTR:
+            return "Null pointer argument";
+        default:
+            return "Unknown error code";
+    }
 }

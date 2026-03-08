@@ -15,9 +15,17 @@ start:
 	call setup_page_tables
 	call enable_paging
 
-    ; NOTA: BSS initialization se hace en long mode (main64.asm)
-    ; call zero_bss
-
+    ; ==========================================
+    ; TRANSITION TO LONG MODE
+    ; ==========================================
+    ; BSS initialization is intentionally deferred to main64.asm.
+    ; See main64.asm for BSS zeroing implementation.
+    ;
+    ; SECURITY GUARANTEE:
+    ;   - This code does NOT access any BSS variables
+    ;   - The jump instruction doesn't touch BSS
+    ;   - main64.asm zeros BSS before calling kernel_main
+    ; ==========================================
 	lgdt [gdt64.pointer]
 	jmp gdt64.code_segment:long_mode_start
 
@@ -178,6 +186,19 @@ enable_paging:
 
 	ret
 
+; ==========================================
+; JUMP TO LONG MODE - Critical Transition
+; ==========================================
+; SECURITY NOTE: BSS initialization is intentionally NOT done here.
+; 
+; Why BSS init is done in long mode (main64.asm), not here:
+;   1. In 32-bit mode, we can only access 4GB address space
+;   2. After enabling paging, we need 64-bit registers for proper addressing
+;   3. The jump to long mode (below) doesn't access any BSS variables
+;   4. main64.asm initializes BSS immediately upon entering long mode
+;
+; GUARANTEE: No BSS access occurs between this jump and zero_bss in main64.asm
+; ==========================================
 error:
 	; print "ERR: X" where X is the error code
 	mov dword [0xb8000], 0x4f524f45

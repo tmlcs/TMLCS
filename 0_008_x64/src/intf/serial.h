@@ -79,6 +79,15 @@ extern "C" {
 #define SERIAL_DEFAULT_BAUD 115200
 
 /* ==========================================
+ * Serial Error Codes
+ * ==========================================
+ */
+#define SERIAL_ERROR_NONE       0
+#define SERIAL_ERROR_TIMEOUT    1
+#define SERIAL_ERROR_INIT_FAIL  2
+#define SERIAL_ERROR_NULL_PTR   3
+
+/* ==========================================
  * Serial function API
  * ========================================== */
 
@@ -164,6 +173,61 @@ int serial_read_char(char* data);
  * @note Uses internal timeout to prevent infinite hangs
  */
 void serial_wait_transmit_empty(void);
+
+/* ==========================================
+ * Error Reporting API (CRIT-004 Fix)
+ * ==========================================
+ * These functions allow diagnosing serial port failures
+ * instead of silent failures.
+ * ========================================== */
+
+/**
+ * @brief Check if serial port has failed
+ * @return 1 if failed, 0 if OK or not initialized
+ *
+ * A failed serial port may still have been initialized successfully,
+ * but encountered a hardware error during operation (e.g., timeout).
+ */
+int serial_has_failed(void);
+
+/**
+ * @brief Get the last serial error code
+ * @return Error code (0 = none, 1 = timeout, 2 = init fail, 3 = null ptr)
+ *
+ * Error codes:
+ *   SERIAL_ERROR_NONE (0)      - No error
+ *   SERIAL_ERROR_TIMEOUT (1)   - Hardware timeout (not responding)
+ *   SERIAL_ERROR_INIT_FAIL (2) - Initialization failed
+ *   SERIAL_ERROR_NULL_PTR (3)  - Null pointer passed to function
+ */
+uint32_t serial_get_error_code(void);
+
+/**
+ * @brief Get the count of timeout errors
+ * @return Number of timeouts since initialization
+ *
+ * This counter increments each time a serial operation times out.
+ * Useful for diagnosing intermittent hardware issues.
+ */
+uint32_t serial_get_timeout_count(void);
+
+/**
+ * @brief Clear the serial error state
+ *
+ * Resets the failed flag and error code.
+ * Useful for recovery attempts or re-initialization.
+ */
+void serial_clear_error(void);
+
+/**
+ * @brief Get a human-readable error message
+ * @param error_code Error code to translate
+ * @return Static string describing the error
+ *
+ * @note Returns English strings only.
+ * @note String is static - do not free or modify.
+ */
+const char* serial_get_error_string(uint32_t error_code);
 
 #ifdef __cplusplus
 }
