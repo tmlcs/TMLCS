@@ -1,16 +1,16 @@
 /* ==========================================
- * Linker Script para GLOBEX_OS x86_64
+ * Linker Script for GLOBEX_OS x86_64
  * ==========================================
  * Kernel loaded at 1MB (0x100000)
- * Esta dirección evita conflictos con BIOS data areas
+ * This address avoids conflicts with BIOS data areas
  */
 
 ENTRY(start)
 
 PHDRS
 {
-    /* 
-     * Segmentos con permisos explícitos para eliminar warning RWX
+    /*
+     * Segments with explicit permissions to eliminate RWX warning
      * Flags: 1 = X (execute), 2 = W (write), 4 = R (read)
      */
     text PT_LOAD FLAGS(5);  /* R + E = 5 */
@@ -49,7 +49,7 @@ SECTIONS
     } :text
 
     /* ==========================================
-     * Initialized Data - Global/static con inicializador
+     * Initialized Data - Global/static with initializer
      * ========================================== */
     .data : ALIGN(4K)
     {
@@ -60,8 +60,8 @@ SECTIONS
     /* ==========================================
      * Uninitialized Data - BSS (zero-initialized)
      * ==========================================
-     * Esta sección será inicializada a cero por el código de boot.
-     * Solo variables C/C++ sin inicializador explícito van aquí.
+     * This section will be zero-initialized by boot code.
+     * Only C/C++ variables without explicit initializer go here.
      * ========================================== */
     .bss : ALIGN(4K)
     {
@@ -73,42 +73,42 @@ SECTIONS
     } :data
 
     /* ==========================================
-     * Boot Data - Page tables y stack (NO inicializar)
+     * Boot Data - Page tables and stack (NO initialize)
      * ==========================================
-     * Esta sección contiene las page tables y el stack del boot code.
-     * Es NOBITS (no ocupa espacio en archivo) pero NO debe inicializarse
-     * a cero porque contiene datos configurados en tiempo de boot.
-     * 
-     * Separada de .bss para permitir zero-initialization seguro del BSS.
+     * This section contains page tables and boot code stack.
+     * It is NOBITS (does not occupy file space) but must NOT be zero-initialized
+     * because it contains data configured at boot time.
+     *
+     * Separated from .bss to allow safe zero-initialization of BSS.
      * ========================================== */
     .boot.data : ALIGN(4K)
     {
         __boot_data_start = .;
         *(.boot.data)
-        *(.bss.boot)  /* Compatibilidad con código existente */
+        *(.bss.boot)  /* Compatibility with existing code */
         __boot_data_end = .;
     } :data
 
     /* ==========================================
-     * Validations - ASSERTs para seguridad
+     * Validations - ASSERTs for safety
      * ========================================== */
-    ASSERT(. < 11M, "ERROR: Kernel excede 10MB de tamaño")
-    ASSERT(ADDR(.text) % 4096 == 0, "ERROR: .text no está alineada a 4KB")
-    ASSERT(ADDR(.rodata) % 4096 == 0, "ERROR: .rodata no está alineada a 4KB")
-    ASSERT(ADDR(.data) % 4096 == 0, "ERROR: .data no está alineada a 4KB")
-    ASSERT(ADDR(.bss) % 4096 == 0, "ERROR: .bss no está alineada a 4KB")
-    ASSERT(ADDR(.boot.data) % 4096 == 0, "ERROR: .boot.data no está alineada a 4KB")
-    
-    /* Verificar que las page tables caben en .boot.data */
-    ASSERT((__boot_data_end - __boot_data_start) >= 0x10000, 
-           "ERROR: .boot.data demasiado pequeña para page tables + stack")
+    ASSERT(. < 10M, "ERROR: Kernel size exceeds 10MB limit")
+    ASSERT(ADDR(.text) % 4096 == 0, "ERROR: .text section not 4KB aligned")
+    ASSERT(ADDR(.rodata) % 4096 == 0, "ERROR: .rodata section not 4KB aligned")
+    ASSERT(ADDR(.data) % 4096 == 0, "ERROR: .data section not 4KB aligned")
+    ASSERT(ADDR(.bss) % 4096 == 0, "ERROR: .bss section not 4KB aligned")
+    ASSERT(ADDR(.boot.data) % 4096 == 0, "ERROR: .boot.data section not 4KB aligned")
 
-    /* Descartar secciones de debug */
+    /* Verify page tables fit in .boot.data */
+    ASSERT((__boot_data_end - __boot_data_start) >= 0x10000,
+           "ERROR: .boot.data too small for page tables + stack")
+
+    /* Discard debug sections */
     /DISCARD/ : { *(.stab) *(.stabstr) }
 }
 
 /* ==========================================
- * Símbolos globales útiles para el kernel
+ * Useful global symbols for the kernel
  * ========================================== */
 __kernel_start = 1M;
 __kernel_end = .;
@@ -117,10 +117,10 @@ __kernel_end = .;
  * Memory Map Information
  * ========================================== */
 __memory_mapped_start = 0x00000000;
-__memory_mapped_end = 0x80000000;     /* 2GiB mapeados (0-0x7FFFFFFF) */
-__memory_mapped_size = 0x80000000;    /* 2GiB en bytes */
+__memory_mapped_end = 0x80000000;     /* 2GiB mapped (0-0x7FFFFFFF) */
+__memory_mapped_size = 0x80000000;    /* 2GiB in bytes */
 
 /* ==========================================
- * Símbolos BSS para inicialización en boot
+ * BSS symbols for boot initialization
  * ========================================== */
-/* Estos símbolos son usados por el código de boot para zero-initializar BSS */
+/* These symbols are used by boot code to zero-initialize BSS */

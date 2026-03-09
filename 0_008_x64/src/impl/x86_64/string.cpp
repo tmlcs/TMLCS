@@ -108,3 +108,54 @@ int memcmp(const void* s1, const void* s2, size_t n) {
 
     return 0;
 }
+
+/* ==========================================
+ * strcpy() - Copy string with null terminator
+ * ==========================================
+ * Copies the null-terminated string from src to dest.
+ * 
+ * @param dest Destination buffer (must be large enough)
+ * @param src Source null-terminated string
+ * @return Pointer to dest
+ * 
+ * @warning Destination buffer must be large enough to hold the source string
+ *          including the null terminator. No bounds checking is performed.
+ * 
+ * @note Copies characters including null terminator
+ * @note Returns dest for chaining compatibility
+ */
+char* strcpy(char* dest, const char* src) {
+    char* original_dest = dest;
+    
+    // Copy characters including null terminator
+    while ((*dest++ = *src++) != '\0') {
+        // Empty body - copy happens in condition
+    }
+    
+    return original_dest;
+}
+
+/* ==========================================
+ * strlen() - Calculate string length
+ * ==========================================
+ * Returns the length of a null-terminated string.
+ * 
+ * @param str Null-terminated string to measure
+ * @return Number of characters before null terminator
+ * 
+ * @note Returns 0 for empty string ("")
+ * @note Does not include null terminator in count
+ * @note Safe: handles null pointer by returning 0
+ */
+size_t strlen(const char* str) {
+    if (str == nullptr) {
+        return 0;  // Safe handling of null pointer
+    }
+    
+    size_t len = 0;
+    while (str[len] != '\0') {
+        len++;
+    }
+    
+    return len;
+}

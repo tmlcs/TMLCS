@@ -9,37 +9,37 @@ extern "C" {
 #endif
 
 /* ==========================================
- * Kernel Panic - Error fatal del sistema
+ * Kernel Panic - Fatal system error
  * ==========================================
- * Cuando ocurre un error del que no se puede recuperar,
- * el kernel debe:
- * 1. Imprimir mensaje de error (VGA y serial)
- * 2. Detener la ejecución de forma segura
- * 3. Nunca retornar
+ * When an unrecoverable error occurs,
+ * the kernel must:
+ * 1. Print error message (VGA and serial)
+ * 2. Stop execution safely
+ * 3. Never return
  */
 
 /**
- * @brief Kernel panic - error fatal del que no se puede recuperar
- * @param message Mensaje de error descriptivo
- * @param error_code Código de error opcional (0 si no aplica)
- * 
- * @note Esta función NUNCA retorna. Detiene el kernel indefinidamente.
- * @note Imprime en VGA (si está disponible) y serial (si está inicializado)
+ * @brief Kernel panic - unrecoverable fatal error
+ * @param message Descriptive error message
+ * @param error_code Optional error code (0 if not applicable)
+ *
+ * @note This function NEVER returns. Halts the kernel indefinitely.
+ * @note Prints to VGA (if available) and serial (if initialized)
  */
 void panic(const char* message, uint32_t error_code);
 
 /**
- * @brief Kernel panic con mensaje simple (sin código de error)
- * @param message Mensaje de error descriptivo
+ * @brief Kernel panic with simple message (no error code)
+ * @param message Descriptive error message
  */
 void panic_simple(const char* message);
 
 /**
- * @brief Verificar condición y hacer panic si es falsa
- * @param condition Condición que debe ser verdadera
- * @param message Mensaje de error si la condición es falsa
- * 
- * @note Macro para conveniencia - se expande a panic_simple() si falla
+ * @brief Check condition and panic if false
+ * @param condition Condition that must be true
+ * @param message Error message if condition is false
+ *
+ * @note Convenience macro - expands to panic_simple() if fails
  */
 #define PANIC_IF_FALSE(condition, message) \
     do { \

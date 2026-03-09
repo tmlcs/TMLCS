@@ -153,6 +153,14 @@ void print_get_color(uint8_t* fg, uint8_t* bg);
  */
 void print_set_cursor(size_t col, size_t row);
 
+/**
+ * @brief Check if VGA has been initialized (not just detected)
+ * @return true if VGA is initialized and ready for use, false otherwise
+ * @note This is separate from print_detect() which only tests hardware presence.
+ *       Use this to check if VGA output is safe before calling print_clear().
+ */
+int print_is_initialized(void);
+
 #ifdef __cplusplus
 }
 #endif

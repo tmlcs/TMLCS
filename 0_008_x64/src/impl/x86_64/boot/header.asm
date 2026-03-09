@@ -9,19 +9,19 @@
 
 section .multiboot_header
 header_start:
-    ; magic number (identifica al kernel como multiboot)
+    ; magic number (identifies kernel as multiboot)
     dd 0xe85250d6
 
-    ; arquitectura (protegida, en este caso)
+    ; architecture (protected mode in this case)
     dd 0
 
-    ; longitud del encabezado (header length)
-    dd header_end - header_start ; calculada como la distancia entre el inicio y el final del encabezado
+    ; header length
+    dd header_end - header_start ; calculated as distance between header start and end
 
-    ; checksum (calcular como la suma de todos los bytes menos el número mágico)
+    ; checksum (calculated as sum of all bytes minus magic number)
     dd 0x100000000 - (0xe85250d6 + 0 + (header_end - header_start))
 
-    ; etiqueta de fin (tag end: type=0, flags=0, size=8)
+    ; end tag (tag end: type=0, flags=0, size=8)
     dw 0
     dw 0
     dd 8
@@ -29,6 +29,6 @@ header_start:
 header_end:
 
 ; ==========================================
-; Sección .note.GNU-stack para eliminar warning del linker
+; .note.GNU-stack section to eliminate linker warning
 ; ==========================================
 section .note.GNU-stack noexec

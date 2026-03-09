@@ -9,23 +9,23 @@ extern "C" {
 #endif
 
 /* ==========================================
- * Control de debugging
+ * Debugging Control
  * ==========================================
- * Definir DEBUG_ENABLE para activar output serial
+ * Define DEBUG_ENABLE to activate serial output
  */
 #ifndef DEBUG_ENABLE
 /* #define DEBUG_ENABLE 1 */
 #endif
 
 /* ==========================================
- * Macros de debugging - Nivel Básico
+ * Debugging Macros - Basic Level
  * ========================================== */
 
 #if DEBUG_ENABLE
 
 /**
- * @brief Imprimir mensaje de debug simple
- * Uso: DEBUG_PRINT("Mensaje: "); DEBUG_PRINT_HEX(value); DEBUG_PRINT("\r\n");
+ * @brief Print simple debug message
+ * Usage: DEBUG_PRINT("Message: "); DEBUG_PRINT_HEX(value); DEBUG_PRINT("\r\n");
  */
 #define DEBUG_PRINT(str) serial_write_str(str)
 #define DEBUG_PRINT_CHAR(c) serial_write_char(c)
@@ -34,7 +34,7 @@ extern "C" {
 #define DEBUG_PRINT_DEC(val) serial_write_dec(val)
 
 /**
- * @brief Imprimir mensaje con prefijo [DEBUG]
+ * @brief Print message with [DEBUG] prefix
  */
 #define DEBUG_LOG(msg) do { \
     serial_write_str("[DEBUG] "); \
@@ -43,8 +43,8 @@ extern "C" {
 } while(0)
 
 /**
- * @brief Imprimir variable con nombre y valor hexadecimal
- * Uso: DEBUG_VAR(myVar, value); -> "[DEBUG] myVar = 0xCAFEBABE"
+ * @brief Print variable with name and hexadecimal value
+ * Usage: DEBUG_VAR(myVar, value); -> "[DEBUG] myVar = 0xCAFEBABE"
  */
 #define DEBUG_VAR(name, val) do { \
     serial_write_str("[DEBUG] " #name " = "); \
@@ -53,7 +53,7 @@ extern "C" {
 } while(0)
 
 /**
- * @brief Punto de breakpoint (imprime ubicación)
+ * @brief Breakpoint (prints location)
  */
 #define DEBUG_BREAK() do { \
     serial_write_str("\r\n[BREAK] "); \
@@ -64,16 +64,16 @@ extern "C" {
 } while(0)
 
 /* ==========================================
- * Macros de debugging - Nivel Avanzado [D001, D002, D003]
+ * Debugging Macros - Advanced Level [D001, D002, D003]
  * ========================================== */
 
 /**
- * @brief [D001] DEBUG_PRINTF - Imprimir con formato limitado
- * Soporta: %s (string), %x (hex), %d (decimal), %c (char)
- * Uso: DEBUG_PRINTF("Value: %x, Name: %s\r\n", hexVal, str);
- * 
- * @note Implementación simple sin varargs para kernel freestanding
- *       Usar múltiples llamadas para formatos complejos
+ * @brief [D001] DEBUG_PRINTF - Print with limited format support
+ * Supports: %s (string), %x (hex), %d (decimal), %c (char)
+ * Usage: DEBUG_PRINTF("Value: %x, Name: %s\r\n", hexVal, str);
+ *
+ * @note Simple implementation without varargs for freestanding kernel
+ *       Use multiple calls for complex formats
  */
 #define DEBUG_PRINTF(fmt, arg) do { \
     const char* _fmt = fmt; \
@@ -97,9 +97,9 @@ extern "C" {
 } while(0)
 
 /**
- * @brief [D002] DEBUG_PRINTLN - Imprimir con newline automático
- * Similar a DEBUG_LOG pero sin prefijo [DEBUG]
- * Uso: DEBUG_PRINTLN("Simple message");
+ * @brief [D002] DEBUG_PRINTLN - Print with automatic newline
+ * Similar to DEBUG_LOG but without [DEBUG] prefix
+ * Usage: DEBUG_PRINTLN("Simple message");
  */
 #define DEBUG_PRINTLN(msg) do { \
     serial_write_str(msg); \
@@ -107,12 +107,12 @@ extern "C" {
 } while(0)
 
 /**
- * @brief [D003] DEBUG_ASSERT - Assert para kernel
- * Verifica condición y hace breakpoint si es falsa
- * Uso: DEBUG_ASSERT(myPtr != NULL);
- * 
- * @note En modo release (DEBUG_ENABLE=0), no genera código
- * @note Usa DEBUG_BREAK() para reportar ubicación del fallo
+ * @brief [D003] DEBUG_ASSERT - Assert for kernel
+ * Verifies condition and breaks if false
+ * Usage: DEBUG_ASSERT(myPtr != NULL);
+ *
+ * @note In release mode (DEBUG_ENABLE=0), generates no code
+ * @note Uses DEBUG_BREAK() to report failure location
  */
 #define DEBUG_ASSERT(cond) do { \
     if (!(cond)) { \
@@ -127,7 +127,7 @@ extern "C" {
 
 #else
 
-/* Debugging deshabilitado - macros no generan código */
+/* Debugging disabled - macros generate no code */
 #define DEBUG_PRINT(str) ((void)0)
 #define DEBUG_PRINT_CHAR(c) ((void)0)
 #define DEBUG_PRINT_HEX(val) ((void)0)

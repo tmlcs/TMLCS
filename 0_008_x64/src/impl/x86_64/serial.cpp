@@ -1,6 +1,7 @@
 #include "serial.h"
 #include "print.h"
 #include "hex_utils.h"
+#include "decimal_utils.h"
 
 /* ==========================================
  * Timeout Configuration
@@ -20,7 +21,7 @@
 #define SERIAL_ERROR_NULL_PTR   3
 
 /* ==========================================
- * Estado del driver serial
+ * Serial Driver State
  * ==========================================
  * VOLATILE: These variables track hardware state and must not
  * be optimized/cached by the compiler
@@ -32,18 +33,18 @@ static volatile uint32_t serial_error_code = SERIAL_ERROR_NONE;
 static volatile uint32_t serial_timeout_count = 0;
 
 /* ==========================================
- * Funciones de I/O de bajo nivel
+ * Low-Level I/O Functions
  * ========================================== */
 
 /**
- * @brief Escribir un byte a un puerto
+ * @brief Write a byte to a port
  */
 static inline void outb(uint16_t port, uint8_t value) {
     __asm__ volatile ("outb %0, %1" : : "a"(value), "Nd"(port));
 }
 
 /**
- * @brief Leer un byte de un puerto
+ * @brief Read a byte from a port
  */
 static inline uint8_t inb(uint16_t port) {
     uint8_t ret;
@@ -52,13 +53,13 @@ static inline uint8_t inb(uint16_t port) {
 }
 
 /* ==========================================
- * Validación de puertos
+ * Port Validation
  * ========================================== */
 
 /**
- * @brief Verificar si el puerto serial es válido
- * @param port Puerto a verificar
- * @return true si es COM1-COM4, false si no
+ * @brief Check if serial port is valid
+ * @param port Port to check
+ * @return true if COM1-COM4, false otherwise
  */
 static bool is_valid_serial_port(uint16_t port) {
     return (port == SERIAL_COM1 ||
@@ -68,43 +69,43 @@ static bool is_valid_serial_port(uint16_t port) {
 }
 
 /**
- * @brief Verificar si el puerto serial existe (UART 16550+)
- * @param port Puerto a verificar
- * @return true si el puerto responde como UART, false si no
- * 
- * Verifica los bits 6-7 del IIR register que deben ser 1 en UART 16550+
- * Nota: En QEMU y algunos sistemas embebidos, esta verificación puede
- * no ser confiable. Se usa como optimización pero no es crítica.
+ * @brief Check if serial port exists (UART 16550+)
+ * @param port Port to check
+ * @return true if port responds as UART, false otherwise
+ *
+ * Checks bits 6-7 of IIR register which should be 1 on UART 16550+
+ * Note: In QEMU and some embedded systems, this check may not be
+ * reliable. Used as optimization but not critical.
  */
 static bool serial_port_exists(uint16_t port) {
-    /* 
-     * UART 16550+ tiene bits 6-7 del IIR en 0xC0 cuando no hay interrupts
-     * Sin embargo, algunos sistemas (QEMU, hardware antiguo) pueden devolver
-     * otros valores. Usamos una verificación más permisiva:
-     * - Leer IIR y verificar que no sea 0xFF (puerto inexistente)
-     * - 0xFF típicamente indica puerto no presente (bus devuelve all-ones)
+    /*
+     * UART 16550+ has bits 6-7 of IIR at 0xC0 when no interrupts
+     * However, some systems (QEMU, older hardware) may return
+     * other values. We use a more permissive check:
+     * - Read IIR and verify it's not 0xFF (non-existent port)
+     * - 0xFF typically indicates port not present (bus returns all-ones)
      */
     uint8_t iir = inb(port + SERIAL_IIR);
-    
-    /* 0xFF indica puerto inexistente (bus floating) */
+
+    /* 0xFF indicates non-existent port (bus floating) */
     if (iir == 0xFF) {
         return false;
     }
-    
-    /* Cualquier otro valor indica puerto presente */
+
+    /* Any other value indicates port present */
     return true;
 }
 
 /* ==========================================
- * Implementación de funciones públicas
+ * Public Function Implementation
  * ========================================== */
 
 int serial_init(uint16_t port, uint32_t baud) {
     /* ==========================================
-     * Validación de parámetros - CRÍTICO
-     * Prevenir división por cero y I/O inválido
+     * Parameter Validation - CRITICAL
+     * Prevent division by zero and invalid I/O
      * ========================================== */
-    
+
     /* Validate baud rate is not zero */
     if (baud == 0) {
         serial_failed = 1;
@@ -138,7 +139,7 @@ int serial_init(uint16_t port, uint32_t baud) {
         return 0;  // Invalid port: must be COM1-COM4
     }
 
-    /* Verificar que el puerto físicamente existe */
+    /* Verify that the port physically exists */
     if (!serial_port_exists(port)) {
         serial_failed = 1;
         serial_error_code = SERIAL_ERROR_INIT_FAIL;
@@ -150,39 +151,39 @@ int serial_init(uint16_t port, uint32_t baud) {
     serial_error_code = SERIAL_ERROR_NONE;
     serial_timeout_count = 0;
 
-    /* Guardar puerto */
+    /* Save port */
     serial_port = port;
 
-    /* Deshabilitar interrupciones */
+    /* Disable interrupts */
     outb(port + SERIAL_IER, 0x00);
 
-    /* Habilitar DLAB para configurar divisor de baud rate */
+    /* Enable DLAB to configure baud rate divisor */
     outb(port + SERIAL_LCR, SERIAL_LCR_DLAB);
 
-    /* Calcular divisor para el baud rate
-     * Fórmula: divisor = 115200 / baud
-     * Para 115200: divisor = 1
-     * Para 9600: divisor = 12
-     * Para 110: divisor = 1047
-     * Nota: baud ya está validado en rango 110-115200
+    /* Calculate divisor for baud rate
+     * Formula: divisor = 115200 / baud
+     * For 115200: divisor = 1
+     * For 9600: divisor = 12
+     * For 110: divisor = 1047
+     * Note: baud is already validated in range 110-115200
      */
     uint16_t divisor = 115200 / baud;
     outb(port + SERIAL_DLL, (divisor & 0xFF));       /* Low byte */
     outb(port + SERIAL_DLM, (divisor >> 8) & 0xFF);  /* High byte */
 
-    /* Configurar 8 bits, no parity, 1 stop bit (8N1) y deshabilitar DLAB */
+    /* Configure 8 bits, no parity, 1 stop bit (8N1) and disable DLAB */
     outb(port + SERIAL_LCR, SERIAL_LCR_8N1);
 
-    /* Habilitar FIFOs (16550), clear them, set 14 byte threshold */
+    /* Enable FIFOs (16550), clear them, set 14 byte threshold */
     outb(port + SERIAL_FCR, 0x07);
 
-    /* Configurar modem: DTR + RTS + OUT2 (enable interrupts) */
+    /* Configure modem: DTR + RTS + OUT2 (enable interrupts) */
     outb(port + SERIAL_MCR, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2);
 
-    /* Limpiar buffer de recepción leyendo cualquier dato pendiente */
+    /* Clear receive buffer by reading any pending data */
     (void)inb(port + SERIAL_RBR);
 
-    /* Pequeño delay para asegurar que el UART esté listo */
+    /* Small delay to ensure UART is ready */
     for (volatile int i = 0; i < 1000; i++) {
         __asm__ volatile ("nop");
     }
@@ -201,11 +202,11 @@ int serial_is_initialized(void) {
 }
 
 /**
- * @brief Esperar hasta que se pueda escribir con timeout
- * @param timeout Número máximo de iteraciones (0 = SERIAL_MAX_WAIT)
- * @return true si el transmitter está vacío, false si timeout
+ * @brief Wait until ready to write with timeout
+ * @param timeout Maximum number of iterations (0 = SERIAL_MAX_WAIT)
+ * @return true if transmitter is empty, false if timeout
  *
- * Usa busy-wait con límite para prevenir hangs infinitos
+ * Uses busy-wait with limit to prevent infinite hangs
  */
 static bool serial_wait_transmit_empty_timeout(uint32_t timeout) {
     if (!serial_initialized) {
@@ -216,12 +217,12 @@ static bool serial_wait_transmit_empty_timeout(uint32_t timeout) {
         timeout = SERIAL_MAX_WAIT;
     }
 
-    /* Esperar hasta que THRE (bit 5) esté set o timeout */
+    /* Wait until THRE (bit 5) is set or timeout */
     while (timeout-- > 0) {
         if (inb(serial_port + SERIAL_LSR) & SERIAL_LSR_THRE) {
             return true;
         }
-        /* Pequeño delay para evitar bus saturation */
+        /* Small delay to avoid bus saturation */
         __asm__ volatile ("nop");
     }
 
@@ -250,7 +251,7 @@ static bool serial_wait_transmit_empty_timeout(uint32_t timeout) {
 }
 
 void serial_wait_transmit_empty(void) {
-    /* Wrapper que usa timeout por defecto */
+    /* Wrapper that uses default timeout */
     serial_wait_transmit_empty_timeout(SERIAL_MAX_WAIT);
 }
 
@@ -260,21 +261,26 @@ void serial_write_char(char data) {
         return;  /* Serial not initialized or failed */
     }
 
-    /* Esperar hasta que el transmitter holding register esté vacío */
+    /* Wait until transmitter holding register is empty */
     if (!serial_wait_transmit_empty_timeout(SERIAL_MAX_WAIT)) {
         /* Timeout occurred - hardware may have failed */
         /* Do NOT retry indefinitely - let caller decide what to do */
         return;
     }
 
-    /* Escribir el caracter */
+    /* Write the character */
     outb(serial_port + SERIAL_THR, (uint8_t)data);
 }
 
 void serial_write_str(const char* str) {
+    /* 
+     * CRIT-003 FIX: Null pointer is a programming error, NOT hardware failure.
+     * Do NOT set serial_failed or increment timeout counters.
+     * Just record the error code for diagnostics and return.
+     */
     if (str == nullptr) {
-        serial_failed = 1;
         serial_error_code = SERIAL_ERROR_NULL_PTR;
+        /* Do NOT set serial_failed = 1 - this is not a hardware error */
         return;
     }
 
@@ -294,63 +300,39 @@ void serial_write_hex(uint32_t value) {
 }
 
 void serial_write_dec(uint32_t value) {
-    char buffer[12];  /* Máximo 10 dígitos + null */
-    int i = 10;
+    char buffer[12];  /* Maximum 10 digits + null */
 
-    buffer[11] = '\0';
-
-    if (value == 0) {
-        serial_write_char('0');
-        return;
-    }
-
-    while (value > 0 && i > 0) {
-        buffer[i--] = '0' + (value % 10);
-        value /= 10;
-    }
-
-    serial_write_str(&buffer[i + 1]);
+    // Use shared utility function (DRY principle)
+    serial_write_str(uint32_to_decimal_string(buffer, value));
 }
 
 /**
- * @brief Escribir un entero de 64-bit en hexadecimal por serial
- * @param value Valor de 64-bit a escribir
+ * @brief Write a 64-bit unsigned integer in hexadecimal to serial
+ * @param value 64-bit value to write
  */
 void serial_write_hex64(uint64_t value) {
     char buffer[19];  // "0x" + 16 digits + null = 19 bytes
-    
+
     // Use shared utility function from hex_utils.h (DRY principle)
     uint64_to_hex_string(buffer, value);
-    
+
     serial_write_str(buffer);
 }
 
 /**
- * @brief Escribir un entero de 64-bit en decimal por serial
- * @param value Valor de 64-bit a escribir
+ * @brief Write a 64-bit unsigned integer in decimal to serial
+ * @param value 64-bit value to write
  */
 void serial_write_dec64(uint64_t value) {
-    char buffer[22];  // Máximo 20 dígitos + null
-    int i = 20;
+    char buffer[22];  // Maximum 20 digits + null
 
-    buffer[21] = '\0';
-
-    if (value == 0) {
-        serial_write_char('0');
-        return;
-    }
-
-    while (value > 0 && i > 0) {
-        buffer[i--] = '0' + (value % 10);
-        value /= 10;
-    }
-
-    serial_write_str(&buffer[i + 1]);
+    // Use shared utility function (DRY principle)
+    serial_write_str(uint64_to_decimal_string(buffer, value));
 }
 
 /**
- * @brief Escribir un entero de 32-bit en decimal con signo por serial
- * @param value Valor con signo a escribir
+ * @brief Write a 32-bit signed integer in decimal to serial
+ * @param value Signed value to write
  */
 void serial_write_dec_signed(int32_t value) {
     if (value < 0) {
@@ -362,8 +344,8 @@ void serial_write_dec_signed(int32_t value) {
 }
 
 /**
- * @brief Escribir un entero de 64-bit en decimal con signo por serial
- * @param value Valor de 64-bit con signo a escribir
+ * @brief Write a 64-bit signed integer in decimal to serial
+ * @param value 64-bit signed value to write
  */
 void serial_write_dec64_signed(int64_t value) {
     if (value < 0) {
@@ -375,9 +357,15 @@ void serial_write_dec64_signed(int64_t value) {
 }
 
 int serial_read_char(char* data) {
-    if (!serial_initialized || data == nullptr) return 0;
+    if (!serial_initialized) {
+        return 0;
+    }
+    
+    if (data == nullptr) {
+        return 0;
+    }
 
-    /* Verificar si hay dato disponible (DR bit) */
+    /* Check if data is available (DR bit) */
     if (inb(serial_port + SERIAL_LSR) & SERIAL_LSR_DR) {
         *data = (char)inb(serial_port + SERIAL_RBR);
         return 1;

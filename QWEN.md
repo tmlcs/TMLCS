@@ -17,7 +17,7 @@
 ```
 0_008_x64/
 ├── src/
-│   ├── intf/          # Public API headers (C-compatible)
+│   ├── intf/          # Public API header (C-compatible)
 │   │   ├── constants.h   # VGA, Multiboot, memory constants
 │   │   ├── debug.h       # Debug macros (DEBUG_PRINT, DEBUG_ASSERT, etc.)
 │   │   ├── panic.h       # Kernel panic functions
@@ -27,6 +27,7 @@
 │   └── impl/
 │       ├── kernel/      # Kernel entry point
 │       │   └── main.cpp    # kernel_main() - OS initialization & tests
+│       ├── tests/       # Test modules for each subsystem
 │       └── x86_64/      # x86_64-specific implementations
 │           ├── boot/       # Boot assembly (Multiboot header, 64-bit entry)
 │           ├── panic.cpp   # Panic implementation
@@ -126,11 +127,20 @@ The kernel includes self-tests in `kernel_main()`:
 - Serial output tests
 - Hardware detection (CPUID)
 
+Test verification script: `scripts/verify_tests.sh`
+
 ### Error Handling
 
 - **Kernel Panic**: Use `panic()` or `panic_simple()` for fatal errors
 - **Assertions**: Use `DEBUG_ASSERT()` for development-time checks
 - **No Exceptions**: C++ exceptions are disabled (`-fno-exceptions`)
+
+### Code Formatting
+
+- **C/C++**: LLVM style with 4-space indentation (`.clang-format`)
+- **Assembly**: 8-space tabs (`.editorconfig`)
+- **Line Limit**: 100 characters
+- **Braces**: Attached style
 
 ### Git Workflow
 
@@ -155,6 +165,7 @@ The kernel includes self-tests in `kernel_main()`:
 - Default: COM1 (0x3F8) at 115200 baud
 - Functions mirror VGA driver for dual-output debugging
 - Supports signed 32-bit and 64-bit decimal output
+- Error reporting API for diagnosing failures
 
 ### Boot Process
 
@@ -173,3 +184,11 @@ The kernel includes self-tests in `kernel_main()`:
 | `.data` | Initialized globals | R+W |
 | `.bss` | Zero-initialized globals | R+W |
 | `.boot.data` | Page tables, boot stack | R+W (NOBITS) |
+
+## Scripts
+
+| Script | Description |
+|--------|-------------|
+| `scripts/verify_tests.sh` | Verify test output from QEMU serial console |
+| `scripts/analyze.sh` | Code analysis utilities |
+| `scripts/format.sh` | Code formatting utilities |

@@ -12,28 +12,28 @@ extern "C" {
  * ========================================== */
 
 /**
- * @brief Dirección base del buffer de texto VGA
- * @note 0xB8000 es la dirección estándar para modo texto 80x25
+ * @brief Base address of VGA text buffer
+ * @note 0xB8000 is the standard address for 80x25 text mode
  */
 #define VGA_BUFFER_ADDRESS  0xB8000
 
 /**
- * @brief Número de columnas en modo texto VGA
+ * @brief Number of columns in VGA text mode
  */
 #define VGA_COLS  80
 
 /**
- * @brief Número de filas en modo texto VGA
+ * @brief Number of rows in VGA text mode
  */
 #define VGA_ROWS  25
 
 /**
- * @brief Tamaño total del buffer VGA en caracteres
+ * @brief Total size of VGA buffer in characters
  */
 #define VGA_BUFFER_SIZE  (VGA_COLS * VGA_ROWS)
 
 /**
- * @brief Tamaño de cada celda VGA en bytes (character + color)
+ * @brief Size of each VGA cell in bytes (character + color)
  */
 #define VGA_CELL_SIZE  2
 
@@ -42,23 +42,23 @@ extern "C" {
  * ========================================== */
 
 /**
- * @brief Magic number para Multiboot2 header
- * @note Debe estar en el header del kernel
+ * @brief Magic number for Multiboot2 header
+ * @note Must be in kernel header
  */
 #define MULTIBOOT2_MAGIC  0xE85250D6
 
 /**
- * @brief Arquitectura objetivo (0 = protected mode i386)
+ * @brief Target architecture (0 = protected mode i386)
  */
 #define MULTIBOOT2_ARCH  0
 
 /**
- * @brief Alineación del header Multiboot2
+ * @brief Multiboot2 header alignment
  */
 #define MULTIBOOT2_HEADER_ALIGN  8
 
 /**
- * @brief Tamaño mínimo del header Multiboot2
+ * @brief Minimum size of Multiboot2 header
  */
 #define MULTIBOOT2_HEADER_MIN_SIZE  16
 
@@ -67,18 +67,18 @@ extern "C" {
  * ========================================== */
 
 /**
- * @brief Dirección de inicio del kernel (1MB)
- * @note El kernel se carga en 0x100000 por el bootloader
+ * @brief Kernel start address (1MB)
+ * @note Kernel is loaded at 0x100000 by bootloader
  */
 #define KERNEL_LOAD_ADDRESS  0x100000
 
 /**
- * @brief Tamaño de página estándar (4KB)
+ * @brief Standard page size (4KB)
  */
 #define PAGE_SIZE  0x1000
 
 /**
- * @brief Tamaño de página grande (2MB)
+ * @brief Large page size (2MB)
  */
 #define PAGE_SIZE_2M  0x200000
 
@@ -87,7 +87,7 @@ extern "C" {
  * ========================================== */
 
 /**
- * @brief Tamaño default del stack en bytes (64KB)
+ * @brief Default stack size in bytes (64KB)
  */
 #define DEFAULT_STACK_SIZE  0x10000
 

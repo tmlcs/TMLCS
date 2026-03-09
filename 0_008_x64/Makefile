@@ -8,7 +8,7 @@ GRUB := grub-mkrescue
 QEMU := qemu-system-x86_64
 
 # ==========================================
-# Directorios y Outputs
+# Directories and Outputs
 # ==========================================
 ISO_DIR := dist/x86_64
 BUILD_DIR := build
@@ -24,17 +24,17 @@ QEMU_SERIAL_FLAGS := -cdrom $(ISO_FILE) -serial file:serial_output.log -display 
 QEMU_STDIO_FLAGS := -cdrom $(ISO_FILE) -serial stdio -display none -no-reboot -no-shutdown
 
 # ==========================================
-# Compiler Flags - CRÍTICO para kernel development
+# Compiler Flags - CRITICAL for kernel development
 # ==========================================
-# -ffreestanding: No asumir entorno hosted (no stdlib)
-# -fno-exceptions: Deshabilitar exceptions (no runtime en kernel)
-# -fno-rtti: Deshabilitar RTTI (requiere runtime)
-# -fno-stack-protector: Stack protector requiere runtime
-# -nostdlib: No linkear contra standard library
-# -nostartfiles: No usar startup files
-# -O2: Optimización nivel 2 (balance speed/debug)
-# -Wall -Wextra -Wpedantic: Warnings máximos
-# -Werror: Tratar warnings como errores
+# -ffreestanding: No hosted environment assumptions (no stdlib)
+# -fno-exceptions: Disable exceptions (no runtime in kernel)
+# -fno-rtti: Disable RTTI (requires runtime)
+# -fno-stack-protector: Stack protector requires runtime
+# -nostdlib: Do not link against standard library
+# -nostartfiles: Do not use startup files
+# -O2: Optimization level 2 (balance speed/debug)
+# -Wall -Wextra -Wpedantic: Maximum warnings
+# -Werror: Treat warnings as errors
 CFLAGS := -ffreestanding -fno-exceptions -fno-rtti \
           -fno-stack-protector -nostdlib -nostartfiles \
           -O2 -Wall -Wextra -Wpedantic -Werror \
@@ -59,8 +59,12 @@ x86_64_asm_object_files := $(patsubst src/impl/x86_64/%.asm, $(BUILD_DIR)/x86_64
 
 x86_64_object_files := $(x86_64_cpp_object_files) $(x86_64_asm_object_files)
 
+# Test source files
+test_source_files := $(shell find src/impl/tests -name '*.cpp')
+test_object_files := $(patsubst src/impl/tests/%.cpp, $(BUILD_DIR)/tests/%.o, $(test_source_files))
+
 # ==========================================
-# Reglas de Compilación
+# Compilation Rules
 # ==========================================
 $(kernel_object_files): $(BUILD_DIR)/kernel/%.o : src/impl/kernel/%.cpp
 	mkdir -p $(dir $@) && \
@@ -74,15 +78,19 @@ $(x86_64_asm_object_files): $(BUILD_DIR)/x86_64/%.o : src/impl/x86_64/%.asm
 	mkdir -p $(dir $@) && \
 	$(AS) -f elf64 $< -o $@
 
-# Construcción del kernel
+$(test_object_files): $(BUILD_DIR)/tests/%.o : src/impl/tests/%.cpp
+	mkdir -p $(dir $@) && \
+	$(CC) -c $(CFLAGS) $< -o $@
+
+# Kernel build
 .PHONY: build-x86_64
-build-x86_64: $(kernel_object_files) $(x86_64_object_files)
+build-x86_64: $(kernel_object_files) $(x86_64_object_files) $(test_object_files)
 	mkdir -p $(ISO_DIR) && \
-	$(LD) -n -o $(KERNEL_BIN) -T targets/x86_64/linker.ld $(kernel_object_files) $(x86_64_object_files) && \
+	$(LD) -n -o $(KERNEL_BIN) -T targets/x86_64/linker.ld $(kernel_object_files) $(test_object_files) $(x86_64_object_files) && \
 	cp $(KERNEL_BIN) targets/x86_64/iso/boot/kernel.bin && \
 	$(GRUB) /usr/lib/grub/i386-pc -o $(ISO_FILE) targets/x86_64/iso
 
-# Emulación
+# Emulation
 .PHONY: run
 run: build-x86_64
 	qemu-system-x86_64 -cdrom $(ISO_FILE)
@@ -91,20 +99,20 @@ run: build-x86_64
 run-debug: build-x86_64
 	qemu-system-x86_64 -cdrom $(ISO_FILE) -d guest_errors,unimp -no-reboot -no-shutdown
 
-# Emulación con output serial a archivo
+# Emulation with serial output to file
 .PHONY: run-serial
 run-serial: build-x86_64
 	qemu-system-x86_64 -cdrom $(ISO_FILE) -serial file:serial_output.log -display none -no-reboot -no-shutdown
 	@echo "=== Serial Output ==="
 	@cat serial_output.log
 
-# Emulación con serial en stdio (para debugging interactivo)
+# Emulation with serial on stdio (for interactive debugging)
 .PHONY: run-stdio
 run-stdio: build-x86_64
 	$(QEMU) $(QEMU_STDIO_FLAGS)
 
 # ==========================================
-# Limpieza
+# Cleaning
 # ==========================================
 .PHONY: clean
 clean:
@@ -121,7 +129,7 @@ distclean: clean
 rebuild: clean build-x86_64
 
 # ==========================================
-# Verificación de Herramientas
+# Tool Verification
 # ==========================================
 .PHONY: verify-tools
 verify-tools:
@@ -139,7 +147,7 @@ verify-tools:
 	@echo "  QEMU: $(QEMU)"
 
 # ==========================================
-# Ayuda
+# Help
 # ==========================================
 .PHONY: help
 help:

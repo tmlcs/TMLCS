@@ -55,6 +55,6 @@ long_mode_start:
     hlt
 
 ; ==========================================
-; Sección .note.GNU-stack para eliminar warning del linker
+; .note.GNU-stack section to eliminate linker warning
 ; ==========================================
 section .note.GNU-stack noexec

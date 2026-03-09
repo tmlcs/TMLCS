@@ -1,4 +1,129 @@
+[BOOT] Serial initialized successfully
+[BOOT] Baud rate: 115200
+[BOOT] Port: COM1 (0x3F8)
+[BOOT] VGA initialized successfully
+
+=== BSS Initialization Test ===
+BSS variable (should be 0x00000000): 0x0x00000000
+DATA variable (should be 0x12345678): 0x0x12345678
+[BSS TEST] PASSED: BSS initialized to zero
+
+=== Memory Mapping Test ===
+Page tables: 2GiB mapped (0x00000000-0x7FFFFFFF)
+Testing access to 80MB (0x05000000)...
+CR3 value: 0x0x0000000000108000
+Page table base: 0x0x0000000000108000
+CR3 validation: OK
+L4[0] -> L3 at: 0x0x0000000000109000
+L4->L3 mapping: OK
+Write pattern: 0x0xDEADBEEF
+Read back:   0x0xDEADBEEF
+[MEM TEST] PASSED: Memory access at 80MB works
+
+=== Color Validation Test ===
+Testing valid colors (0-15)...
+Testing invalid colors (>15)...
+Color validation: PASSED
+[COLOR TEST] PASSED: Color validation works
+
+=== Debug Macros Test ===
+Testing DEBUG_PRINTLN...
+[DEBUG MACRO] DEBUG_PRINTLN: OK
+[DEBUG] debug_test_value = 0xCAFEBABE
+[DEBUG MACRO] DEBUG_VAR: OK
+[DEBUG MACRO] DEBUG_ASSERT (pass): OK
+[DEBUG] Testing DEBUG_LOG macro
+[DEBUG MACRO] DEBUG_LOG: OK
+[DEBUG MACROS] All tests passed
+
+=== Print Functions Test ===
+print_hex64(0x123456789ABCDEF0): 0x123456789ABCDEF0
+print_dec_signed(12345): 12345
+print_dec_signed(-9876): -9876
+print_dec64_signed(-123456789012345): -123456789012345
+[PRINT FUNCTIONS] All tests passed
+
+=== Decimal Boundary Test ===
+serial_write_dec(UINT32_MAX): 4294967295
+serial_write_dec64(UINT64_MAX): 18446744073709551615
+serial_write_dec(0): 0
+serial_write_dec(5): 5
+serial_write_dec(1000000000): 1000000000
+serial_write_dec64(10000000000000000000): 10000000000000000000
+serial_write_dec_signed(INT32_MIN): -2147483648
+serial_write_dec_signed(INT32_MAX): 2147483647
+[DECIMAL BOUNDARY] All tests passed
+
+=== Query Functions Test ===
+Current cursor: col=0, row=5
+print_get_cursor: OK
+Setting cursor to (40, 12)...
+Cursor set successfully: col=40, row=12
+print_set_cursor: OK
+print_set_cursor clamp col: OK
+print_set_cursor clamp row: OK
+print_set_cursor max boundary: OK
+print_set_cursor zero: OK
+Current color: fg=10, bg=0
+print_get_color: OK
+print_is_initialized: OK (VGA ready)
+[QUERY FUNCTIONS] All tests passed
+
+=== Serial Baud Rate Test ===
+Baud 115200: OK
+Baud 9600: OK
+Baud 110: OK
+Baud 57600: OK
+Baud 0 (invalid): correctly rejected
+Baud 50 (invalid): correctly rejected
+Baud 230400 (invalid): correctly rejected
+[SERIAL BAUD RATE] All tests passed
+
+=== Serial Null Pointer Test ===
+Serial initial state: OK (not failed)
+Testing serial_write_str(nullptr)...
+CRIT-003 PASSED: serial_failed NOT set for null pointer
+Error code: SERIAL_ERROR_NULL_PTR (correct)
+Testing serial still works after nullptr...
+Serial still functional: OK
+[SERIAL NULL POINTER] All tests passed
+
+=== String Functions Test ===
+memcpy non-overlapping: OK
+memmove overlapping: OK
+strcpy basic: OK
+strcpy empty string: OK
+strlen normal: OK (len=5)
+strlen empty: OK (len=0)
+strlen nullptr: OK (safely returns 0)
+[STRING FUNCTIONS] All tests passed
+
+=== Serial Signed Numbers Test ===
+serial_write_dec_signed(42): 42
+serial_write_dec_signed(-1234): -1234
+serial_write_dec_signed(0): 0
+serial_write_dec64_signed(-9876543210): -9876543210
+serial_write_dec64_signed(INT64_MIN): -9223372036854775808
+[SERIAL SIGNED] All tests passed
+
+=== Hardware Information Test ===
+CPU Max Leaf: 0x0000000D
+Vendor: AuthenticAMD
+Family: 15, Model: 11, Stepping: 1
+Long Mode (64-bit): Supported
+[HARDWARE INFO] CPU detection complete
 
 === GLOBEX_OS Kernel Started ===
-GLOBEX_OS v0.009_x64
+GLOBEX_OS v0.015_x64
+Page tables: 2GiB mapped
+Test: BSS initialization - OK
+Test: Memory mapping - OK
+Test: Color validation - OK
+Test: Debug macros - OK
+Test: Print functions (64-bit, signed) - OK
+Test: Query functions (cursor, color) - OK
+Test: Serial baud rates - OK
+Test: String functions - OK
+Test: Serial signed numbers - OK
+Test: Hardware info (CPUID) - OK
 System halted - press reset to restart
