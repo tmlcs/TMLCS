@@ -55,6 +55,7 @@ void spinlock_init(spinlock_t* lock) {
         return;
     }
     lock->locked = 0;
+    lock->interrupts_enabled = false;
     memory_barrier();
 }
 
@@ -62,24 +63,24 @@ void spinlock_acquire(spinlock_t* lock) {
     if (lock == nullptr) {
         return;
     }
-    
-    /* Disable interrupts to prevent deadlock */
+
+    /* Disable interrupts to prevent deadlock and save state */
     interrupt_state_t int_state;
     cli_save(&int_state);
-    
-    /* 
+
+    /*
      * Spin until we can atomically set locked from 0 to 1
      * Using LOCK CMPXCHG ensures atomicity across all CPUs
      */
     while (1) {
         uint64_t expected = 0;  /* We expect unlocked state */
         uint64_t desired = 1;   /* We want to lock it */
-        
-        /* 
+
+        /*
          * LOCK CMPXCHG: Atomic compare-and-swap
          * If [lock->locked] == expected: set to desired, return expected
          * If [lock->locked] != expected: return current value, no change
-         * 
+         *
          * The LOCK prefix ensures this is atomic across all CPUs.
          * It also acts as a full memory barrier.
          */
@@ -90,19 +91,22 @@ void spinlock_acquire(spinlock_t* lock) {
             : "r"(desired), "a"(expected)
             : "memory"
         );
-        
+
         /* If result == 0, we successfully acquired the lock */
         if (result == 0) {
+            /* FIX CRIT-004: Save interrupt state in lock for restore on release */
+            lock->interrupts_enabled = int_state.interrupts_enabled;
+            memory_barrier();
             break;
         }
-        
-        /* 
+
+        /*
          * Spin with PAUSE instruction to reduce power consumption
          * and improve hyperthreading performance
          */
         __asm__ volatile ("pause" ::: "memory");
     }
-    
+
     memory_barrier();
 }
 
@@ -110,10 +114,14 @@ bool spinlock_try_acquire(spinlock_t* lock) {
     if (lock == nullptr) {
         return false;
     }
-    
+
+    /* Disable interrupts and save state */
+    interrupt_state_t int_state;
+    cli_save(&int_state);
+
     uint64_t expected = 0;
     uint64_t desired = 1;
-    
+
     uint64_t result;
     __asm__ volatile (
         "lock cmpxchg %2, %1"
@@ -121,32 +129,48 @@ bool spinlock_try_acquire(spinlock_t* lock) {
         : "r"(desired), "a"(expected)
         : "memory"
     );
-    
+
     memory_barrier();
-    
+
     /* Return true if we acquired the lock (result == 0) */
-    return (result == 0);
+    if (result == 0) {
+        /* FIX CRIT-004: Save interrupt state in lock for restore on release */
+        lock->interrupts_enabled = int_state.interrupts_enabled;
+        memory_barrier();
+        return true;
+    }
+
+    /* Failed to acquire - restore interrupt state */
+    sti_restore(&int_state);
+    return false;
 }
 
 void spinlock_release(spinlock_t* lock) {
     if (lock == nullptr) {
         return;
     }
-    
+
     /* Memory barrier before release */
     memory_barrier();
-    
+
     /* Release the lock by setting locked to 0 */
     lock->locked = 0;
-    
+
+    /*
+     * FIX CRIT-004: Restore interrupt state
+     * Read interrupts_enabled BEFORE the memory barrier
+     * This ensures we restore the state that was saved during acquire
+     */
+    bool was_enabled = lock->interrupts_enabled;
+    lock->interrupts_enabled = false;  /* Reset for next acquire */
+
     /* Full memory barrier after release */
     memory_barrier();
-    
-    /* 
-     * Note: We do NOT re-enable interrupts here automatically.
-     * The caller should manage interrupt state if needed.
-     * For simple usage, interrupts can be re-enabled after release.
-     */
+
+    /* Restore interrupt state if it was enabled before acquire */
+    if (was_enabled) {
+        __asm__ volatile ("sti" ::: "memory");
+    }
 }
 
 /* =============================================================================

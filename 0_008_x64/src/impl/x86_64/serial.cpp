@@ -240,8 +240,12 @@ static bool serial_wait_transmit_empty_timeout(uint32_t timeout) {
     serial_error_code = SERIAL_ERROR_TIMEOUT;
     serial_timeout_count++;
 
-    /* Report failure via VGA if available */
-    if (print_detect()) {
+    /* FIX CRIT-005: Use print_is_initialized() instead of print_detect()
+     * print_detect() performs a hardware test write which may not be safe
+     * if called before VGA is fully initialized.
+     * print_is_initialized() simply checks the initialization flag.
+     */
+    if (print_is_initialized()) {
         print_set_color(PRINT_COLOR_YELLOW, PRINT_COLOR_BLACK);
         print_str("[SERIAL TIMEOUT] Hardware not responding!\r\n");
         print_set_color(PRINT_COLOR_LIGHT_GREEN, PRINT_COLOR_BLACK);
@@ -337,9 +341,13 @@ void serial_write_dec64(uint64_t value) {
 void serial_write_dec_signed(int32_t value) {
     if (value < 0) {
         serial_write_char('-');
-        serial_write_dec64((uint64_t)(-(int64_t)value));
+        /* FIX CRIT-003: Use two's complement to avoid undefined behavior.
+         * For INT32_MIN (-2147483648), negation would overflow in signed arithmetic.
+         * Casting to uint64_t first, then negating in unsigned arithmetic is safe.
+         */
+        serial_write_dec64(0 - static_cast<uint64_t>(value));
     } else {
-        serial_write_dec((uint32_t)value);
+        serial_write_dec(static_cast<uint32_t>(value));
     }
 }
 
@@ -350,9 +358,13 @@ void serial_write_dec_signed(int32_t value) {
 void serial_write_dec64_signed(int64_t value) {
     if (value < 0) {
         serial_write_char('-');
-        serial_write_dec64((uint64_t)(-value));
+        /* FIX CRIT-003: Use two's complement to avoid undefined behavior.
+         * For INT64_MIN (-9223372036854775808), negation would overflow in signed arithmetic.
+         * Casting to uint64_t first, then negating in unsigned arithmetic is safe.
+         */
+        serial_write_dec64(0 - static_cast<uint64_t>(value));
     } else {
-        serial_write_dec64((uint64_t)value);
+        serial_write_dec64(static_cast<uint64_t>(value));
     }
 }
 

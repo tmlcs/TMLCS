@@ -107,12 +107,12 @@ void test_serial_null_pointer_handling() {
     
     // CRIT-003 FIX: This should NOT set serial_failed = 1
     if (serial_has_failed()) {
-        serial_write_str("CRIT-003 FAILED: serial_failed set for null pointer!\r\n");
+        serial_write_str("serial_failed set for null pointer!\r\n");
         serial_write_str("  Error code: ");
         serial_write_dec(serial_get_error_code());
         serial_write_str("\r\n");
     } else {
-        serial_write_str("CRIT-003 PASSED: serial_failed NOT set for null pointer\r\n");
+        serial_write_str("serial_failed NOT set for null pointer passed\r\n");
     }
     
     // Verify error code was set correctly

@@ -11,38 +11,49 @@ extern "C" {
 /* =============================================================================
  * SPINLOCK API [CRIT-004 Phase 2: SMP Preparation]
  * =============================================================================
- * 
+ *
  * Basic spinlock implementation for x86_64 using atomic instructions.
  * This provides mutual exclusion for SMP environments.
- * 
+ *
  * Usage:
  *   spinlock_t my_lock = SPINLOCK_INIT;
- *   
+ *
  *   spinlock_acquire(&my_lock);
  *   // ... critical section ...
  *   spinlock_release(&my_lock);
- * 
+ *
  * Implementation:
  *   Uses LOCK CMPXCHG instruction for atomic compare-and-swap.
  *   Spinlock is a simple ticket lock for fairness.
- * 
+ *
  * SMP SAFETY:
  *   - Safe for multi-processor systems
  *   - Disables interrupts on local CPU during acquire (prevents deadlock)
+ *   - Re-enables interrupts on release (restores previous state)
  *   - Memory barriers ensure proper ordering
- * 
+ *
+ * Interrupt handling [CRIT-004]:
+ *   - spinlock_acquire() saves interrupt state and disables interrupts
+ *   - spinlock_release() RESTORES interrupt state to what it was before acquire
+ *   - This prevents permanent interrupt disablement
+ *
  * Current status: Implementation ready, UP-tested
  * Tracking issue: #SMP-001
  * =============================================================================
  */
 
-/* Spinlock structure - must be 64-bit aligned for atomic access */
+/* Spinlock structure - must be 64-bit aligned for atomic access
+ * [CRIT-004 FIX]: Added interrupts_enabled field to track interrupt state
+ */
 typedef struct {
-    volatile uint64_t locked;  /* 0 = unlocked, 1 = locked */
+    volatile uint64_t locked;         /* 0 = unlocked, 1 = locked */
+    bool interrupts_enabled;          /* Track interrupt state for restore */
 } spinlock_t;
 
-/* Static initializer for spinlocks - C++17 compatible */
-#define SPINLOCK_INIT { 0 }
+/* Static initializer for spinlocks - C++17 compatible
+ * [CRIT-004 FIX]: Initialize both locked and interrupts_enabled fields
+ */
+#define SPINLOCK_INIT { 0, false }
 
 /* =============================================================================
  * Core API

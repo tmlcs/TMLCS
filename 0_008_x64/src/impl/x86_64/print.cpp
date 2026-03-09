@@ -138,8 +138,12 @@ void print_dec(uint32_t value) {
 void print_dec_signed(int32_t value) {
     if (value < 0) {
         vga_put_char('-');
-        /* Cast to uint32_t to avoid undefined behavior with -INT32_MIN */
-        uint32_t abs_value = static_cast<uint32_t>(-(value + 1)) + 1;
+        /* FIX CRIT-003: Use two's complement to avoid undefined behavior.
+         * For INT32_MIN (-2147483648), negation would overflow in signed arithmetic.
+         * Casting to uint32_t first, then negating in unsigned arithmetic is safe.
+         * Example: INT32_MIN -> (uint32_t)0x80000000 -> -0x80000000 = 0x80000000 = 2147483648
+         */
+        uint32_t abs_value = 0 - static_cast<uint32_t>(value);
         print_dec(abs_value);
     } else {
         print_dec(static_cast<uint32_t>(value));
@@ -154,8 +158,12 @@ void print_dec64(uint64_t value) {
 void print_dec64_signed(int64_t value) {
     if (value < 0) {
         vga_put_char('-');
-        /* Cast to uint64_t to avoid undefined behavior with -INT64_MIN */
-        uint64_t abs_value = static_cast<uint64_t>(-(value + 1)) + 1;
+        /* FIX CRIT-003: Use two's complement to avoid undefined behavior.
+         * For INT64_MIN (-9223372036854775808), negation would overflow in signed arithmetic.
+         * Casting to uint64_t first, then negating in unsigned arithmetic is safe.
+         * Example: INT64_MIN -> (uint64_t)0x8000000000000000 -> -0x8000... = 0x8000... = 9223372036854775808
+         */
+        uint64_t abs_value = 0 - static_cast<uint64_t>(value);
         print_dec64(abs_value);
     } else {
         print_dec64(static_cast<uint64_t>(value));
