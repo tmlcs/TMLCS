@@ -17,27 +17,40 @@
 ```
 0_008_x64/
 ├── src/
-│   ├── intf/          # Public API header (C-compatible)
+│   ├── intf/          # Public API headers (C-compatible)
 │   │   ├── constants.h   # VGA, Multiboot, memory constants
 │   │   ├── debug.h       # Debug macros (DEBUG_PRINT, DEBUG_ASSERT, etc.)
+│   │   ├── decimal_utils.h
 │   │   ├── panic.h       # Kernel panic functions
 │   │   ├── print.h       # VGA text mode output API
 │   │   ├── serial.h      # UART serial port API
-│   │   └── string.h      # String utilities
+│   │   ├── spinlock.h    # Spinlock implementation for SMP
+│   │   ├── string.h      # String utilities
+│   │   └── vga.h         # Low-level VGA hardware access
 │   └── impl/
 │       ├── kernel/      # Kernel entry point
 │       │   └── main.cpp    # kernel_main() - OS initialization & tests
-│       ├── tests/       # Test modules for each subsystem
+│       ├── tests/       # Test modules (BSS, memory, color, debug, print, etc.)
 │       └── x86_64/      # x86_64-specific implementations
 │           ├── boot/       # Boot assembly (Multiboot header, 64-bit entry)
+│           │   ├── header.asm  # Multiboot2 header
+│           │   ├── main.asm    # Protected mode boot
+│           │   └── main64.asm  # Long mode entry
+│           ├── hex_utils.h
 │           ├── panic.cpp   # Panic implementation
 │           ├── print.cpp   # VGA text mode driver
 │           ├── serial.cpp  # UART 16550 driver
-│           └── string.cpp  # String utilities
+│           ├── spinlock.cpp
+│           ├── string.cpp  # String utilities
+│           └── vga.cpp     # Low-level VGA hardware
 ├── targets/
 │   └── x86_64/
 │       ├── linker.ld    # Linker script (kernel at 1MB, 2GiB identity mapped)
 │       └── iso/         # ISO build directory (GRUB structure)
+│           └── boot/
+│               ├── grub/
+│               │   └── grub.cfg
+│               └── kernel.bin
 ├── Makefile             # Build system (g++, nasm, ld, grub-mkrescue)
 └── dist/                # Build outputs (ISO, kernel.bin)
 ```
@@ -59,21 +72,30 @@ Required tools (verify with `make verify-tools`):
 - `ld` - GNU linker
 - `grub-mkrescue` - GRUB ISO creator
 - `qemu-system-x86_64` - QEMU emulator
+- `clang-format` - Code formatting (optional, for development)
+- `clang-tidy`, `cppcheck`, `iwyu` - Static analysis (optional)
 
 ### Build Commands
 
 | Command | Description |
 |---------|-------------|
-| `make build-x86_64` | Build kernel for x86_64 (default target) |
-| `make run` | Build and run in QEMU |
-| `make run-debug` | Run with debug output (guest errors, unimp) |
-| `make run-serial` | Run with serial output to `serial_output.log` |
-| `make run-stdio` | Run with serial on stdio (interactive debugging) |
-| `make clean` | Remove build artifacts (`build/`, `*.bin`) |
-| `make distclean` | Remove all generated files (including `dist/`) |
-| `make rebuild` | Clean and rebuild |
-| `make verify-tools` | Check if all required tools are available |
-| `make help` | Show all available targets |
+| `make -C 0_008_x64 build-x86_64` | Build kernel for x86_64 (default target) |
+| `make -C 0_008_x64 run` | Build and run in QEMU |
+| `make -C 0_008_x64 run-debug` | Run with debug output (guest errors, unimp) |
+| `make -C 0_008_x64 run-serial` | Run with serial output to `serial_output.log` |
+| `make -C 0_008_x64 run-stdio` | Run with serial on stdio (interactive debugging) |
+| `make -C 0_008_x64 clean` | Remove build artifacts (`build/`, `*.bin`) |
+| `make -C 0_008_x64 distclean` | Remove all generated files (including `dist/`) |
+| `make -C 0_008_x64 rebuild` | Clean and rebuild |
+| `make -C 0_008_x64 verify-tools` | Check if all required tools are available |
+| `make -C 0_008_x64 help` | Show all available targets |
+
+### Test Verification
+
+After running the kernel with serial output, verify tests with:
+```bash
+./scripts/verify_tests.sh test_output.log
+```
 
 ### Compiler Flags
 
@@ -100,6 +122,12 @@ CFLAGS := -ffreestanding -fno-exceptions -fno-rtti \
    - Functions: `snake_case` with module prefix (e.g., `print_set_color`, `serial_write_str`)
    - Types: `PascalCase` with `_t` suffix (e.g., `PrintColor_t`)
 
+4. **Code Formatting**:
+   - Based on LLVM style with 4-space indentation
+   - 100 character column limit
+   - Configured via `.clang-format`
+   - Run `./scripts/format.sh` to auto-format
+
 ### Debugging
 
 The project uses compile-time debug macros controlled by `DEBUG_ENABLE`:
@@ -117,30 +145,37 @@ DEBUG_PRINTF("Fmt: %x %s", val, str);  // Limited format support
 
 ### Testing Practices
 
-The kernel includes self-tests in `kernel_main()`:
+The kernel includes comprehensive self-tests in `kernel_main()`:
 - BSS initialization verification
 - Memory mapping tests (high memory access)
 - Color validation
 - Debug macro tests
 - Print function tests (64-bit, signed numbers)
 - Query function tests (cursor, color)
-- Serial output tests
+- Serial output tests (baud rates, null pointer handling)
+- String function tests (memcpy overlap detection)
 - Hardware detection (CPUID)
 
-Test verification script: `scripts/verify_tests.sh`
+Tests are modular with separate `.h`/`.cpp` pairs in `src/impl/tests/`.
 
 ### Error Handling
 
 - **Kernel Panic**: Use `panic()` or `panic_simple()` for fatal errors
 - **Assertions**: Use `DEBUG_ASSERT()` for development-time checks
 - **No Exceptions**: C++ exceptions are disabled (`-fno-exceptions`)
+- **Early Panic**: Direct VGA write fallback when both serial and VGA fail
 
-### Code Formatting
+### Static Analysis
 
-- **C/C++**: LLVM style with 4-space indentation (`.clang-format`)
-- **Assembly**: 8-space tabs (`.editorconfig`)
-- **Line Limit**: 100 characters
-- **Braces**: Attached style
+Run static analysis tools with:
+```bash
+./scripts/analyze.sh
+```
+
+This runs:
+- `clang-tidy` - Code style and correctness
+- `cppcheck` - Static analysis for C/C++
+- `iwyu` - Include what you use (header cleanup)
 
 ### Git Workflow
 
@@ -158,6 +193,7 @@ Test verification script: `scripts/verify_tests.sh`
 - 16 colors (4-bit foreground + 4-bit background)
 - Functions: `print_str()`, `print_char()`, `print_hex()`, `print_dec()`, `print_hex64()`, `print_dec_signed()`, `print_dec64_signed()`
 - Query functions: `print_get_cursor()`, `print_get_color()`, `print_set_cursor()`
+- SMP-safe via spinlock (`print_begin_atomic()`, `print_end_atomic()`)
 
 ### Serial Driver (`serial.h`/`serial.cpp`)
 
@@ -165,7 +201,7 @@ Test verification script: `scripts/verify_tests.sh`
 - Default: COM1 (0x3F8) at 115200 baud
 - Functions mirror VGA driver for dual-output debugging
 - Supports signed 32-bit and 64-bit decimal output
-- Error reporting API for diagnosing failures
+- Error reporting API: `serial_get_error_code()`, `serial_has_failed()`
 
 ### Boot Process
 
@@ -189,6 +225,6 @@ Test verification script: `scripts/verify_tests.sh`
 
 | Script | Description |
 |--------|-------------|
+| `scripts/format.sh` | Auto-format all C++ source files |
+| `scripts/analyze.sh` | Run static analysis tools |
 | `scripts/verify_tests.sh` | Verify test output from QEMU serial console |
-| `scripts/analyze.sh` | Code analysis utilities |
-| `scripts/format.sh` | Code formatting utilities |

@@ -83,7 +83,10 @@ void test_query_functions() {
     }
 
     // Test print_get_color() - get current color
-    print_get_color(&test_fg, &test_bg);
+    // Returns combined color byte: (bg << 4) | fg
+    uint8_t color = print_get_color();
+    test_fg = color & 0x0F;  // Lower 4 bits = foreground
+    test_bg = (color >> 4) & 0x0F;  // Upper 4 bits = background
     serial_write_str("Current color: fg=");
     serial_write_dec((uint32_t)test_fg);
     serial_write_str(", bg=");

@@ -7,6 +7,12 @@ extern "C" {
 
 void test_string_functions(void);
 
+/**
+ * @brief Test memcpy overlap detection (CRIT-005)
+ * Verifies that overlapping regions are detected in DEBUG mode
+ */
+void test_memcpy_overlap_detection(void);
+
 #ifdef __cplusplus
 }
 #endif

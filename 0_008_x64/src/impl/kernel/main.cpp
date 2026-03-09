@@ -217,6 +217,7 @@ extern "C" [[noreturn]] void kernel_main() {
     test_serial_baud_rates();
     test_serial_null_pointer_handling();  // CRIT-003: Null pointer should not mark hardware failed
     test_string_functions();
+    test_memcpy_overlap_detection();  // CRIT-005: Overlap detection in DEBUG mode
     test_serial_signed_numbers();
     test_hardware_info();
 

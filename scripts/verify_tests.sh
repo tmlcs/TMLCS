@@ -5,7 +5,7 @@
 # Verifies test output from QEMU serial console
 # =============================================================================
 
-set -e
+# Don't use set -e as ((var++)) returns 1 when var is 0
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

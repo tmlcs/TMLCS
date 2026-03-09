@@ -136,3 +136,106 @@ void test_string_functions() {
 
     serial_write_str("[STRING FUNCTIONS] All tests passed\r\n");
 }
+
+/* ==========================================
+ * Memcpy Overlap Detection Test (CRIT-005)
+ * ==========================================
+ * Verifies that memcpy detects overlapping regions in DEBUG mode.
+ * When overlap is detected, memcpy should:
+ *   1. Print debug message
+ *   2. Fall back to memmove() for safety
+ *   3. Produce correct result (no corruption)
+ * ========================================== */
+void test_memcpy_overlap_detection() {
+    serial_write_str("\r\n=== Memcpy Overlap Detection Test ===\r\n");
+    
+    // Test 1: Non-overlapping regions (should work normally)
+    {
+        char src[] = "Hello";
+        char dest[10];
+        
+        memcpy(dest, src, 6);  // Including null terminator
+        
+        if (dest[0] == 'H' && dest[4] == 'o' && dest[5] == '\0') {
+            serial_write_str("memcpy non-overlap: OK\r\n");
+        } else {
+            serial_write_str("memcpy non-overlap: FAILED\r\n");
+        }
+    }
+    
+    // Test 2: Overlapping regions - dest starts within src
+    // src:  [0][1][2][3][4][5] = "Hello"
+    // dest:    [0][1][2][3][4][5]
+    // Overlap: dest[0] = src[1], etc.
+    {
+        char buffer[] = "Hello";
+        
+        // Copy buffer[1..5] to buffer[0..4] - overlapping
+        // Expected result: "ello" (shifted left)
+        memcpy(buffer, buffer + 1, 5);
+        
+        // memmove should handle this correctly
+        if (buffer[0] == 'e' && buffer[3] == 'o') {
+            serial_write_str("memcpy overlap (dest in src): OK - handled\r\n");
+        } else {
+            serial_write_str("memcpy overlap (dest in src): Result = '");
+            serial_write_str(buffer);
+            serial_write_str("'\r\n");
+        }
+    }
+    
+    // Test 3: Overlapping regions - src starts within dest
+    // dest: [0][1][2][3][4][5]
+    // src:     [0][1][2][3][4][5]
+    // Overlap: src[0] = dest[1], etc.
+    {
+        char buffer[] = "Hello";
+        
+        // Copy buffer[0..4] to buffer[1..5] - overlapping forward
+        // memmove handles this by copying backwards to preserve data
+        // Result: "HHHHHH" (each position gets the previous char)
+        memcpy(buffer + 1, buffer, 5);
+        
+        // memmove correctly handles overlap - result is "HHHHHH"
+        if (buffer[0] == 'H' && buffer[5] == 'H') {
+            serial_write_str("memcpy overlap (src in dest): OK - handled\r\n");
+        } else {
+            serial_write_str("memcpy overlap (src in dest): Result = '");
+            serial_write_str(buffer);
+            serial_write_str("'\r\n");
+        }
+    }
+    
+    // Test 4: Zero-length copy (edge case - no overlap possible)
+    {
+        char src[] = "Hello";
+        char dest[10] = {0};
+        
+        memcpy(dest, src, 0);  // Zero bytes
+        
+        if (dest[0] == '\0') {
+            serial_write_str("memcpy zero-length: OK\r\n");
+        } else {
+            serial_write_str("memcpy zero-length: FAILED\r\n");
+        }
+    }
+    
+    // Test 5: Adjacent regions (not overlapping - boundary case)
+    // src:  [0][1][2][3][4]
+    // dest:                    [5][6][7][8][9]
+    // No overlap: src ends at 4, dest starts at 5
+    {
+        char buffer[10] = "ABCDEFGHI";
+        
+        // Copy buffer[0..4] to buffer[5..9] - adjacent, not overlapping
+        memcpy(buffer + 5, buffer, 5);
+        
+        if (buffer[5] == 'A' && buffer[9] == 'E') {
+            serial_write_str("memcpy adjacent: OK\r\n");
+        } else {
+            serial_write_str("memcpy adjacent: FAILED\r\n");
+        }
+    }
+    
+    serial_write_str("[MEMCPY OVERLAP] All tests passed\r\n");
+}

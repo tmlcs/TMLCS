@@ -1,6 +1,32 @@
 #include "string.h"
 
 /* ==========================================
+ * DEBUG: Overlap detection for memcpy
+ * ==========================================
+ * Two memory regions [dest, dest+n) and [src, src+n) overlap if:
+ *   dest < src + n  AND  src < dest + n
+ * 
+ * This is equivalent to checking if the regions intersect.
+ * ========================================== */
+#ifdef DEBUG_ENABLE
+#include "debug.h"
+
+static inline bool memory_regions_overlap(const void* dest, const void* src, size_t n) {
+    /* If n is 0, no overlap possible */
+    if (n == 0) {
+        return false;
+    }
+    
+    /* Cast to uintptr_t for pointer arithmetic */
+    uintptr_t d = reinterpret_cast<uintptr_t>(dest);
+    uintptr_t s = reinterpret_cast<uintptr_t>(src);
+    
+    /* Check overlap condition: dest < src + n && src < dest + n */
+    return (d < s + n) && (s < d + n);
+}
+#endif /* DEBUG_ENABLE */
+
+/* ==========================================
  * memmove() - Copy memory with overlap handling
  * ==========================================
  * Unlike memcpy(), memmove() handles overlapping regions correctly
@@ -48,16 +74,38 @@ void* memmove(void* dest, const void* src, size_t n) {
  *
  * @note Overlap detection: Two regions [dest, dest+n) and [src, src+n)
  *       overlap if: dest < src + n && src < dest + n
+ * 
+ * @note DEBUG_ENABLE: Runtime overlap check with error report
+ *       Release: No overhead, caller must ensure no overlap
  */
 void* memcpy(void* dest, const void* src, size_t n) {
     uint8_t* d = static_cast<uint8_t*>(dest);
     const uint8_t* s = static_cast<const uint8_t*>(src);
 
-    // Note: Runtime overlap check removed to avoid dependency on debug.h
-    // which causes circular dependencies with serial.h/print.h.
-    // Callers must ensure regions do not overlap.
-    // Use memmove() for overlapping regions.
+    /* ==========================================
+     * CRIT-005 FIX: Overlap detection in DEBUG mode
+     * ==========================================
+     * If overlap is detected, report error via DEBUG_PRINT
+     * and fall back to memmove() to prevent corruption.
+     * ========================================== */
+    #ifdef DEBUG_ENABLE
+    if (memory_regions_overlap(dest, src, n)) {
+        DEBUG_PRINT("\r\n[MEMCPY OVERLAP DETECTED - CRIT-005]\r\n");
+        DEBUG_PRINT("  Using memmove() instead for safety\r\n");
+        DEBUG_PRINT("  src:  0x");
+        DEBUG_PRINT_HEX((uintptr_t)src);
+        DEBUG_PRINT("\r\n  dest: 0x");
+        DEBUG_PRINT_HEX((uintptr_t)dest);
+        DEBUG_PRINT("\r\n  size: ");
+        DEBUG_PRINT_DEC(n);
+        DEBUG_PRINT("\r\n");
+        
+        /* Use memmove for overlapping regions */
+        return memmove(dest, src, n);
+    }
+    #endif /* DEBUG_ENABLE */
 
+    /* Non-overlapping copy: simple forward copy */
     while (n--) {
         *d++ = *s++;
     }
