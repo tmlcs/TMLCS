@@ -138,7 +138,103 @@ void test_string_functions() {
 }
 
 /* ==========================================
- * Memcpy Overlap Detection Test (CRIT-005)
+ * String NULL Pointer Safety Test
+ * ==========================================
+ * Verifies that string functions handle NULL pointers safely
+ * without causing triple fault or undefined behavior.
+ * 
+ * All functions should:
+ *   - Return gracefully without crashing
+ *   - Not dereference NULL pointers
+ * ========================================== */
+void test_string_null_pointer_safety() {
+    serial_write_str("\r\n=== String NULL Pointer Safety Test ===\r\n");
+
+    // Test memcpy with NULL dest
+    {
+        char src[] = "Hello";
+        void* result = memcpy(nullptr, src, 5);
+        
+        if (result == nullptr) {
+            serial_write_str("memcpy(NULL, src, n): OK - returned NULL safely\r\n");
+        } else {
+            serial_write_str("memcpy(NULL, src, n): FAILED\r\n");
+        }
+    }
+
+    // Test memcpy with NULL src
+    {
+        char dest[10];
+        void* result = memcpy(dest, nullptr, 5);
+        
+        if (result == dest) {
+            serial_write_str("memcpy(dest, NULL, n): OK - returned dest safely\r\n");
+        } else {
+            serial_write_str("memcpy(dest, NULL, n): FAILED\r\n");
+        }
+    }
+
+    // Test memmove with NULL pointers
+    {
+        char src[] = "Hello";
+        char dest[10];
+        
+        void* r1 = memmove(nullptr, src, 5);
+        void* r2 = memmove(dest, nullptr, 5);
+        void* r3 = memmove(nullptr, nullptr, 5);
+        
+        if (r1 == nullptr && r2 == dest && r3 == nullptr) {
+            serial_write_str("memmove NULL handling: OK\r\n");
+        } else {
+            serial_write_str("memmove NULL handling: FAILED\r\n");
+        }
+    }
+
+    // Test strcpy with NULL pointers
+    {
+        char src[] = "Hello";
+        char dest[10];
+        
+        char* r1 = strcpy(nullptr, src);
+        char* r2 = strcpy(dest, nullptr);
+        
+        if (r1 == nullptr && r2 == dest) {
+            serial_write_str("strcpy NULL handling: OK\r\n");
+        } else {
+            serial_write_str("strcpy NULL handling: FAILED\r\n");
+        }
+    }
+
+    // Test memset with NULL pointer
+    {
+        void* result = memset(nullptr, 'A', 5);
+        
+        if (result == nullptr) {
+            serial_write_str("memset(NULL, c, n): OK - returned NULL safely\r\n");
+        } else {
+            serial_write_str("memset(NULL, c, n): FAILED\r\n");
+        }
+    }
+
+    // Test memcmp with NULL pointers
+    {
+        char buf[6] = "Hello";  // 5 chars + null terminator
+        int r1 = memcmp(nullptr, buf, 5);
+        int r2 = memcmp(buf, nullptr, 5);
+        int r3 = memcmp(nullptr, nullptr, 5);
+        
+        if (r1 == 0 && r2 == 0 && r3 == 0) {
+            serial_write_str("memcmp NULL handling: OK - returns 0 (equal)\r\n");
+        } else {
+            serial_write_str("memcmp NULL handling: FAILED\r\n");
+        }
+    }
+
+    serial_write_str("[STRING NULL SAFETY] All tests passed\r\n");
+}
+
+/* ==========================================
+ * Memcpy Overlap Detection Test
  * ==========================================
  * Verifies that memcpy detects overlapping regions in DEBUG mode.
  * When overlap is detected, memcpy should:

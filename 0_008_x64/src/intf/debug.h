@@ -9,6 +9,29 @@ extern "C" {
 #endif
 
 /* ==========================================
+ * SECURITY NOTE
+ * ==========================================
+ * The original variadic DEBUG_PRINTF(fmt, ...) macro was removed due to
+ * critical buffer overflow vulnerability. It accepted a single argument
+ * but could process multiple format specifiers, causing:
+ *   - Use of uninitialized memory
+ *   - Type confusion (same value interpreted as different types)
+ *   - Potential stack corruption
+ * 
+ * REPLACEMENT: Use type-safe single-argument macros:
+ *   - DEBUG_PRINTF_HEX(label, val)   - Hexadecimal output
+ *   - DEBUG_PRINTF_DEC(label, val)   - Decimal output
+ *   - DEBUG_PRINTF_STR(label, val)   - String output
+ *   - DEBUG_PRINTF_CHAR(label, val)  - Character output
+ *   - DEBUG_PRINTF_PTR(label, val)   - Pointer output
+ * 
+ * For multi-value output, use multiple macro calls:
+ *   DEBUG_PRINTF_HEX("addr", addr);
+ *   DEBUG_PRINTF_DEC("size", size);
+ * ==========================================
+ */
+
+/* ==========================================
  * Debugging Control
  * ==========================================
  * Define DEBUG_ENABLE to activate serial output
@@ -68,32 +91,65 @@ extern "C" {
  * ========================================== */
 
 /**
- * @brief [D001] DEBUG_PRINTF - Print with limited format support
- * Supports: %s (string), %x (hex), %d (decimal), %c (char)
- * Usage: DEBUG_PRINTF("Value: %x, Name: %s\r\n", hexVal, str);
- *
- * @note Simple implementation without varargs for freestanding kernel
- *       Use multiple calls for complex formats
+ * @brief [D001] DEBUG_PRINTF_HEX - Print single hexadecimal value with label
+ * Usage: DEBUG_PRINTF_HEX("value", myVar); -> "[DEBUG] value = 0xCAFEBABE"
+ * 
+ * @note Safe single-argument alternative to removed variadic DEBUG_PRINTF
+ * @see DEBUG_PRINTF_DEC, DEBUG_PRINTF_STR, DEBUG_PRINTF_CHAR for other types
  */
-#define DEBUG_PRINTF(fmt, arg) do { \
-    const char* _fmt = fmt; \
-    size_t _i = 0; \
-    while (_fmt[_i] != '\0') { \
-        if (_fmt[_i] == '%' && _fmt[_i + 1] != '\0') { \
-            _i++; \
-            switch (_fmt[_i]) { \
-                case 's': serial_write_str((const char*)(arg)); break; \
-                case 'x': serial_write_hex((uint32_t)(arg)); break; \
-                case 'd': serial_write_dec((uint32_t)(arg)); break; \
-                case 'c': serial_write_char((char)(arg)); break; \
-                case '%': serial_write_char('%'); break; \
-                default: serial_write_char('%'); serial_write_char(_fmt[_i]); break; \
-            } \
-        } else { \
-            serial_write_char(_fmt[_i]); \
-        } \
-        _i++; \
-    } \
+#define DEBUG_PRINTF_HEX(label, val) do { \
+    serial_write_str("[DEBUG] " label " = 0x"); \
+    serial_write_hex(val); \
+    serial_write_str("\r\n"); \
+} while(0)
+
+/**
+ * @brief [D001b] DEBUG_PRINTF_DEC - Print single decimal value with label
+ * Usage: DEBUG_PRINTF_DEC("count", myVar); -> "[DEBUG] count = 1234"
+ * 
+ * @note Safe single-argument alternative to removed variadic DEBUG_PRINTF
+ */
+#define DEBUG_PRINTF_DEC(label, val) do { \
+    serial_write_str("[DEBUG] " label " = "); \
+    serial_write_dec(val); \
+    serial_write_str("\r\n"); \
+} while(0)
+
+/**
+ * @brief [D001c] DEBUG_PRINTF_STR - Print single string value with label
+ * Usage: DEBUG_PRINTF_STR("name", myStr); -> "[DEBUG] name = hello"
+ * 
+ * @note Safe single-argument alternative to removed variadic DEBUG_PRINTF
+ * @note Does not validate pointer - ensure string is valid
+ */
+#define DEBUG_PRINTF_STR(label, val) do { \
+    serial_write_str("[DEBUG] " label " = "); \
+    serial_write_str(val); \
+    serial_write_str("\r\n"); \
+} while(0)
+
+/**
+ * @brief [D001d] DEBUG_PRINTF_CHAR - Print single char value with label
+ * Usage: DEBUG_PRINTF_CHAR("char", myChar); -> "[DEBUG] char = 'A'"
+ * 
+ * @note Safe single-argument alternative to removed variadic DEBUG_PRINTF
+ */
+#define DEBUG_PRINTF_CHAR(label, val) do { \
+    serial_write_str("[DEBUG] " label " = '"); \
+    serial_write_char(val); \
+    serial_write_str("'\r\n"); \
+} while(0)
+
+/**
+ * @brief [D001e] DEBUG_PRINTF_PTR - Print pointer address with label
+ * Usage: DEBUG_PRINTF_PTR("ptr", myPtr); -> "[DEBUG] ptr = 0x00007FFF"
+ * 
+ * @note Safe single-argument alternative for pointer debugging
+ */
+#define DEBUG_PRINTF_PTR(label, val) do { \
+    serial_write_str("[DEBUG] " label " = 0x"); \
+    serial_write_hex64((uint64_t)(val)); \
+    serial_write_str("\r\n"); \
 } while(0)
 
 /**
@@ -136,7 +192,11 @@ extern "C" {
 #define DEBUG_LOG(msg) ((void)0)
 #define DEBUG_VAR(name, val) ((void)0)
 #define DEBUG_BREAK() ((void)0)
-#define DEBUG_PRINTF(fmt, arg) ((void)0)
+#define DEBUG_PRINTF_HEX(label, val) ((void)0)
+#define DEBUG_PRINTF_DEC(label, val) ((void)0)
+#define DEBUG_PRINTF_STR(label, val) ((void)0)
+#define DEBUG_PRINTF_CHAR(label, val) ((void)0)
+#define DEBUG_PRINTF_PTR(label, val) ((void)0)
 #define DEBUG_PRINTLN(msg) ((void)0)
 #define DEBUG_ASSERT(cond) ((void)0)
 

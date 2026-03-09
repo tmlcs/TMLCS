@@ -8,7 +8,7 @@ extern "C" {
 void test_serial_baud_rates(void);
 
 /**
- * @brief Test null pointer handling (CRIT-003)
+ * @brief Test null pointer handling
  * Verifies that null pointers do NOT mark serial as hardware failed
  */
 void test_serial_null_pointer_handling(void);

@@ -8,7 +8,7 @@ extern "C" {
 void test_print_functions(void);
 
 /**
- * @brief Test decimal conversion boundary values (CRIT-001, CRIT-002)
+ * @brief Test decimal conversion boundary values
  * Tests uint32_max (4294967295), uint64_max (18446744073709551615), and zero
  */
 void test_decimal_boundary_values(void);

@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 /* =============================================================================
- * VGA Text Mode Driver API [CRIT-004]
+ * VGA Text Mode Driver API
  * =============================================================================
  * 
  * Low-level VGA text mode driver for x86_64.
@@ -26,7 +26,7 @@ extern "C" {
  *   - VGA Buffer: 0xB8000 (80 * 25 * 2 = 4000 bytes)
  *   - Each cell: 2 bytes (char + attribute)
  * 
- * SMP Safety [CRIT-004]:
+ * SMP Safety:
  *   - All functions are SMP-safe via spinlock
  *   - Lock is acquired per-operation
  *   - Use vga_begin_atomic()/vga_end_atomic() for multi-operation atomicity

@@ -77,12 +77,12 @@ void test_serial_baud_rates() {
 }
 
 /* ==========================================
- * Serial Null Pointer Handling Test (CRIT-003)
+ * Serial Null Pointer Handling Test
  * ==========================================
  * Verifies that passing null pointers to serial functions
  * does NOT incorrectly mark the serial port as hardware failed.
  * 
- * CRIT-003: Null pointer is a programming error, not hardware failure.
+ * Null pointer is a programming error, not hardware failure.
  * The serial_failed flag should NOT be set for null pointers.
  * ========================================== */
 void test_serial_null_pointer_handling() {
@@ -105,7 +105,7 @@ void test_serial_null_pointer_handling() {
     serial_write_str("Testing serial_write_str(nullptr)...\r\n");
     serial_write_str((const char*)0);  // Pass null pointer
     
-    // CRIT-003 FIX: This should NOT set serial_failed = 1
+    // This should NOT set serial_failed = 1
     if (serial_has_failed()) {
         serial_write_str("serial_failed set for null pointer!\r\n");
         serial_write_str("  Error code: ");

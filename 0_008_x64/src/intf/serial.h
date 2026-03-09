@@ -175,7 +175,7 @@ int serial_read_char(char* data);
 void serial_wait_transmit_empty(void);
 
 /* ==========================================
- * Error Reporting API (CRIT-004 Fix)
+ * Error Reporting API
  * ==========================================
  * These functions allow diagnosing serial port failures
  * instead of silent failures.
@@ -218,6 +218,35 @@ uint32_t serial_get_timeout_count(void);
  * Useful for recovery attempts or re-initialization.
  */
 void serial_clear_error(void);
+
+/**
+ * @brief Re-initialize serial port after a timeout or failure
+ * @param port Serial port (e.g., SERIAL_COM1)
+ * @param baud Baud rate (e.g., 115200)
+ * @return 1 if success, 0 if failure
+ *
+ * This function allows recovery from timeout errors by:
+ *   1. Clearing the failed state
+ *   2. Resetting error counters
+ *   3. Re-initializing the hardware
+ *
+ * Use this when:
+ *   - serial_has_failed() returns 1
+ *   - serial_get_error_code() returns SERIAL_ERROR_TIMEOUT
+ *   - You want to retry initialization without rebooting
+ *
+ * @note This is different from serial_init() - it properly clears
+ *       the failed state before re-initializing.
+ */
+int serial_reinit(uint16_t port, uint32_t baud);
+
+/**
+ * @brief Re-initialize COM1 with default baud rate
+ * @return 1 if success, 0 if failure
+ *
+ * Convenience wrapper for serial_reinit(SERIAL_DEFAULT_PORT, SERIAL_DEFAULT_BAUD).
+ */
+int serial_reinit_default(void);
 
 /**
  * @brief Get a human-readable error message

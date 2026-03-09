@@ -6,9 +6,17 @@ extern __bss_end
 section .text
 bits 32
 start:
-	mov esp, stack_top
+    ; ==========================================
+    ; CRITICAL: Initialize stack with 16-byte alignment
+    ; ==========================================
+    ; System V ABI requires 16-byte stack alignment.
+    ; Stack is 64KB (16 * 4096 bytes), so stack_top is already aligned.
+    ; However, we explicitly ensure alignment for safety.
+    ; ==========================================
+    mov esp, stack_top
+    and esp, ~0xF         ; Ensure 16-byte alignment in 32-bit mode
 
-	call check_multiboot
+    call check_multiboot
 	call check_cpuid
 	call check_long_mode
 

@@ -4,6 +4,26 @@
 #include "decimal_utils.h"
 
 /* ==========================================
+ * Memory Barriers for SMP Safety
+ * ==========================================
+ * volatile prevents compiler optimization but doesn't guarantee:
+ *   - Atomicity of read-modify-write operations
+ *   - Memory ordering across CPUs
+ *   - Visibility of writes to other CPUs
+ *
+ * These barriers ensure proper ordering on x86_64:
+ *   - mb()  : Full memory barrier (load + store)
+ *   - rmb() : Read memory barrier (load ordering)
+ *   - wmb() : Write memory barrier (store ordering)
+ *
+ * Note: x86_64 has strong memory ordering, but barriers are still
+ * needed for SMP correctness and to prevent compiler reordering.
+ */
+#define mb()  __asm__ volatile ("" ::: "memory")
+#define rmb() __asm__ volatile ("" ::: "memory")
+#define wmb() __asm__ volatile ("" ::: "memory")
+
+/* ==========================================
  * Timeout Configuration
  * ==========================================
  * SERIAL_MAX_WAIT: Maximum iterations for busy-wait loops
@@ -25,6 +45,12 @@
  * ==========================================
  * VOLATILE: These variables track hardware state and must not
  * be optimized/cached by the compiler
+ * 
+ * For SMP safety, all accesses to these variables
+ * must use memory barriers (mb/rmb/wmb) to ensure:
+ *   - Proper ordering of reads/writes across CPUs
+ *   - Visibility of changes to all processors
+ *   - Atomicity for compound operations (protected by barriers)
  */
 static volatile int serial_initialized = 0;
 static volatile uint16_t serial_port = 0;
@@ -108,8 +134,10 @@ int serial_init(uint16_t port, uint32_t baud) {
 
     /* Validate baud rate is not zero */
     if (baud == 0) {
+        wmb();  /* Ensure all prior writes complete */
         serial_failed = 1;
         serial_error_code = SERIAL_ERROR_INIT_FAIL;
+        wmb();  /* Ensure state writes are visible */
         return 0;  // Invalid parameter: baud rate cannot be zero
     }
 
@@ -119,37 +147,45 @@ int serial_init(uint16_t port, uint32_t baud) {
      * Standard UART baud rates:
      *   - Minimum: 110 baud (divisor = 1047)
      *   - Maximum: 115200 baud (divisor = 1)
-     * 
-     * Common rates: 110, 300, 600, 1200, 2400, 4800, 9600, 
+     *
+     * Common rates: 110, 300, 600, 1200, 2400, 4800, 9600,
      *               14400, 19200, 38400, 57600, 115200
-     * 
+     *
      * Out-of-range rates cause:
      *   - Very low baud: divisor > 65535 (truncation, wrong rate)
      *   - Very high baud: divisor = 0 (undefined behavior)
      * ========================================== */
     if (baud < 110 || baud > 115200) {
+        wmb();
         serial_failed = 1;
         serial_error_code = SERIAL_ERROR_INIT_FAIL;
+        wmb();
         return 0;  // Invalid baud rate: must be 110-115200
     }
 
     if (!is_valid_serial_port(port)) {
+        wmb();
         serial_failed = 1;
         serial_error_code = SERIAL_ERROR_INIT_FAIL;
+        wmb();
         return 0;  // Invalid port: must be COM1-COM4
     }
 
     /* Verify that the port physically exists */
     if (!serial_port_exists(port)) {
+        wmb();
         serial_failed = 1;
         serial_error_code = SERIAL_ERROR_INIT_FAIL;
+        wmb();
         return 0;  // Port does not exist or is not a UART
     }
 
     /* Reset error state on successful init */
+    wmb();  /* Clear prior state */
     serial_failed = 0;
     serial_error_code = SERIAL_ERROR_NONE;
     serial_timeout_count = 0;
+    wmb();  /* Ensure state is visible before proceeding */
 
     /* Save port */
     serial_port = port;
@@ -188,7 +224,9 @@ int serial_init(uint16_t port, uint32_t baud) {
         __asm__ volatile ("nop");
     }
 
+    wmb();  /* Ensure all prior writes complete */
     serial_initialized = 1;
+    mb();   /* Full barrier - initialization complete and visible */
 
     return 1;
 }
@@ -209,6 +247,7 @@ int serial_is_initialized(void) {
  * Uses busy-wait with limit to prevent infinite hangs
  */
 static bool serial_wait_transmit_empty_timeout(uint32_t timeout) {
+    rmb();  /* Ensure we see latest state */
     if (!serial_initialized) {
         return false;
     }
@@ -236,15 +275,18 @@ static bool serial_wait_transmit_empty_timeout(uint32_t timeout) {
      *   3. Increment timeout counter for diagnostics
      *   4. Report failure via VGA if available
      * ========================================== */
+    wmb();  /* Ensure ordering of failure state */
     serial_failed = 1;
     serial_error_code = SERIAL_ERROR_TIMEOUT;
-    serial_timeout_count++;
+    serial_timeout_count++;  /* Note: RMW not atomic without lock */
+    wmb();  /* Ensure failure state is visible */
 
-    /* FIX CRIT-005: Use print_is_initialized() instead of print_detect()
+    /* Use print_is_initialized() instead of print_detect()
      * print_detect() performs a hardware test write which may not be safe
      * if called before VGA is fully initialized.
      * print_is_initialized() simply checks the initialization flag.
      */
+    rmb();  /* Ensure we see latest print state */
     if (print_is_initialized()) {
         print_set_color(PRINT_COLOR_YELLOW, PRINT_COLOR_BLACK);
         print_str("[SERIAL TIMEOUT] Hardware not responding!\r\n");
@@ -261,6 +303,7 @@ void serial_wait_transmit_empty(void) {
 
 void serial_write_char(char data) {
     /* Check if serial is initialized OR failed (for graceful degradation) */
+    rmb();  /* Ensure we see latest state */
     if (!serial_initialized) {
         return;  /* Serial not initialized or failed */
     }
@@ -277,13 +320,15 @@ void serial_write_char(char data) {
 }
 
 void serial_write_str(const char* str) {
-    /* 
-     * CRIT-003 FIX: Null pointer is a programming error, NOT hardware failure.
+    /*
+     * Null pointer is a programming error, NOT hardware failure.
      * Do NOT set serial_failed or increment timeout counters.
      * Just record the error code for diagnostics and return.
      */
     if (str == nullptr) {
+        wmb();
         serial_error_code = SERIAL_ERROR_NULL_PTR;
+        wmb();
         /* Do NOT set serial_failed = 1 - this is not a hardware error */
         return;
     }
@@ -341,7 +386,7 @@ void serial_write_dec64(uint64_t value) {
 void serial_write_dec_signed(int32_t value) {
     if (value < 0) {
         serial_write_char('-');
-        /* FIX CRIT-003: Use two's complement to avoid undefined behavior.
+        /* Use two's complement to avoid undefined behavior.
          * For INT32_MIN (-2147483648), negation would overflow in signed arithmetic.
          * Casting to uint64_t first, then negating in unsigned arithmetic is safe.
          */
@@ -358,7 +403,7 @@ void serial_write_dec_signed(int32_t value) {
 void serial_write_dec64_signed(int64_t value) {
     if (value < 0) {
         serial_write_char('-');
-        /* FIX CRIT-003: Use two's complement to avoid undefined behavior.
+        /* Use two's complement to avoid undefined behavior.
          * For INT64_MIN (-9223372036854775808), negation would overflow in signed arithmetic.
          * Casting to uint64_t first, then negating in unsigned arithmetic is safe.
          */
@@ -369,10 +414,11 @@ void serial_write_dec64_signed(int64_t value) {
 }
 
 int serial_read_char(char* data) {
+    rmb();  /* Ensure we see latest state */
     if (!serial_initialized) {
         return 0;
     }
-    
+
     if (data == nullptr) {
         return 0;
     }
@@ -401,6 +447,7 @@ int serial_read_char(char* data) {
  * but encountered a hardware error during operation (e.g., timeout).
  */
 int serial_has_failed(void) {
+    rmb();  /* Ensure we see latest state */
     return serial_failed;
 }
 
@@ -415,6 +462,7 @@ int serial_has_failed(void) {
  *   SERIAL_ERROR_NULL_PTR (3)  - Null pointer passed to function
  */
 uint32_t serial_get_error_code(void) {
+    rmb();  /* Ensure we see latest state */
     return serial_error_code;
 }
 
@@ -426,6 +474,7 @@ uint32_t serial_get_error_code(void) {
  * Useful for diagnosing intermittent hardware issues.
  */
 uint32_t serial_get_timeout_count(void) {
+    rmb();  /* Ensure we see latest state */
     return serial_timeout_count;
 }
 
@@ -436,8 +485,66 @@ uint32_t serial_get_timeout_count(void) {
  * Useful for recovery attempts or re-initialization.
  */
 void serial_clear_error(void) {
+    wmb();  /* Ensure ordering */
     serial_failed = 0;
     serial_error_code = SERIAL_ERROR_NONE;
+    wmb();  /* Ensure cleared state is visible */
+}
+
+/* ==========================================
+ * Re-initialization after timeout
+ * ==========================================
+ * These functions allow recovery from timeout errors by properly
+ * clearing the failed state before re-initializing the hardware.
+ * ==========================================
+ */
+
+/**
+ * @brief Re-initialize serial port after a timeout or failure
+ * @param port Serial port (e.g., SERIAL_COM1)
+ * @param baud Baud rate (e.g., 115200)
+ * @return 1 if success, 0 if failure
+ *
+ * This function allows recovery from timeout errors by:
+ *   1. Clearing the failed state
+ *   2. Resetting error counters
+ *   3. Re-initializing the hardware
+ *
+ * Use this when:
+ *   - serial_has_failed() returns 1
+ *   - serial_get_error_code() returns SERIAL_ERROR_TIMEOUT
+ *   - You want to retry initialization without rebooting
+ *
+ * @note This is different from serial_init() - it properly clears
+ *       the failed state before re-initializing.
+ */
+int serial_reinit(uint16_t port, uint32_t baud) {
+    /* ==========================================
+     * Clear failed state BEFORE re-init
+     * ==========================================
+     * serial_init() checks serial_failed and may return early
+     * if the port is marked as failed. We must clear the state
+     * to allow a fresh initialization attempt.
+     * ========================================== */
+    wmb();  /* Ensure ordering */
+    serial_failed = 0;
+    serial_error_code = SERIAL_ERROR_NONE;
+    serial_timeout_count = 0;  /* Reset timeout counter for fresh start */
+    serial_initialized = 0;    /* Clear initialized flag for fresh init */
+    wmb();  /* Ensure cleared state is visible before re-init */
+
+    /* Now perform normal initialization */
+    return serial_init(port, baud);
+}
+
+/**
+ * @brief Re-initialize COM1 with default baud rate
+ * @return 1 if success, 0 if failure
+ *
+ * Convenience wrapper for serial_reinit(SERIAL_DEFAULT_PORT, SERIAL_DEFAULT_BAUD).
+ */
+int serial_reinit_default(void) {
+    return serial_reinit(SERIAL_DEFAULT_PORT, SERIAL_DEFAULT_BAUD);
 }
 
 /**

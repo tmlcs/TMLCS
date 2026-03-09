@@ -46,9 +46,25 @@ long_mode_start:
 .bss_done:
 
     ; ==========================================
+    ; CRITICAL: Ensure 16-byte stack alignment
+    ; ==========================================
+    ; System V AMD64 ABI requires 16-byte stack alignment
+    ; before CALL instructions. This ensures:
+    ;   - SSE instructions (movaps, etc.) work correctly
+    ;   - C++ runtime can assume proper alignment
+    ;   - Compiler optimizations that assume alignment are safe
+    ;
+    ; Stack alignment algorithm:
+    ;   RSP mod 16 should be 8 before CALL (return push makes it 0)
+    ;   AND RSP, ~0xF aligns to 16 bytes (rounds down)
+    ; ==========================================
+    and rsp, ~0xF         ; Align stack to 16-byte boundary
+
+    ; ==========================================
     ; SAFE: Now call kernel_main
     ; ==========================================
     ; BSS is guaranteed zeroed at this point.
+    ; Stack is guaranteed 16-byte aligned.
     ; Any C++ global variable access in kernel_main() is safe.
     ; ==========================================
     call kernel_main

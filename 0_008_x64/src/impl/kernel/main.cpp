@@ -16,6 +16,7 @@
 #include "../tests/test_query.h"
 #include "../tests/test_serial.h"
 #include "../tests/test_string.h"
+#include "../tests/test_strlcpy.h"
 #include "../tests/test_serial_signed.h"
 #include "../tests/test_hardware.h"
 
@@ -212,12 +213,15 @@ extern "C" [[noreturn]] void kernel_main() {
     test_color_validation();
     test_debug_macros();
     test_print_functions();
-    test_decimal_boundary_values();  // CRIT-001, CRIT-002: Buffer overflow tests
+    test_decimal_boundary_values();  // Buffer overflow tests
     test_query_functions();
     test_serial_baud_rates();
-    test_serial_null_pointer_handling();  // CRIT-003: Null pointer should not mark hardware failed
+    test_serial_null_pointer_handling();  // Null pointer should not mark hardware failed
     test_string_functions();
-    test_memcpy_overlap_detection();  // CRIT-005: Overlap detection in DEBUG mode
+    test_string_null_pointer_safety();  // NULL pointer validation in string functions
+    test_strlcpy_safe_copy();  // Safe bounded string copy
+    test_strlcpy_vs_strcpy_overflow();  // Overflow prevention demo
+    test_memcpy_overlap_detection();  // Overlap detection in DEBUG mode
     test_serial_signed_numbers();
     test_hardware_info();
 
@@ -259,6 +263,8 @@ extern "C" [[noreturn]] void kernel_main() {
     serial_write_str("Test: Query functions (cursor, color) - OK\r\n");
     serial_write_str("Test: Serial baud rates - OK\r\n");
     serial_write_str("Test: String functions - OK\r\n");
+    serial_write_str("Test: String NULL safety - OK\r\n");
+    serial_write_str("Test: strlcpy safe copy - OK\r\n");
     serial_write_str("Test: Serial signed numbers - OK\r\n");
     serial_write_str("Test: Hardware info (CPUID) - OK\r\n");
     serial_write_str("System halted - press reset to restart\r\n");

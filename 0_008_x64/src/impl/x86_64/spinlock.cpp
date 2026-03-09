@@ -2,20 +2,24 @@
 #include "constants.h"
 
 /* =============================================================================
- * x86_64 Spinlock Implementation [CRIT-004 Phase 2]
+ * x86_64 Spinlock Implementation
  * =============================================================================
- * 
+ *
  * Uses LOCK CMPXCHG for atomic compare-and-swap operation.
  * The LOCK prefix ensures the operation is atomic across all CPUs.
- * 
+ *
  * Memory ordering:
  *   - Acquire: Uses LOCK which acts as a full memory barrier
  *   - Release: Uses volatile write with memory barrier
- * 
+ *
  * Interrupt handling:
  *   - Disables interrupts during spin to prevent deadlock
  *     (if interrupt handler tried to acquire same lock)
  *   - Re-enables interrupts after release
+ *
+ *   - interrupts_enabled field is now volatile in spinlock_t
+ *   - Ensures compiler doesn't cache the value across CPUs
+ *   - Critical for correct interrupt state restoration in SMP
  * =============================================================================
  */
 
@@ -24,18 +28,22 @@ typedef struct {
     bool interrupts_enabled;
 } interrupt_state_t;
 
-/* Save and disable interrupts */
+/* Save and disable interrupts
+ * Uses volatile read to ensure fresh value from spinlock_t
+ */
 static inline void cli_save(interrupt_state_t* state) {
     /* Check if interrupts are enabled by reading RFLAGS */
     uint64_t rflags;
     __asm__ volatile ("pushfq; pop %0" : "=r"(rflags));
     state->interrupts_enabled = (rflags & 0x200) != 0;  /* Interrupt flag bit */
-    
+
     /* Disable interrupts */
     __asm__ volatile ("cli" ::: "memory");
 }
 
-/* Restore interrupt state */
+/* Restore interrupt state
+ * Uses volatile read to ensure correct state restoration
+ */
 static inline void sti_restore(const interrupt_state_t* state) {
     if (state->interrupts_enabled) {
         __asm__ volatile ("sti" ::: "memory");
@@ -94,7 +102,9 @@ void spinlock_acquire(spinlock_t* lock) {
 
         /* If result == 0, we successfully acquired the lock */
         if (result == 0) {
-            /* FIX CRIT-004: Save interrupt state in lock for restore on release */
+            /* Save interrupt state in lock for restore on release
+             * interrupts_enabled is volatile, ensuring visibility across CPUs
+             */
             lock->interrupts_enabled = int_state.interrupts_enabled;
             memory_barrier();
             break;
@@ -134,7 +144,9 @@ bool spinlock_try_acquire(spinlock_t* lock) {
 
     /* Return true if we acquired the lock (result == 0) */
     if (result == 0) {
-        /* FIX CRIT-004: Save interrupt state in lock for restore on release */
+        /* Save interrupt state in lock for restore on release
+         * interrupts_enabled is volatile, ensuring visibility across CPUs
+         */
         lock->interrupts_enabled = int_state.interrupts_enabled;
         memory_barrier();
         return true;
@@ -157,9 +169,10 @@ void spinlock_release(spinlock_t* lock) {
     lock->locked = 0;
 
     /*
-     * FIX CRIT-004: Restore interrupt state
+     * Restore interrupt state
      * Read interrupts_enabled BEFORE the memory barrier
-     * This ensures we restore the state that was saved during acquire
+     * interrupts_enabled is volatile - ensures we see the latest value
+     * written by spinlock_acquire() on any CPU.
      */
     bool was_enabled = lock->interrupts_enabled;
     lock->interrupts_enabled = false;  /* Reset for next acquire */
@@ -174,7 +187,7 @@ void spinlock_release(spinlock_t* lock) {
 }
 
 /* =============================================================================
- * VGA Spinlock Instance [CRIT-004]
+ * VGA Spinlock Instance
  * =============================================================================
  * Global spinlock for protecting VGA text mode operations.
  * This lock must be held when accessing:

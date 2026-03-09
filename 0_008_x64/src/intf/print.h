@@ -48,7 +48,7 @@ typedef enum PrintColor {
  *   - vga.h/vga.cpp: Low-level hardware access, cursor, colors (SMP-safe)
  *   - print.h/print.cpp: High-level formatting (decimal, hex, strings)
  * 
- * SMP Safety [CRIT-004]:
+ * SMP Safety:
  *   - All functions are SMP-safe via VGA driver spinlock
  *   - Use print_begin_atomic()/print_end_atomic() for multi-operation atomicity
  * ==========================================
@@ -201,7 +201,7 @@ void print_dec64_signed(int64_t value);
 int print_is_initialized(void);
 
 /* ==========================================
- * Atomic Operations (for SMP) [CRIT-004]
+ * Atomic Operations (for SMP)
  * ==========================================
  * Use these for multiple operations that must be atomic.
  * The VGA spinlock is acquired/released as a pair.

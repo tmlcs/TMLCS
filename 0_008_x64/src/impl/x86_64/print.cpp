@@ -16,7 +16,7 @@
  *   - vga.h/vga.cpp: Low-level hardware access, cursor, colors (SMP-safe)
  *   - print.h/print.cpp: High-level formatting (decimal, hex, strings)
  * 
- * SMP Safety [CRIT-004]:
+ * SMP Safety:
  *   - VGA driver functions are already SMP-safe
  *   - This module calls vga_*() functions which handle locking internally
  * =============================================================================
@@ -138,7 +138,7 @@ void print_dec(uint32_t value) {
 void print_dec_signed(int32_t value) {
     if (value < 0) {
         vga_put_char('-');
-        /* FIX CRIT-003: Use two's complement to avoid undefined behavior.
+        /* Use two's complement to avoid undefined behavior.
          * For INT32_MIN (-2147483648), negation would overflow in signed arithmetic.
          * Casting to uint32_t first, then negating in unsigned arithmetic is safe.
          * Example: INT32_MIN -> (uint32_t)0x80000000 -> -0x80000000 = 0x80000000 = 2147483648
@@ -158,7 +158,7 @@ void print_dec64(uint64_t value) {
 void print_dec64_signed(int64_t value) {
     if (value < 0) {
         vga_put_char('-');
-        /* FIX CRIT-003: Use two's complement to avoid undefined behavior.
+        /* Use two's complement to avoid undefined behavior.
          * For INT64_MIN (-9223372036854775808), negation would overflow in signed arithmetic.
          * Casting to uint64_t first, then negating in unsigned arithmetic is safe.
          * Example: INT64_MIN -> (uint64_t)0x8000000000000000 -> -0x8000... = 0x8000... = 9223372036854775808

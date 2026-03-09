@@ -9,7 +9,7 @@ extern "C" {
 #endif
 
 /* =============================================================================
- * SPINLOCK API [CRIT-004 Phase 2: SMP Preparation]
+ * SPINLOCK API [Phase 2: SMP Preparation]
  * =============================================================================
  *
  * Basic spinlock implementation for x86_64 using atomic instructions.
@@ -32,7 +32,7 @@ extern "C" {
  *   - Re-enables interrupts on release (restores previous state)
  *   - Memory barriers ensure proper ordering
  *
- * Interrupt handling [CRIT-004]:
+ * Interrupt handling:
  *   - spinlock_acquire() saves interrupt state and disables interrupts
  *   - spinlock_release() RESTORES interrupt state to what it was before acquire
  *   - This prevents permanent interrupt disablement
@@ -43,15 +43,18 @@ extern "C" {
  */
 
 /* Spinlock structure - must be 64-bit aligned for atomic access
- * [CRIT-004 FIX]: Added interrupts_enabled field to track interrupt state
+ * Added interrupts_enabled field to track interrupt state
+ * interrupts_enabled must be volatile - it's written during
+ * acquire and read during release, potentially across different CPUs in SMP.
+ * Without volatile, compiler may cache the value and not see updates.
  */
 typedef struct {
     volatile uint64_t locked;         /* 0 = unlocked, 1 = locked */
-    bool interrupts_enabled;          /* Track interrupt state for restore */
+    volatile bool interrupts_enabled; /* Track interrupt state for restore */
 } spinlock_t;
 
 /* Static initializer for spinlocks - C++17 compatible
- * [CRIT-004 FIX]: Initialize both locked and interrupts_enabled fields
+ * Initialize both locked and interrupts_enabled fields
  */
 #define SPINLOCK_INIT { 0, false }
 
@@ -105,7 +108,7 @@ static inline void spinlock_release_guard(spinlock_t** lock) {
 }
 
 /* =============================================================================
- * VGA Driver Lock [CRIT-004]
+ * VGA Driver Lock
  * =============================================================================
  * Global spinlock for protecting VGA text mode operations.
  * Declared in spinlock.cpp

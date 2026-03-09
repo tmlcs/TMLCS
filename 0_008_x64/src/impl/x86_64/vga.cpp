@@ -3,34 +3,54 @@
 #include "constants.h"
 
 /* =============================================================================
- * VGA Driver Implementation [CRIT-004]
+ * VGA Driver Implementation
  * =============================================================================
- * 
+ *
  * Low-level VGA text mode driver for x86_64.
  * All public functions are SMP-safe via spinlock protection.
- * 
+ *
  * Internal functions (static) assume lock is already held.
  * Public functions acquire/release lock per-operation.
+ *
+ * MEMORY ORDERING:
+ *   - volatile prevents compiler optimization/caching
+ *   - Spinlock provides mutual exclusion and memory barriers
+ *   - Explicit memory barriers ensure ordering within critical sections
+ *   - x86_64 has strong memory ordering, but barriers prevent compiler reordering
  * =============================================================================
  */
 
 /* =============================================================================
  * Memory Barrier Macro
  * =============================================================================
+ * Prevents compiler reordering of memory operations.
+ * On x86_64, hardware has strong ordering, but compiler barriers are still
+ * needed to prevent the compiler from reordering volatile accesses.
+ *
+ * Usage:
+ *   - Before writing shared state: wmb() or mb()
+ *   - After reading shared state: rmb() or mb()
+ *   - Around critical sections for visibility
+ * =============================================================================
  */
-#define memory_barrier() __asm__ volatile ("" ::: "memory")
+#define mb()  __asm__ volatile ("" ::: "memory")
+#define rmb() __asm__ volatile ("" ::: "memory")
+#define wmb() __asm__ volatile ("" ::: "memory")
 
 /* =============================================================================
  * VGA Hardware State
  * =============================================================================
- * SMP SAFETY [CRIT-004]:
+ * SMP SAFETY:
  *   These variables are protected by g_vga_lock spinlock.
- *   Use vga_begin_atomic()/vga_end_atomic() for multi-operation atomicity.
+ *   All accesses use memory barriers to ensure:
+ *     - Proper ordering across CPUs
+ *     - Visibility of changes to all processors
+ *     - Prevention of compiler reordering
  * =============================================================================
  */
 
 /* Video buffer - VOLATILE for hardware MMIO */
-static volatile vga_cell_t* vga_buffer = 
+static volatile vga_cell_t* vga_buffer =
     reinterpret_cast<volatile vga_cell_t*>(VGA_BUFFER_ADDRESS);
 static volatile bool vga_detected = false;
 static volatile bool vga_initialized = false;
@@ -76,17 +96,17 @@ static void vga_clear_row_internal(size_t row) {
         vga_buffer[idx].character = ' ';
         vga_buffer[idx].color = current_color;
     }
-    memory_barrier();
+    mb();
 }
 
 /* Internal newline - assumes lock held */
 static void vga_newline_internal(void) {
     cursor_col = 0;
-    memory_barrier();
+    mb();
 
     if (cursor_row < VGA_ROWS - 1) {
         cursor_row++;
-        memory_barrier();
+        mb();
         return;
     }
 
@@ -101,10 +121,10 @@ static void vga_newline_internal(void) {
             dst[c] = src[c];
         }
     }
-    memory_barrier();
+    mb();
 
     vga_clear_row_internal(VGA_ROWS - 1);
-    memory_barrier();
+    mb();
 }
 
 /* =============================================================================
@@ -124,7 +144,7 @@ bool vga_detect(void) {
     /* Write test pattern */
     test_ptr->character = 'X';
     test_ptr->color = 0x07;
-    memory_barrier();
+    mb();
     
     /* Verify write succeeded */
     bool success = (test_ptr->character == 'X') && (test_ptr->color == 0x07);
@@ -132,10 +152,10 @@ bool vga_detect(void) {
     /* Restore original values */
     test_ptr->character = saved_char;
     test_ptr->color = saved_color;
-    memory_barrier();
+    mb();
     
     vga_detected = success;
-    memory_barrier();
+    mb();
     
     return vga_detected;
 }
@@ -151,16 +171,16 @@ bool vga_init(void) {
     /* Initialize cursor position */
     cursor_col = 0;
     cursor_row = 0;
-    memory_barrier();
+    mb();
     
     vga_initialized = true;
-    memory_barrier();
+    mb();
     
     return true;
 }
 
 bool vga_is_initialized(void) {
-    memory_barrier();
+    mb();
     return vga_initialized;
 }
 
@@ -178,7 +198,7 @@ void vga_clear(void) {
     
     cursor_col = 0;
     cursor_row = 0;
-    memory_barrier();
+    mb();
     
     vga_end_atomic();
 }
@@ -207,20 +227,20 @@ uint8_t vga_set_color(uint8_t foreground, uint8_t background) {
     
     if (!is_valid_color(foreground) || !is_valid_color(background)) {
         current_color = vga_make_color(VGA_COLOR_WHITE, VGA_COLOR_BLACK);
-        memory_barrier();
+        mb();
         vga_end_atomic();
         return current_color;
     }
     
     current_color = vga_make_color(foreground, background);
-    memory_barrier();
+    mb();
     
     vga_end_atomic();
     return current_color;
 }
 
 uint8_t vga_get_color(void) {
-    memory_barrier();
+    mb();
     return current_color;
 }
 
@@ -230,12 +250,12 @@ uint8_t vga_get_color(void) {
  */
 
 size_t vga_get_cursor_col(void) {
-    memory_barrier();
+    mb();
     return cursor_col;
 }
 
 size_t vga_get_cursor_row(void) {
-    memory_barrier();
+    mb();
     return cursor_row;
 }
 
@@ -252,7 +272,7 @@ void vga_set_cursor(size_t col, size_t row) {
     
     cursor_col = col;
     cursor_row = row;
-    memory_barrier();
+    mb();
     
     vga_end_atomic();
 }
@@ -269,7 +289,7 @@ bool vga_advance_cursor(void) {
         scrolled = true;
     }
     
-    memory_barrier();
+    mb();
     vga_end_atomic();
     
     return scrolled;
@@ -298,7 +318,7 @@ void vga_put_char_at(char character, size_t col, size_t row,
     *cell_ptr = static_cast<uint16_t>(static_cast<uint8_t>(character)) |
                 (static_cast<uint16_t>(color_attr) << 8);
     
-    memory_barrier();
+    mb();
     vga_end_atomic();
 }
 
@@ -318,7 +338,7 @@ void vga_put_char(char character) {
             
         case '\r':
             cursor_col = 0;
-            memory_barrier();
+            mb();
             vga_end_atomic();
             return;
             
@@ -327,7 +347,7 @@ void vga_put_char(char character) {
             if (cursor_col >= VGA_COLS) {
                 vga_newline_internal();
             }
-            memory_barrier();
+            mb();
             vga_end_atomic();
             return;
             
@@ -349,7 +369,7 @@ void vga_put_char(char character) {
                     (static_cast<uint16_t>(current_color) << 8);
         
         cursor_col++;
-        memory_barrier();
+        mb();
     }
     
     vga_end_atomic();
@@ -378,7 +398,7 @@ void vga_put_string(const char* str) {
                 
             case '\r':
                 cursor_col = 0;
-                memory_barrier();
+                mb();
                 break;
                 
             case '\t':
@@ -386,7 +406,7 @@ void vga_put_string(const char* str) {
                 if (cursor_col >= VGA_COLS) {
                     vga_newline_internal();
                 }
-                memory_barrier();
+                mb();
                 break;
                 
             default:
@@ -401,7 +421,7 @@ void vga_put_string(const char* str) {
                     *cell_ptr = static_cast<uint16_t>(static_cast<uint8_t>(str[i])) |
                                 (static_cast<uint16_t>(current_color) << 8);
                     cursor_col++;
-                    memory_barrier();
+                    mb();
                 }
                 break;
         }

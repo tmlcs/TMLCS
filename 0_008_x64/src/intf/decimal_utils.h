@@ -41,7 +41,7 @@ inline char* uint32_to_decimal_string(char* buffer, uint32_t value) {
 
     // Start from position 11 (end of buffer), work backwards
     // Maximum 10 digits means we use positions 1-10, with null at 11
-    // FIX CRIT-001: Changed condition from "i > 1" to "i > 0" to allow
+    // Changed condition from "i > 1" to "i > 0" to allow
     // writing 10-digit numbers (UINT32_MAX = 4294967295)
     int i = 11;
     buffer[i] = '\0';
@@ -76,7 +76,7 @@ inline char* uint64_to_decimal_string(char* buffer, uint64_t value) {
 
     // Start from position 21 (end of buffer), work backwards
     // Maximum 20 digits means we use positions 1-20, with null at 21
-    // FIX CRIT-002: Changed condition from "i > 1" to "i > 0" to allow
+    // Changed condition from "i > 1" to "i > 0" to allow
     // writing 20-digit numbers (UINT64_MAX = 18446744073709551615)
     int i = 21;
     buffer[i] = '\0';

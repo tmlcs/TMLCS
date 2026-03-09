@@ -43,7 +43,7 @@ void test_print_functions() {
 }
 
 /* ==========================================
- * Decimal Boundary Values Test (CRIT-001, CRIT-002)
+ * Decimal Boundary Values Test
  * ==========================================
  * Tests maximum values for uint32 and uint64 to verify
  * buffer overflow fixes in decimal_utils.h
