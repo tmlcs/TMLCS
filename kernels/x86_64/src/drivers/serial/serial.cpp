@@ -2,6 +2,7 @@
 #include "print.h"
 #include "hex_utils.h"
 #include "decimal_utils.h"
+#include "constants.h"
 
 /* ==========================================
  * Memory Barriers for SMP Safety
@@ -46,8 +47,10 @@
  * ==========================================
  * SERIAL_MAX_WAIT: Maximum iterations for busy-wait loops
  * This prevents infinite hangs if hardware fails to respond
+ * 
+ * Note: Using SERIAL_MAX_TIMEOUT from constants.h for consistency
  */
-#define SERIAL_MAX_WAIT 100000
+#define SERIAL_MAX_WAIT  SERIAL_MAX_TIMEOUT
 
 /* ==========================================
  * Serial Error Codes
@@ -171,13 +174,13 @@ static bool serial_port_exists(uint16_t port) {
      * UART 16550+ has bits 6-7 of IIR at 0xC0 when no interrupts
      * However, some systems (QEMU, older hardware) may return
      * other values. We use a more permissive check:
-     * - Read IIR and verify it's not 0xFF (non-existent port)
-     * - 0xFF typically indicates port not present (bus returns all-ones)
+     * - Read IIR and verify it's not SERIAL_IIR_NO_DEVICE (non-existent port)
+     * - SERIAL_IIR_NO_DEVICE typically indicates port not present (bus floating)
      */
     uint8_t iir = inb(port + SERIAL_IIR);
 
-    /* 0xFF indicates non-existent port (bus floating) */
-    if (iir == 0xFF) {
+    /* SERIAL_IIR_NO_DEVICE indicates non-existent port (bus floating) */
+    if (iir == SERIAL_IIR_NO_DEVICE) {
         return false;
     }
 
@@ -294,7 +297,7 @@ int serial_init(uint16_t port, uint32_t baud) {
      * @note Se usa volatile en el contador para prevenir optimización
      * @note 1000 nops = ~1000 ciclos = ~0.5ms en 2GHz
      */
-    for (volatile int i = 0; i < 1000; i++) {
+    for (volatile int i = 0; i < SERIAL_INIT_DELAY_ITERATIONS; i++) {
         __asm__ volatile ("nop");
     }
 

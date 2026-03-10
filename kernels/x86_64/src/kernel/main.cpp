@@ -65,26 +65,26 @@ static void early_panic(const char* msg) {
 
     // Test if VGA memory is writable
     uint16_t saved = vga[0];
-    vga[0] = 0x4F20;  // Space with white on red
+    vga[0] = (VGA_COLOR_WHITE_ON_RED << 8) | ' ';  // Space with white on red
 
-    if (vga[0] == 0x4F20) {
+    if (vga[0] == ((VGA_COLOR_WHITE_ON_RED << 8) | ' ')) {
         // VGA is available - display error
         vga[0] = saved;  // Restore
-        vga[1] = (0x4F << 8) | 'E';
-        vga[2] = (0x4F << 8) | 'R';
-        vga[3] = (0x4F << 8) | 'R';
-        vga[4] = (0x4F << 8) | 'O';
-        vga[5] = (0x4F << 8) | 'R';
+        vga[1] = (VGA_COLOR_WHITE_ON_RED << 8) | 'E';
+        vga[2] = (VGA_COLOR_WHITE_ON_RED << 8) | 'R';
+        vga[3] = (VGA_COLOR_WHITE_ON_RED << 8) | 'R';
+        vga[4] = (VGA_COLOR_WHITE_ON_RED << 8) | 'O';
+        vga[5] = (VGA_COLOR_WHITE_ON_RED << 8) | 'R';
 
         size_t i = 0;
         size_t pos = 7;
         while (msg[i] != '\0' && pos < VGA_COLS) {
-            vga[pos++] = (0x4F << 8) | msg[i++];
+            vga[pos++] = (VGA_COLOR_WHITE_ON_RED << 8) | msg[i++];
         }
 
         // Fill rest of first row with spaces for clarity
         while (pos < VGA_COLS) {
-            vga[pos++] = (0x4F << 8) | ' ';
+            vga[pos++] = (VGA_COLOR_WHITE_ON_RED << 8) | ' ';
         }
 
         for (;;) {
@@ -136,8 +136,8 @@ extern "C" [[noreturn]] void kernel_main() {
     {
         volatile uint16_t* vga = reinterpret_cast<volatile uint16_t*>(VGA_BUFFER_ADDRESS);
         uint16_t saved = vga[0];
-        vga[0] = 0x0720;  // Test write
-        vga_detected_raw = (vga[0] == 0x0720);
+        vga[0] = (VGA_COLOR_LIGHT_GREEN_ON_BLACK << 8) | ' ';  // Test write
+        vga_detected_raw = (vga[0] == ((VGA_COLOR_LIGHT_GREEN_ON_BLACK << 8) | ' '));
         vga[0] = saved;
     }
 
