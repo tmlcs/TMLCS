@@ -29,7 +29,9 @@ void test_debug_macros() {
     serial_write_str("[DEBUG MACRO] DEBUG_VAR: OK\r\n");
 
     // Test DEBUG_ASSERT [D003] - with true condition (should not fail)
-    DEBUG_ASSERT(1 == 1);
+    // Use actual variable comparison instead of tautology
+    uint32_t test_val = 42;
+    DEBUG_ASSERT(test_val == 42);
     serial_write_str("[DEBUG MACRO] DEBUG_ASSERT (pass): OK\r\n");
 
     // Test DEBUG_LOG

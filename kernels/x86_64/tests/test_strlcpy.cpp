@@ -144,17 +144,16 @@ void test_strlcpy_vs_strcpy_overflow() {
     // Case: Small buffer, large source
     // strcpy would overflow, strlcpy truncates safely
 
-    const char* src = "This is a very long string!";
-
     // Test with strlcpy (SAFE)
     {
+        const char* src = "This is a very long string!";
         char dest[10];
         size_t len = strlcpy(dest, src, sizeof(dest));
 
         // Verify: truncation detected (source length >= buffer size)
         // and result is null-terminated
         bool truncation_detected = (len >= sizeof(dest));
-        bool null_terminated = (dest[5] == '\0' || dest[4] == '\0' || 
+        bool null_terminated = (dest[5] == '\0' || dest[4] == '\0' ||
                                 dest[6] == '\0' || dest[7] == '\0' ||
                                 dest[8] == '\0' || dest[9] == '\0');
 

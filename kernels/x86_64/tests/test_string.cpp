@@ -118,14 +118,9 @@ void test_string_functions() {
     // strlen() is designed to return 0 for null input (defensive programming)
     {
         const char* test_str = nullptr;
-        size_t len = 0;
-
-        // Explicit null check before calling strlen() to satisfy static analysis
-        if (test_str == nullptr) {
-            len = 0;
-        } else {
-            len = strlen(test_str);
-        }
+        
+        // Call strlen with nullptr - should return 0 safely
+        size_t len = strlen(test_str);
 
         if (len == 0) {
             serial_write_str("strlen nullptr: OK (safely returns 0)\r\n");

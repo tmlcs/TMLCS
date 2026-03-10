@@ -46,7 +46,7 @@ void test_memory_mapping() {
 
     // Verify identity mapping by reading L4 entry
     // L4 is at pt_base, entry 0 should point to L3 table
-    volatile uint64_t* l4_entry = reinterpret_cast<volatile uint64_t*>(pt_base);
+    const volatile uint64_t* l4_entry = reinterpret_cast<const volatile uint64_t*>(pt_base);
     uint64_t l3_addr = l4_entry[0] & 0xFFFFFFFFF000ULL;
 
     serial_write_str("L4[0] -> L3 at: 0x");
