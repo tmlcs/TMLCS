@@ -64,20 +64,37 @@
 /* ==========================================
  * Serial Driver State
  * ==========================================
- * VOLATILE: These variables track hardware state and must not
+ * VOLATILE: This structure tracks hardware state and must not
  * be optimized/cached by the compiler
- * 
- * For SMP safety, all accesses to these variables
+ *
+ * For SMP safety, all accesses to this structure
  * must use memory barriers (mb/rmb/wmb) to ensure:
  *   - Proper ordering of reads/writes across CPUs
  *   - Visibility of changes to all processors
  *   - Atomicity for compound operations (protected by barriers)
+ * 
+ * Encapsulation Benefits:
+ *   - All state in one place (easier to debug)
+ *   - Can be passed to functions (easier to test)
+ *   - Clear interface via getter functions
  */
-static volatile int serial_initialized = 0;
-static volatile uint16_t serial_port = 0;
-static volatile int serial_failed = 0;        /* CRITICAL: Separate flag for failures */
-static volatile uint32_t serial_error_code = SERIAL_ERROR_NONE;
-static volatile uint32_t serial_timeout_count = 0;
+static SerialState_t g_serial_state;  /* Zero-initialized by default (BSS) */
+
+/* ==========================================
+ * Internal State Access Functions
+ * ==========================================
+ * These functions provide controlled access to the serial state.
+ * In SMP, these would acquire the serial spinlock.
+ */
+
+/**
+ * @brief Get pointer to serial state (internal use)
+ * @return Pointer to serial state structure
+ * @note For internal driver use only
+ */
+static inline SerialState_t* get_serial_state(void) {
+    return &g_serial_state;
+}
 
 /* ==========================================
  * Low-Level I/O Functions
@@ -201,8 +218,8 @@ int serial_init(uint16_t port, uint32_t baud) {
     /* Validate baud rate is not zero */
     if (baud == 0) {
         wmb();  /* Ensure all prior writes complete */
-        serial_failed = 1;
-        serial_error_code = SERIAL_ERROR_INIT_FAIL;
+        g_serial_state.failed = 1;
+        g_serial_state.error_code = SERIAL_ERROR_INIT_FAIL;
         wmb();  /* Ensure state writes are visible */
         return 0;  // Invalid parameter: baud rate cannot be zero
     }
@@ -223,16 +240,16 @@ int serial_init(uint16_t port, uint32_t baud) {
      * ========================================== */
     if (baud < 110 || baud > 115200) {
         wmb();
-        serial_failed = 1;
-        serial_error_code = SERIAL_ERROR_INIT_FAIL;
+        g_serial_state.failed = 1;
+        g_serial_state.error_code = SERIAL_ERROR_INIT_FAIL;
         wmb();
         return 0;  // Invalid baud rate: must be 110-115200
     }
 
     if (!is_valid_serial_port(port)) {
         wmb();
-        serial_failed = 1;
-        serial_error_code = SERIAL_ERROR_INIT_FAIL;
+        g_serial_state.failed = 1;
+        g_serial_state.error_code = SERIAL_ERROR_INIT_FAIL;
         wmb();
         return 0;  // Invalid port: must be COM1-COM4
     }
@@ -240,21 +257,21 @@ int serial_init(uint16_t port, uint32_t baud) {
     /* Verify that the port physically exists */
     if (!serial_port_exists(port)) {
         wmb();
-        serial_failed = 1;
-        serial_error_code = SERIAL_ERROR_INIT_FAIL;
+        g_serial_state.failed = 1;
+        g_serial_state.error_code = SERIAL_ERROR_INIT_FAIL;
         wmb();
         return 0;  // Port does not exist or is not a UART
     }
 
     /* Reset error state on successful init */
     wmb();  /* Clear prior state */
-    serial_failed = 0;
-    serial_error_code = SERIAL_ERROR_NONE;
-    serial_timeout_count = 0;
+    g_serial_state.failed = 0;
+    g_serial_state.error_code = SERIAL_ERROR_NONE;
+    g_serial_state.timeout_count = 0;
     wmb();  /* Ensure state is visible before proceeding */
 
     /* Save port */
-    serial_port = port;
+    g_serial_state.port = port;
 
     /* Disable interrupts */
     outb(port + SERIAL_IER, 0x00);
@@ -302,7 +319,7 @@ int serial_init(uint16_t port, uint32_t baud) {
     }
 
     wmb();  /* Ensure all prior writes complete */
-    serial_initialized = 1;
+    g_serial_state.initialized = 1;
     mb();   /* Full barrier - initialization complete and visible */
 
     return 1;
@@ -312,8 +329,16 @@ int serial_init_default(void) {
     return serial_init(SERIAL_DEFAULT_PORT, SERIAL_DEFAULT_BAUD);
 }
 
+/**
+ * @brief Check if serial port is initialized
+ * @return 1 if initialized, 0 otherwise
+ * 
+ * @note This function accesses the encapsulated state structure
+ * @note For SMP safety, uses memory barrier to ensure latest value
+ */
 int serial_is_initialized(void) {
-    return serial_initialized;
+    rmb();  /* Ensure we see latest state */
+    return g_serial_state.initialized;
 }
 
 /**
@@ -325,7 +350,7 @@ int serial_is_initialized(void) {
  */
 static bool serial_wait_transmit_empty_timeout(uint32_t timeout) {
     rmb();  /* Ensure we see latest state */
-    if (!serial_initialized) {
+    if (!g_serial_state.initialized) {
         return false;
     }
 
@@ -335,7 +360,7 @@ static bool serial_wait_transmit_empty_timeout(uint32_t timeout) {
 
     /* Wait until THRE (bit 5) is set or timeout */
     while (timeout-- > 0) {
-        if (inb(serial_port + SERIAL_LSR) & SERIAL_LSR_THRE) {
+        if (inb(g_serial_state.port + SERIAL_LSR) & SERIAL_LSR_THRE) {
             return true;
         }
         /* Small delay to avoid bus saturation
@@ -364,9 +389,9 @@ static bool serial_wait_transmit_empty_timeout(uint32_t timeout) {
      *   4. Report failure via VGA if available
      * ========================================== */
     wmb();  /* Ensure ordering of failure state */
-    serial_failed = 1;
-    serial_error_code = SERIAL_ERROR_TIMEOUT;
-    serial_timeout_count++;  /* Note: RMW not atomic without lock */
+    g_serial_state.failed = 1;
+    g_serial_state.error_code = SERIAL_ERROR_TIMEOUT;
+    g_serial_state.timeout_count++;  /* Note: RMW not atomic without lock */
     wmb();  /* Ensure failure state is visible */
 
     /* Use print_is_initialized() instead of print_detect()
@@ -392,7 +417,7 @@ void serial_wait_transmit_empty(void) {
 void serial_write_char(char data) {
     /* Check if serial is initialized OR failed (for graceful degradation) */
     rmb();  /* Ensure we see latest state */
-    if (!serial_initialized) {
+    if (!g_serial_state.initialized) {
         return;  /* Serial not initialized or failed */
     }
 
@@ -404,7 +429,7 @@ void serial_write_char(char data) {
     }
 
     /* Write the character */
-    outb(serial_port + SERIAL_THR, (uint8_t)data);
+    outb(g_serial_state.port + SERIAL_THR, (uint8_t)data);
 }
 
 void serial_write_str(const char* str) {
@@ -415,7 +440,7 @@ void serial_write_str(const char* str) {
      */
     if (str == nullptr) {
         wmb();
-        serial_error_code = SERIAL_ERROR_NULL_PTR;
+        g_serial_state.error_code = SERIAL_ERROR_NULL_PTR;
         wmb();
         /* Do NOT set serial_failed = 1 - this is not a hardware error */
         return;
@@ -503,7 +528,7 @@ void serial_write_dec64_signed(int64_t value) {
 
 int serial_read_char(char* data) {
     rmb();  /* Ensure we see latest state */
-    if (!serial_initialized) {
+    if (!g_serial_state.initialized) {
         return 0;
     }
 
@@ -512,8 +537,8 @@ int serial_read_char(char* data) {
     }
 
     /* Check if data is available (DR bit) */
-    if (inb(serial_port + SERIAL_LSR) & SERIAL_LSR_DR) {
-        *data = (char)inb(serial_port + SERIAL_RBR);
+    if (inb(g_serial_state.port + SERIAL_LSR) & SERIAL_LSR_DR) {
+        *data = (char)inb(g_serial_state.port + SERIAL_RBR);
         return 1;
     }
 
@@ -533,10 +558,13 @@ int serial_read_char(char* data) {
  *
  * A failed serial port may still have been initialized successfully,
  * but encountered a hardware error during operation (e.g., timeout).
+ * 
+ * @note This function accesses the encapsulated state structure
+ * @note For SMP safety, uses memory barrier to ensure latest value
  */
 int serial_has_failed(void) {
     rmb();  /* Ensure we see latest state */
-    return serial_failed;
+    return g_serial_state.failed;
 }
 
 /**
@@ -548,10 +576,13 @@ int serial_has_failed(void) {
  *   SERIAL_ERROR_TIMEOUT (1)   - Hardware timeout (not responding)
  *   SERIAL_ERROR_INIT_FAIL (2) - Initialization failed
  *   SERIAL_ERROR_NULL_PTR (3)  - Null pointer passed to function
+ *   
+ * @note This function accesses the encapsulated state structure
+ * @note For SMP safety, uses memory barrier to ensure latest value
  */
 uint32_t serial_get_error_code(void) {
     rmb();  /* Ensure we see latest state */
-    return serial_error_code;
+    return g_serial_state.error_code;
 }
 
 /**
@@ -560,10 +591,13 @@ uint32_t serial_get_error_code(void) {
  *
  * This counter increments each time a serial operation times out.
  * Useful for diagnosing intermittent hardware issues.
+ * 
+ * @note This function accesses the encapsulated state structure
+ * @note For SMP safety, uses memory barrier to ensure latest value
  */
 uint32_t serial_get_timeout_count(void) {
     rmb();  /* Ensure we see latest state */
-    return serial_timeout_count;
+    return g_serial_state.timeout_count;
 }
 
 /**
@@ -574,8 +608,8 @@ uint32_t serial_get_timeout_count(void) {
  */
 void serial_clear_error(void) {
     wmb();  /* Ensure ordering */
-    serial_failed = 0;
-    serial_error_code = SERIAL_ERROR_NONE;
+    g_serial_state.failed = 0;
+    g_serial_state.error_code = SERIAL_ERROR_NONE;
     wmb();  /* Ensure cleared state is visible */
 }
 
@@ -615,10 +649,10 @@ int serial_reinit(uint16_t port, uint32_t baud) {
      * to allow a fresh initialization attempt.
      * ========================================== */
     wmb();  /* Ensure ordering */
-    serial_failed = 0;
-    serial_error_code = SERIAL_ERROR_NONE;
-    serial_timeout_count = 0;  /* Reset timeout counter for fresh start */
-    serial_initialized = 0;    /* Clear initialized flag for fresh init */
+    g_serial_state.failed = 0;
+    g_serial_state.error_code = SERIAL_ERROR_NONE;
+    g_serial_state.timeout_count = 0;  /* Reset timeout counter for fresh start */
+    g_serial_state.initialized = 0;    /* Clear initialized flag for fresh init */
     wmb();  /* Ensure cleared state is visible before re-init */
 
     /* Now perform normal initialization */

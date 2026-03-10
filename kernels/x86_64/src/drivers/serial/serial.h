@@ -88,6 +88,27 @@ extern "C" {
 #define SERIAL_ERROR_NULL_PTR   3
 
 /* ==========================================
+ * Serial Driver State Structure
+ * ==========================================
+ * Encapsulates all internal state variables for the serial driver.
+ * This provides:
+ *   - Better encapsulation (no global variables exposed)
+ *   - Easier testing (state can be mocked)
+ *   - SMP safety (all state in one protected structure)
+ *   - Future extensibility (easy to add multiple ports)
+ * 
+ * @note All fields are volatile for hardware safety
+ * @note For SMP, access must be protected by memory barriers
+ */
+typedef struct SerialState {
+    volatile int initialized;       /**< 1 if initialized, 0 if not */
+    volatile uint16_t port;         /**< Base port address (e.g., 0x3F8) */
+    volatile int failed;            /**< 1 if failed, 0 if OK */
+    volatile uint32_t error_code;   /**< Last error code */
+    volatile uint32_t timeout_count; /**< Count of timeout errors */
+} SerialState_t;
+
+/* ==========================================
  * Serial function API
  * ========================================== */
 
