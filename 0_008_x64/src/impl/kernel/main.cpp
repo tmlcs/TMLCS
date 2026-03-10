@@ -191,6 +191,8 @@ extern "C" [[noreturn]] void kernel_main() {
         serial_write_str("[WARN] VGA not detected, serial only mode\r\n");
     } else {
         // VGA available - full initialization
+        // CRITICAL: Must call print_init() to set vga_initialized = true
+        print_init();
         print_clear();
         print_set_color(PRINT_COLOR_LIGHT_GREEN, PRINT_COLOR_BLACK);
         serial_write_str("[BOOT] VGA initialized successfully\r\n");

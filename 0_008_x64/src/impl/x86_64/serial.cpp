@@ -18,6 +18,24 @@
  *
  * Note: x86_64 has strong memory ordering, but barriers are still
  * needed for SMP correctness and to prevent compiler reordering.
+ *
+ * @assembly
+ *   Instrucción: "" (empty inline assembly)
+ *   Clobbers: "memory" - tells compiler that memory may be modified
+ *   Propósito: Prevenir reordenamiento de instrucciones por el compilador
+ *   Efectos: 
+ *     - mb()  : Barrera completa (lectura + escritura)
+ *     - rmb() : Barrera de lectura (ordenamiento de loads)
+ *     - wmb() : Barrera de escritura (ordenamiento de stores)
+ *   Ciclos: 0 (es una directiva al compilador, no genera código)
+ *   Barreras: Explícita vía clobber "memory"
+ * 
+ * @note En x86_64, el hardware tiene ordenamiento fuerte, pero el
+ *       compilador puede reordenar instrucciones. Esta barrera lo previene.
+ * @note El clobber "memory" le dice al compilador que cualquier acceso
+ *       a memoria debe completarse antes de continuar.
+ * 
+ * @see mb(), rmb(), wmb() macros
  */
 #define mb()  __asm__ volatile ("" ::: "memory")
 #define rmb() __asm__ volatile ("" ::: "memory")
@@ -60,10 +78,33 @@ static volatile uint32_t serial_timeout_count = 0;
 
 /* ==========================================
  * Low-Level I/O Functions
- * ========================================== */
+ * ==========================================
+ */
 
 /**
  * @brief Write a byte to a port
+ * 
+ * @assembly
+ *   Instrucción: outb
+ *   Operandos: 
+ *     - %0 (output): AL register (valor a enviar)
+ *     - %1 (input): DX register (puerto de E/S)
+ *   Constraint "a": Usa el registro AL/AX/EAX/RAX
+ *   Constraint "Nd": Puerto inmediato (0-255) o registro DX
+ *   Efectos: Escribe byte en puerto de E/S especificado
+ *   Ciclos: ~100-1000 (depende del dispositivo de E/S)
+ *   Barreras: Implícita (volatile previene reordenamiento)
+ * 
+ * @note Esta función es específica de x86/x86_64
+ * @note No puede ser inlinada completamente debido a volatile
+ * @note Los puertos de E/S son espacios separados de memoria (I/O mapped)
+ * @note El compilador no puede reordenar esta instrucción debido a volatile
+ * 
+ * @param port Puerto de E/S (ej: 0x3F8 para COM1)
+ * @param value Byte a enviar
+ * 
+ * @see inb() para lectura de puertos
+ * @see SERIAL_COM1, SERIAL_COM2 para puertos estándar
  */
 static inline void outb(uint16_t port, uint8_t value) {
     __asm__ volatile ("outb %0, %1" : : "a"(value), "Nd"(port));
@@ -71,6 +112,28 @@ static inline void outb(uint16_t port, uint8_t value) {
 
 /**
  * @brief Read a byte from a port
+ * 
+ * @assembly
+ *   Instrucción: inb
+ *   Operandos:
+ *     - %0 (output): AL register (valor leído)
+ *     - %1 (input): DX register (puerto de E/S)
+ *   Constraint "=a": Escribe en AL/AX/EAX/RAX
+ *   Constraint "Nd": Puerto inmediato (0-255) o registro DX
+ *   Efectos: Lee byte desde puerto de E/S especificado
+ *   Ciclos: ~100-1000 (depende del dispositivo de E/S)
+ *   Barreras: Implícita (volatile previene reordenamiento)
+ * 
+ * @note Esta función es específica de x86/x86_64
+ * @note El valor de retorno está en el registro AL después de la instrucción
+ * @note Los puertos de E/S son espacios separados de memoria (I/O mapped)
+ * @note El compilador no puede reordenar esta instrucción debido a volatile
+ * 
+ * @param port Puerto de E/S (ej: 0x3F8 para COM1)
+ * @return uint8_t Byte leído desde el puerto
+ * 
+ * @see outb() para escritura de puertos
+ * @see SERIAL_COM1, SERIAL_COM2 para puertos estándar
  */
 static inline uint8_t inb(uint16_t port) {
     uint8_t ret;
@@ -219,7 +282,18 @@ int serial_init(uint16_t port, uint32_t baud) {
     /* Clear receive buffer by reading any pending data */
     (void)inb(port + SERIAL_RBR);
 
-    /* Small delay to ensure UART is ready */
+    /* Small delay to ensure UART is ready
+     * 
+     * @assembly
+     *   Instrucción: nop (No Operation)
+     *   Operandos: Ninguno
+     *   Efectos: Ninguno - solo consume 1 ciclo de CPU
+     *   Ciclos: 1
+     *   Propósito: Pequeño delay para estabilizar hardware
+     * 
+     * @note Se usa volatile en el contador para prevenir optimización
+     * @note 1000 nops = ~1000 ciclos = ~0.5ms en 2GHz
+     */
     for (volatile int i = 0; i < 1000; i++) {
         __asm__ volatile ("nop");
     }
@@ -261,7 +335,18 @@ static bool serial_wait_transmit_empty_timeout(uint32_t timeout) {
         if (inb(serial_port + SERIAL_LSR) & SERIAL_LSR_THRE) {
             return true;
         }
-        /* Small delay to avoid bus saturation */
+        /* Small delay to avoid bus saturation
+         * 
+         * @assembly
+         *   Instrucción: nop (No Operation)
+         *   Operandos: Ninguno
+         *   Efectos: Ninguno - solo consume 1 ciclo de CPU
+         *   Ciclos: 1
+         *   Propósito: Prevenir saturación del bus de E/S con lecturas continuas
+         * 
+         * @note Sin este nop, el bucle leería el puerto miles de veces por milisegundo
+         * @note En hardware real, esto puede causar problemas de timing
+         */
         __asm__ volatile ("nop");
     }
 

@@ -55,7 +55,7 @@ serial_write_dec_signed(INT32_MAX): 2147483647
 [DECIMAL BOUNDARY] All tests passed
 
 === Query Functions Test ===
-Current cursor: col=0, row=0
+Current cursor: col=0, row=5
 print_get_cursor: OK
 Setting cursor to (40, 12)...
 Cursor set successfully: col=40, row=12
@@ -66,7 +66,7 @@ print_set_cursor max boundary: OK
 print_set_cursor zero: OK
 Current color: fg=10, bg=0
 print_get_color: OK
-print_is_initialized: VGA not initialized
+print_is_initialized: OK (VGA ready)
 [QUERY FUNCTIONS] All tests passed
 
 === Serial Baud Rate Test ===
@@ -98,7 +98,7 @@ strlen empty: OK (len=0)
 strlen nullptr: OK (safely returns 0)
 [STRING FUNCTIONS] All tests passed
 
-=== String NULL Pointer Safety Test [CRIT-002] ===
+=== String NULL Pointer Safety Test ===
 memcpy(NULL, src, n): OK - returned NULL safely
 memcpy(dest, NULL, n): OK - returned dest safely
 memmove NULL handling: OK
@@ -107,7 +107,7 @@ memset(NULL, c, n): OK - returned NULL safely
 memcmp NULL handling: OK - returns 0 (equal)
 [STRING NULL SAFETY] All tests passed
 
-=== strlcpy Safe Copy Test [CRIT-003] ===
+=== strlcpy Safe Copy Test ===
 strlcpy complete copy: OK
 strlcpy truncation: OK (len=13, truncated to 5 chars)
 strlcpy exact fit: OK
@@ -157,8 +157,8 @@ Test: Print functions (64-bit, signed) - OK
 Test: Query functions (cursor, color) - OK
 Test: Serial baud rates - OK
 Test: String functions - OK
-Test: String NULL safety (CRIT-002) - OK
-Test: strlcpy safe copy (CRIT-003) - OK
+Test: String NULL safety - OK
+Test: strlcpy safe copy - OK
 Test: Serial signed numbers - OK
 Test: Hardware info (CPUID) - OK
 System halted - press reset to restart

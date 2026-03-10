@@ -27,10 +27,23 @@
  * On x86_64, hardware has strong ordering, but compiler barriers are still
  * needed to prevent the compiler from reordering volatile accesses.
  *
- * Usage:
- *   - Before writing shared state: wmb() or mb()
- *   - After reading shared state: rmb() or mb()
- *   - Around critical sections for visibility
+ * @assembly
+ *   Instrucción: "" (empty inline assembly)
+ *   Clobbers: "memory" - tells compiler that memory may be modified
+ *   Propósito: Prevenir reordenamiento de instrucciones por el compilador
+ *   Efectos:
+ *     - mb()  : Barrera completa (lectura + escritura)
+ *     - rmb() : Barrera de lectura (ordenamiento de loads)
+ *     - wmb() : Barrera de escritura (ordenamiento de stores)
+ *   Ciclos: 0 (es una directiva al compilador, no genera código)
+ *   Barreras: Explícita vía clobber "memory"
+ * 
+ * @note En x86_64, el hardware tiene ordenamiento fuerte, pero el
+ *       compilador puede reordenar instrucciones. Esta barrera lo previene.
+ * @note El clobber "memory" le dice al compilador que cualquier acceso
+ *       a memoria debe completarse antes de continuar.
+ * 
+ * @see mb(), rmb(), wmb() macros
  * =============================================================================
  */
 #define mb()  __asm__ volatile ("" ::: "memory")

@@ -102,7 +102,7 @@ run-debug: build-x86_64
 # Emulation with serial output to file
 .PHONY: run-serial
 run-serial: build-x86_64
-	qemu-system-x86_64 -cdrom $(ISO_FILE) -serial file:serial_output.log -display none -no-reboot -no-shutdown
+	qemu-system-x86_64 -cdrom $(ISO_FILE) -serial file:serial_output.log -no-reboot -no-shutdown
 	@echo "=== Serial Output ==="
 	@cat serial_output.log
 
