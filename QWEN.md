@@ -15,22 +15,29 @@
 ### Architecture
 
 ```
-0_008_x64/
-├── src/
-│   ├── intf/          # Public API headers (C-compatible)
-│   │   ├── constants.h   # VGA, Multiboot, memory constants
-│   │   ├── debug.h       # Debug macros (DEBUG_PRINT, DEBUG_ASSERT, etc.)
-│   │   ├── decimal_utils.h
-│   │   ├── panic.h       # Kernel panic functions
-│   │   ├── print.h       # VGA text mode output API
-│   │   ├── serial.h      # UART serial port API
-│   │   ├── spinlock.h    # Spinlock primitives for SMP
-│   │   ├── string.h      # String utilities
-│   │   └── vga.h         # Low-level VGA hardware access
-│   └── impl/
-│       ├── kernel/      # Kernel entry point
-│       │   └── main.cpp    # kernel_main() - OS initialization & tests
-│       ├── tests/       # Test modules
+GLOBEX_OS/
+├── docs/                    # Project documentation
+│   └── ASSEMBLY_REFERENCE.md  # Inline assembly reference
+├── kernels/                 # Kernel implementations by architecture
+│   └── x86_64/
+│       ├── src/
+│       │   ├── arch/        # Architecture-specific code
+│       │   │   └── x86_64/
+│       │   │       └── boot/   # Boot assembly (Multiboot2, 64-bit entry)
+│       │   ├── core/        # Core kernel components
+│       │   │   ├── debug/      # Debug macros (DEBUG_PRINT, DEBUG_ASSERT)
+│       │   │   └── panic/      # Kernel panic handling
+│       │   ├── drivers/     # Hardware drivers
+│       │   │   ├── console/  # VGA console driver (print.cpp/h)
+│       │   │   ├── serial/   # UART 16550 serial driver
+│       │   │   └── vga/      # Low-level VGA hardware access
+│       │   ├── kernel/      # Kernel entry point
+│       │   │   └── main.cpp  # kernel_main() - OS initialization & tests
+│       │   └── lib/         # Kernel libraries
+│       │       ├── spinlock/ # SMP spinlock implementation
+│       │       ├── string/   # String utilities (memcpy, memset, strlcpy)
+│       │       └── utils/    # Utility functions (hex, decimal)
+│       ├── tests/           # Test modules
 │       │   ├── test_bss.cpp/h
 │       │   ├── test_color.cpp/h
 │       │   ├── test_debug.cpp/h
@@ -41,25 +48,25 @@
 │       │   ├── test_serial.cpp/h
 │       │   ├── test_serial_signed.cpp/h
 │       │   ├── test_string.cpp/h
-│       │   └── test_framework.h
-│       └── x86_64/      # x86_64-specific implementations
-│           ├── boot/       # Boot assembly (Multiboot header, 64-bit entry)
-│           │   ├── header.asm  # Multiboot2 header
-│           │   ├── main.asm    # 32-bit protected mode entry
-│           │   └── main64.asm  # 64-bit long mode entry
-│           ├── hex_utils.h
-│           ├── panic.cpp   # Panic implementation
-│           ├── print.cpp   # VGA text mode driver
-│           ├── serial.cpp  # UART 16550 driver
-│           ├── spinlock.cpp
-│           ├── string.cpp  # String utilities
-│           └── vga.cpp     # VGA hardware driver
-├── targets/
-│   └── x86_64/
-│       ├── linker.ld    # Linker script (kernel at 1MB, 2GiB identity mapped)
-│       └── iso/         # ISO build directory (GRUB structure)
-├── Makefile             # Build system (g++, nasm, ld, grub-mkrescue)
-└── dist/                # Build outputs (ISO, kernel.bin)
+│       │   └── test_strlcpy.cpp/h
+│       ├── targets/
+│       │   └── x86_64/
+│       │       ├── linker.ld   # Linker script (1MB load, 2GiB mapped)
+│       │       └── iso/        # ISO build directory (GRUB structure)
+│       ├── Makefile         # Build system
+│       └── dist/            # Build outputs (ISO, kernel.bin)
+├── scripts/                 # Utility scripts
+│   ├── analyze.sh           # Static analysis (clang-tidy, cppcheck)
+│   ├── format.sh            # Code formatting (clang-format)
+│   └── verify_tests.sh      # Test verification from serial output
+├── .github/                 # GitHub configuration
+│   └── workflows/           # CI/CD workflows
+├── .clang-format            # Code formatting configuration
+├── .editorconfig            # Editor configuration
+├── LICENSE                  # BSD 3-Clause License
+├── QWEN.md                  # This file - project context
+├── QUALITY_ACTION_PLAN.md   # Quality improvement plan
+└── SECURITY.md              # Security policy
 ```
 
 ### Memory Layout
@@ -79,9 +86,20 @@ Required tools (verify with `make verify-tools`):
 - `ld` - GNU linker
 - `grub-mkrescue` - GRUB ISO creator
 - `qemu-system-x86_64` - QEMU emulator
-- `clang-format` - Code formatting (for `scripts/format.sh`)
+
+Optional tools for development:
+- `clang-format` - Code formatting (use `./scripts/format.sh`)
+- `clang-tidy` - Static analysis
+- `cppcheck` - Static analysis
+- `iwyu` - Include what you use
 
 ### Build Commands
+
+All build commands are run from the `kernels/x86_64/` directory:
+
+```bash
+cd kernels/x86_64
+```
 
 | Command | Description |
 |---------|-------------|
@@ -96,13 +114,28 @@ Required tools (verify with `make verify-tools`):
 | `make verify-tools` | Check if all required tools are available |
 | `make help` | Show all available targets |
 
-### Scripts
+### Testing
 
-| Script | Description |
-|--------|-------------|
-| `scripts/format.sh` | Format all C++ source files using clang-format |
-| `scripts/verify_tests.sh` | Verify test output from QEMU serial console |
-| `scripts/analyze.sh` | Analysis script |
+Tests run automatically in `kernel_main()` and output to serial console:
+
+```bash
+# Run kernel and capture serial output
+cd kernels/x86_64
+make run-serial
+
+# Verify test results
+./scripts/verify_tests.sh serial_output.log
+```
+
+Test modules cover:
+- BSS initialization
+- Memory mapping
+- Color validation
+- Debug macros
+- Print functions (64-bit, signed)
+- Query functions (cursor, color)
+- Serial communication (baud rates, signed numbers)
+- String functions (strcpy, strlcpy, memcpy, memmove)
 
 ### Compiler Flags
 
@@ -131,11 +164,16 @@ CFLAGS := -ffreestanding -fno-exceptions -fno-rtti \
 
 ### Code Formatting
 
+Use the provided formatting script:
+```bash
+./scripts/format.sh
+```
+
+Configuration:
 - **Style**: LLVM-based with 4-space indentation
 - **Column Limit**: 100 characters
-- **Braces**: Attached style (`Attach`)
+- **Braces**: Attached (K&R style)
 - **Standard**: C++17
-- Run `scripts/format.sh` to auto-format all source files
 
 ### Debugging
 
@@ -145,48 +183,42 @@ The project uses compile-time debug macros controlled by `DEBUG_ENABLE`:
 #define DEBUG_ENABLE 1
 #include "debug.h"
 
-DEBUG_PRINTLN("Message");
+DEBUG_PRINT("Message");
 DEBUG_VAR(myVar, value);      // Prints: "[DEBUG] myVar = 0xCAFEBABE"
 DEBUG_ASSERT(condition);      // Breaks if false
 DEBUG_LOG("Info message");
-DEBUG_PRINTF("Fmt: %x %s", val, str);  // Limited format support
+DEBUG_PRINTF_HEX("label", val);   // Safe hex output
+DEBUG_PRINTF_DEC("label", val);   // Safe decimal output
+DEBUG_PRINTLN("Message");         // Message with newline
 ```
+
+**Security Note**: The variadic `DEBUG_PRINTF(fmt, ...)` macro was removed due to buffer overflow vulnerability. Use type-safe single-argument macros instead.
 
 ### Testing Practices
 
-The kernel includes self-tests in `kernel_main()`:
-- BSS initialization verification
-- Memory mapping tests (high memory access)
-- Color validation
-- Debug macro tests
-- Print function tests (64-bit, signed numbers)
-- Query function tests (cursor, color)
-- Serial output tests (baud rates, signed numbers)
-- Hardware detection (CPUID)
-- String function tests (including memcpy overlap detection)
-
-Test verification: Run kernel with serial output, then use `scripts/verify_tests.sh test_output.log`
+1. **Test Modules**: Each test has a `.h` declaration and `.cpp` implementation
+2. **Test Framework**: `test_framework.h` provides common test utilities
+3. **Serial Output**: Tests output results to serial for automated verification
+4. **Test Markers**: Use `[TEST NAME] PASSED/FAILED` format for verification
 
 ### Error Handling
 
 - **Kernel Panic**: Use `panic()` or `panic_simple()` for fatal errors
 - **Assertions**: Use `DEBUG_ASSERT()` for development-time checks
 - **No Exceptions**: C++ exceptions are disabled (`-fno-exceptions`)
-- **Early Panic**: Direct VGA buffer writes for pre-initialization failures
+- **Early Panic**: Direct VGA write for pre-initialization failures
 
-### Serial Driver Features
+### Static Analysis
 
-- UART 16550 compatible (COM1-COM4)
-- Default: COM1 (0x3F8) at 115200 baud
-- Error tracking: timeout counts, error codes
-- Functions: `serial_write_hex64()`, `serial_write_dec64_signed()`, etc.
+Run static analysis tools:
+```bash
+./scripts/analyze.sh
+```
 
-### VGA Driver Features
-
-- 80x25 text mode at 0xB8000
-- 16 colors (4-bit foreground + 4-bit background)
-- SMP-safe via spinlock (atomic operations)
-- Functions: `print_hex64()`, `print_dec64_signed()`, cursor management
+Tools used:
+- `clang-tidy` - Code style and correctness
+- `cppcheck` - Bug detection
+- `iwyu` - Include usage optimization
 
 ### Git Workflow
 
@@ -197,6 +229,32 @@ Test verification: Run kernel with serial output, then use `scripts/verify_tests
   - `chore(phase4): Update GRUB menu entry name [GRUB001]`
 
 ## Key Components
+
+### VGA Text Mode Driver (`print.h`/`print.cpp`)
+
+- 80x25 text mode at 0xB8000
+- 16 colors (4-bit foreground + 4-bit background)
+- Functions: `print_str()`, `print_char()`, `print_hex()`, `print_dec()`, `print_hex64()`, `print_dec_signed()`, `print_dec64_signed()`
+- Query functions: `print_get_cursor()`, `print_get_color()`, `print_set_cursor()`
+- SMP-safe via spinlock
+
+### Serial Driver (`serial.h`/`serial.cpp`)
+
+- UART 16550 compatible
+- Default: COM1 (0x3F8) at 115200 baud
+- Functions mirror VGA driver for dual-output debugging
+- Supports signed 32-bit and 64-bit decimal output
+- Error reporting: `serial_get_error_code()`, `serial_has_failed()`, `serial_reinit()`
+
+### String Utilities (`string.h`/`string.cpp`)
+
+- `memcpy()` - Memory copy (non-overlapping)
+- `memmove()` - Memory copy with overlap handling
+- `memset()` - Memory set
+- `memcmp()` - Memory compare
+- `strcpy()` - String copy (UNSAFE - no bounds checking)
+- `strlcpy()` - Safe bounded string copy (PREFERRED)
+- `strlen()` - String length
 
 ### Boot Process
 
@@ -216,9 +274,18 @@ Test verification: Run kernel with serial output, then use `scripts/verify_tests
 | `.bss` | Zero-initialized globals | R+W |
 | `.boot.data` | Page tables, boot stack | R+W (NOBITS) |
 
-### Critical Design Notes
+## Troubleshooting
 
-- **BSS Zero-Initialization**: Boot code must zero `.bss` section; verified by `DEBUG_ASSERT` at kernel start
-- **2GiB Identity Mapping**: Kernel maps 0x00000000 - 0x7FFFFFFF for safe memory access
-- **Freestanding Environment**: No standard library; all functionality implemented from scratch
-- **SMP Safety**: VGA driver uses spinlocks for multi-processor safety (CRIT-004)
+### Common Issues
+
+1. **BSS Test Fails**: Boot code not zeroing `.bss` section
+2. **No Serial Output**: Check QEMU serial flags, verify COM1 port
+3. **No VGA Output**: Run `print_detect()` before any print functions
+4. **Triple Fault**: Check linker script alignment, verify page tables
+
+### Debug Tips
+
+- Use `run-stdio` for interactive serial debugging
+- Enable `DEBUG_ENABLE 1` for verbose output
+- Check `serial_get_error_code()` for serial issues
+- Use `early_panic()` for pre-init error reporting

@@ -9,7 +9,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-SRC_DIR="$PROJECT_ROOT/0_008_x64/src"
+SRC_DIR="$PROJECT_ROOT/kernels/x86_64/src"
 
 # Colors for output
 RED='\033[0;31m'
@@ -34,13 +34,13 @@ echo "-------------------------------------------"
 
 if command -v clang-tidy &> /dev/null; then
     echo -e "${GREEN}✓ clang-tidy found${NC}"
-    
-    # Find all C++ files
+
+    # Find all C++ files in new structure
     find "$SRC_DIR" -name "*.cpp" | while read -r file; do
         echo "Analyzing: ${file#$PROJECT_ROOT/}"
-        clang-tidy "$file" -- -I "$SRC_DIR/intf" -std=c++17 || true
+        clang-tidy "$file" -- -I "$SRC_DIR/core" -I "$SRC_DIR/drivers" -I "$SRC_DIR/lib" -std=c++17 || true
     done
-    
+
     echo -e "${GREEN}✓ clang-tidy complete${NC}"
 else
     echo -e "${YELLOW}⚠ clang-tidy not found, skipping...${NC}"
@@ -57,16 +57,18 @@ echo "-------------------------------------------"
 
 if command -v cppcheck &> /dev/null; then
     echo -e "${GREEN}✓ cppcheck found${NC}"
-    
+
     cppcheck \
         --enable=all \
         --std=c++17 \
         --inconclusive \
         --inline-suppr \
-        -I "$SRC_DIR/intf" \
+        -I "$SRC_DIR/core" \
+        -I "$SRC_DIR/drivers" \
+        -I "$SRC_DIR/lib" \
         --suppress=missingIncludeSystem \
         "$SRC_DIR" 2>&1 || true
-    
+
     echo -e "${GREEN}✓ cppcheck complete${NC}"
 else
     echo -e "${YELLOW}⚠ cppcheck not found, skipping...${NC}"
