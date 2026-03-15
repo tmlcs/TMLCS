@@ -1,39 +1,34 @@
 #include "serial.h"
-#include "print.h"
-#include "hex_utils.h"
-#include "decimal_utils.h"
-#include "constants.h"
 #include "atomic.h"
 #include "barriers.h"
+#include "constants.h"
+#include "decimal_utils.h"
+#include "hex_utils.h"
+#include "print.h"
+#include "spinlock.h"
 
 /* =============================================================================
  * Memory Barriers for SMP Safety
  * =============================================================================
  * Using centralized barriers from barriers.h instead of local definitions.
- * This ensures consistency across all drivers and provides both compiler
- * and hardware barrier options.
  *
- * volatile prevents compiler optimization but doesn't guarantee:
- *   - Atomicity of read-modify-write operations
- *   - Memory ordering across CPUs
- *   - Visibility of writes to other CPUs
+ * BARRIER USAGE IN THIS DRIVER:
  *
- * These barriers ensure proper ordering on x86_64:
- *   - mb()  : Full memory barrier (compiler only, x86_64 has strong HW ordering)
- *   - rmb() : Read memory barrier (compiler only)
- *   - wmb() : Write memory barrier (compiler only)
- *   - hw_mb(), hw_rmb(), hw_wmb(): Hardware barriers (LFENCE/SFENCE)
+ * 1. Compiler Barriers (mb/rmb/wmb) - For normal RAM access:
+ *    - Used for: g_serial_state field access
+ *    - Reason: x86_64 has strong hardware ordering, compiler barriers sufficient
+ *    - Examples: wmb() before setting state flags, rmb() after reading state
+ *
+ * 2. Hardware Barriers (hw_mb/hw_rmb/hw_wmb) - For MMIO operations:
+ *    - Used for: outb()/inb() calls to UART registers
+ *    - Reason: Ensure writes/reads reach hardware before continuing
+ *    - Examples: hw_wmb() after outb(), hw_rmb() after inb()
  *
  * Note: x86_64 has strong memory ordering, but barriers are still
  * needed for SMP correctness and to prevent compiler reordering.
  *
- * Migrated from local #define barriers to centralized barriers.h
- * This provides:
- *   - Consistent barrier semantics across all drivers
- *   - Option to use hardware barriers (hw_mb) when needed
- *   - Better documentation and maintainability
- *
  * @see src/arch/x86_64/include/barriers.h for complete documentation
+ * @see src/arch/x86_64/include/BARRIERS_GUIDE.md for usage guidelines
  * =============================================================================
  */
 
@@ -45,7 +40,7 @@
  *
  * Note: Using SERIAL_MAX_TIMEOUT from constants.h for consistency
  */
-#define SERIAL_MAX_WAIT  SERIAL_MAX_TIMEOUT
+#define SERIAL_MAX_WAIT SERIAL_MAX_TIMEOUT
 
 /* ==========================================
  * Serial Driver State
@@ -72,7 +67,7 @@
  *
  * @see src/arch/x86_64/include/barriers.h for barrier documentation
  */
-static SerialState_t g_serial_state;  /* Zero-initialized by default (BSS) */
+static SerialState_t g_serial_state; /* Zero-initialized by default (BSS) */
 
 /* ==========================================
  * Internal State Access Functions
@@ -97,61 +92,61 @@ static inline SerialState_t* get_serial_state(void) {
 
 /**
  * @brief Write a byte to a port
- * 
+ *
  * @assembly
- *   Instrucción: outb
- *   Operandos: 
- *     - %0 (output): AL register (valor a enviar)
- *     - %1 (input): DX register (puerto de E/S)
- *   Constraint "a": Usa el registro AL/AX/EAX/RAX
- *   Constraint "Nd": Puerto inmediato (0-255) o registro DX
- *   Efectos: Escribe byte en puerto de E/S especificado
- *   Ciclos: ~100-1000 (depende del dispositivo de E/S)
- *   Barreras: Implícita (volatile previene reordenamiento)
- * 
- * @note Esta función es específica de x86/x86_64
- * @note No puede ser inlinada completamente debido a volatile
- * @note Los puertos de E/S son espacios separados de memoria (I/O mapped)
- * @note El compilador no puede reordenar esta instrucción debido a volatile
- * 
- * @param port Puerto de E/S (ej: 0x3F8 para COM1)
- * @param value Byte a enviar
- * 
- * @see inb() para lectura de puertos
- * @see SERIAL_COM1, SERIAL_COM2 para puertos estándar
+ *   Instruction: outb
+ *   Operands:
+ *     - %0 (output): AL register (value to send)
+ *     - %1 (input): DX register (I/O port)
+ *   Constraint "a": Uses AL/AX/EAX/RAX register
+ *   Constraint "Nd": Immediate port (0-255) or DX register
+ *   Effects: Writes byte to specified I/O port
+ *   Cycles: ~100-1000 (depends on device)
+ *   Barriers: Implicit (volatile prevents reordering)
+ *
+ * @note This function is x86/x86_64 specific
+ * @note Cannot be fully inlined due to volatile
+ * @note I/O ports are separate address space (I/O mapped)
+ * @note Compiler cannot reorder this instruction due to volatile
+ *
+ * @param port I/O port (e.g., 0x3F8 for COM1)
+ * @param value Byte to send
+ *
+ * @see inb() for port reads
+ * @see SERIAL_COM1, SERIAL_COM2 for standard ports
  */
 static inline void outb(uint16_t port, uint8_t value) {
-    __asm__ volatile ("outb %0, %1" : : "a"(value), "Nd"(port));
+    __asm__ volatile("outb %0, %1" : : "a"(value), "Nd"(port));
 }
 
 /**
  * @brief Read a byte from a port
- * 
+ *
  * @assembly
- *   Instrucción: inb
- *   Operandos:
- *     - %0 (output): AL register (valor leído)
- *     - %1 (input): DX register (puerto de E/S)
- *   Constraint "=a": Escribe en AL/AX/EAX/RAX
- *   Constraint "Nd": Puerto inmediato (0-255) o registro DX
- *   Efectos: Lee byte desde puerto de E/S especificado
- *   Ciclos: ~100-1000 (depende del dispositivo de E/S)
- *   Barreras: Implícita (volatile previene reordenamiento)
- * 
- * @note Esta función es específica de x86/x86_64
- * @note El valor de retorno está en el registro AL después de la instrucción
- * @note Los puertos de E/S son espacios separados de memoria (I/O mapped)
- * @note El compilador no puede reordenar esta instrucción debido a volatile
- * 
- * @param port Puerto de E/S (ej: 0x3F8 para COM1)
- * @return uint8_t Byte leído desde el puerto
- * 
- * @see outb() para escritura de puertos
- * @see SERIAL_COM1, SERIAL_COM2 para puertos estándar
+ *   Instruction: inb
+ *   Operands:
+ *     - %0 (output): AL register (value read)
+ *     - %1 (input): DX register (I/O port)
+ *   Constraint "=a": Writes to AL/AX/EAX/RAX
+ *   Constraint "Nd": Immediate port (0-255) or DX register
+ *   Effects: Reads byte from specified I/O port
+ *   Cycles: ~100-1000 (depends on device)
+ *   Barriers: Implicit (volatile prevents reordering)
+ *
+ * @note This function is x86/x86_64 specific
+ * @note Return value is in AL register after instruction
+ * @note I/O ports are separate address space (I/O mapped)
+ * @note Compiler cannot reorder this instruction due to volatile
+ *
+ * @param port I/O port (e.g., 0x3F8 for COM1)
+ * @return uint8_t Byte read from port
+ *
+ * @see outb() for port writes
+ * @see SERIAL_COM1, SERIAL_COM2 for standard ports
  */
 static inline uint8_t inb(uint16_t port) {
     uint8_t ret;
-    __asm__ volatile ("inb %1, %0" : "=a"(ret) : "Nd"(port));
+    __asm__ volatile("inb %1, %0" : "=a"(ret) : "Nd"(port));
     return ret;
 }
 
@@ -165,9 +160,7 @@ static inline uint8_t inb(uint16_t port) {
  * @return true if COM1-COM4, false otherwise
  */
 static bool is_valid_serial_port(uint16_t port) {
-    return (port == SERIAL_COM1 ||
-            port == SERIAL_COM2 ||
-            port == SERIAL_COM3 ||
+    return (port == SERIAL_COM1 || port == SERIAL_COM2 || port == SERIAL_COM3 ||
             port == SERIAL_COM4);
 }
 
@@ -211,10 +204,10 @@ int serial_init(uint16_t port, uint32_t baud) {
 
     /* Validate baud rate is not zero */
     if (baud == 0) {
-        wmb();  /* Ensure all prior writes complete */
+        wmb(); /* Ensure all prior writes complete */
         g_serial_state.failed = 1;
         g_serial_state.error_code = SERIAL_ERROR_INIT_FAIL;
-        wmb();  /* Ensure state writes are visible */
+        wmb();     /* Ensure state writes are visible */
         return 0;  // Invalid parameter: baud rate cannot be zero
     }
 
@@ -258,11 +251,11 @@ int serial_init(uint16_t port, uint32_t baud) {
     }
 
     /* Reset error state on successful init */
-    wmb();  /* Clear prior state */
+    wmb(); /* Clear prior state */
     g_serial_state.failed = 0;
     g_serial_state.error_code = SERIAL_ERROR_NONE;
     atomic_store32(&g_serial_state.timeout_count, 0);
-    wmb();  /* Ensure state is visible before proceeding */
+    wmb(); /* Ensure state is visible before proceeding */
 
     /* Save port */
     g_serial_state.port = port;
@@ -281,40 +274,46 @@ int serial_init(uint16_t port, uint32_t baud) {
      * Note: baud is already validated in range 110-115200
      */
     uint16_t divisor = 115200 / baud;
-    outb(port + SERIAL_DLL, (divisor & 0xFF));       /* Low byte */
-    outb(port + SERIAL_DLM, (divisor >> 8) & 0xFF);  /* High byte */
+    outb(port + SERIAL_DLL, (divisor & 0xFF));      /* Low byte */
+    hw_wmb();                                       /* MMIO barrier - ensure DLL write completes */
+    outb(port + SERIAL_DLM, (divisor >> 8) & 0xFF); /* High byte */
+    hw_wmb();                                       /* MMIO barrier - ensure DLM write completes */
 
     /* Configure 8 bits, no parity, 1 stop bit (8N1) and disable DLAB */
     outb(port + SERIAL_LCR, SERIAL_LCR_8N1);
+    hw_wmb(); /* MMIO barrier - ensure LCR write completes */
 
     /* Enable FIFOs (16550), clear them, set 14 byte threshold */
     outb(port + SERIAL_FCR, 0x07);
+    hw_wmb(); /* MMIO barrier - ensure FCR write completes */
 
     /* Configure modem: DTR + RTS + OUT2 (enable interrupts) */
     outb(port + SERIAL_MCR, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2);
+    hw_wmb(); /* MMIO barrier - ensure MCR write completes */
 
     /* Clear receive buffer by reading any pending data */
-    (void)inb(port + SERIAL_RBR);
+    (void) inb(port + SERIAL_RBR);
+    hw_rmb(); /* MMIO barrier - ensure read completes */
 
     /* Small delay to ensure UART is ready
-     * 
+     *
      * @assembly
-     *   Instrucción: nop (No Operation)
-     *   Operandos: Ninguno
-     *   Efectos: Ninguno - solo consume 1 ciclo de CPU
-     *   Ciclos: 1
-     *   Propósito: Pequeño delay para estabilizar hardware
-     * 
-     * @note Se usa volatile en el contador para prevenir optimización
-     * @note 1000 nops = ~1000 ciclos = ~0.5ms en 2GHz
+     *   Instruction: nop (No Operation)
+     *   Operands: None
+     *   Effects: None - consumes 1 CPU cycle only
+     *   Cycles: 1
+     *   Purpose: Small delay to stabilize hardware
+     *
+     * @note Uses volatile counter to prevent optimization
+     * @note 1000 nops = ~1000 cycles = ~0.5ms at 2GHz
      */
     for (volatile int i = 0; i < SERIAL_INIT_DELAY_ITERATIONS; i++) {
-        __asm__ volatile ("nop");
+        __asm__ volatile("nop");
     }
 
-    wmb();  /* Ensure all prior writes complete */
+    wmb(); /* Ensure all prior writes complete */
     g_serial_state.initialized = 1;
-    mb();   /* Full barrier - initialization complete and visible */
+    mb(); /* Full barrier - initialization complete and visible */
 
     return 1;
 }
@@ -326,12 +325,12 @@ int serial_init_default(void) {
 /**
  * @brief Check if serial port is initialized
  * @return 1 if initialized, 0 otherwise
- * 
+ *
  * @note This function accesses the encapsulated state structure
  * @note For SMP safety, uses memory barrier to ensure latest value
  */
 int serial_is_initialized(void) {
-    rmb();  /* Ensure we see latest state */
+    rmb(); /* Ensure we see latest state */
     return g_serial_state.initialized;
 }
 
@@ -343,7 +342,7 @@ int serial_is_initialized(void) {
  * Uses busy-wait with limit to prevent infinite hangs
  */
 static bool serial_wait_transmit_empty_timeout(uint32_t timeout) {
-    rmb();  /* Ensure we see latest state */
+    rmb(); /* Ensure we see latest state */
     if (!g_serial_state.initialized) {
         return false;
     }
@@ -358,18 +357,18 @@ static bool serial_wait_transmit_empty_timeout(uint32_t timeout) {
             return true;
         }
         /* Small delay to avoid bus saturation
-         * 
+         *
          * @assembly
-         *   Instrucción: nop (No Operation)
-         *   Operandos: Ninguno
-         *   Efectos: Ninguno - solo consume 1 ciclo de CPU
-         *   Ciclos: 1
-         *   Propósito: Prevenir saturación del bus de E/S con lecturas continuas
-         * 
-         * @note Sin este nop, el bucle leería el puerto miles de veces por milisegundo
-         * @note En hardware real, esto puede causar problemas de timing
+         *   Instruction: nop (No Operation)
+         *   Operands: None
+         *   Effects: None - consumes 1 CPU cycle only
+         *   Cycles: 1
+         *   Purpose: Prevent I/O bus saturation from continuous reads
+         *
+         * @note Without this nop, the loop would read the port thousands of times per millisecond
+         * @note On real hardware, this can cause timing issues
          */
-        __asm__ volatile ("nop");
+        __asm__ volatile("nop");
     }
 
     /* ==========================================
@@ -386,15 +385,15 @@ static bool serial_wait_transmit_empty_timeout(uint32_t timeout) {
      * to ensure SMP safety. Multiple CPUs may timeout
      * concurrently, and we need accurate statistics.
      * ========================================== */
-    wmb();  /* Ensure ordering of failure state */
+    wmb(); /* Ensure ordering of failure state */
     g_serial_state.failed = 1;
     g_serial_state.error_code = SERIAL_ERROR_TIMEOUT;
-    wmb();  /* Ensure failure state is visible */
+    wmb(); /* Ensure failure state is visible */
 
     /* Atomic increment for timeout counter
      * Uses relaxed ordering since this is a statistics counter
      * and exact ordering doesn't matter for diagnostics.
-     * 
+     *
      * @assembly
      *   Instruction: LOCK XADD or LOCK CMPXCHG
      *   Memory Ordering: Relaxed (__ATOMIC_RELAXED)
@@ -402,14 +401,14 @@ static bool serial_wait_transmit_empty_timeout(uint32_t timeout) {
      *   SMP-Safe: Yes - atomic read-modify-write
      */
     atomic_inc32_relaxed(&g_serial_state.timeout_count);
-    wmb();  /* Ensure counter update is visible */
+    wmb(); /* Ensure counter update is visible */
 
     /* Use print_is_initialized() instead of print_detect()
      * print_detect() performs a hardware test write which may not be safe
      * if called before VGA is fully initialized.
      * print_is_initialized() simply checks the initialization flag.
      */
-    rmb();  /* Ensure we see latest print state */
+    rmb(); /* Ensure we see latest print state */
     if (print_is_initialized()) {
         print_set_color(PRINT_COLOR_YELLOW, PRINT_COLOR_BLACK);
         print_str("[SERIAL TIMEOUT] Hardware not responding!\r\n");
@@ -425,21 +424,37 @@ void serial_wait_transmit_empty(void) {
 }
 
 void serial_write_char(char data) {
+    /* ==========================================
+     * SMP Safety (#SMP-002): Acquire serial lock
+     * ==========================================
+     * This ensures atomic access to UART hardware.
+     * Multiple CPUs calling this function concurrently
+     * will be serialized, preventing character interleaving.
+     *
+     * The lock also disables interrupts to prevent deadlock
+     * if an interrupt handler also tries to write to serial.
+     * ========================================== */
+    serial_lock();
+
     /* Check if serial is initialized OR failed (for graceful degradation) */
-    rmb();  /* Ensure we see latest state */
     if (!g_serial_state.initialized) {
-        return;  /* Serial not initialized or failed */
+        serial_unlock(); /* Release lock before returning */
+        return;          /* Serial not initialized or failed */
     }
 
     /* Wait until transmitter holding register is empty */
     if (!serial_wait_transmit_empty_timeout(SERIAL_MAX_WAIT)) {
         /* Timeout occurred - hardware may have failed */
+        serial_unlock(); /* Release lock before returning */
         /* Do NOT retry indefinitely - let caller decide what to do */
         return;
     }
 
     /* Write the character */
-    outb(g_serial_state.port + SERIAL_THR, (uint8_t)data);
+    outb(g_serial_state.port + SERIAL_THR, (uint8_t) data);
+
+    /* Release lock after operation complete */
+    serial_unlock();
 }
 
 void serial_write_str(const char* str) {
@@ -456,23 +471,44 @@ void serial_write_str(const char* str) {
         return;
     }
 
+    /* ==========================================
+     * SMP Safety (#SMP-002): Acquire lock once for entire string
+     * ==========================================
+     * This is more efficient than acquiring/releasing per character.
+     * Ensures the entire string is output atomically without interleaving.
+     * ========================================== */
+    serial_lock();
+
     while (*str) {
-        serial_write_char(*str);
+        /* Inline character output for efficiency (lock already held) */
+        if (!g_serial_state.initialized) {
+            serial_unlock();
+            return;
+        }
+
+        if (!serial_wait_transmit_empty_timeout(SERIAL_MAX_WAIT)) {
+            serial_unlock();
+            return;
+        }
+
+        outb(g_serial_state.port + SERIAL_THR, (uint8_t) *str);
         str++;
     }
+
+    serial_unlock();
 }
 
 void serial_write_hex(uint32_t value) {
-    char buffer[11];  /* "0x" + 8 digits + null */
-    
+    char buffer[11]; /* "0x" + 8 digits + null */
+
     // Use shared utility function from hex_utils.h (DRY principle)
     uint32_to_hex_string(buffer, value);
-    
+
     serial_write_str(buffer);
 }
 
 void serial_write_dec(uint32_t value) {
-    char buffer[12];  /* Maximum 10 digits + null */
+    char buffer[12]; /* Maximum 10 digits + null */
 
     // Use shared utility function (DRY principle)
     serial_write_str(uint32_to_decimal_string(buffer, value));
@@ -537,7 +573,7 @@ void serial_write_dec64_signed(int64_t value) {
 }
 
 int serial_read_char(char* data) {
-    rmb();  /* Ensure we see latest state */
+    rmb(); /* Ensure we see latest state */
     if (!g_serial_state.initialized) {
         return 0;
     }
@@ -548,7 +584,7 @@ int serial_read_char(char* data) {
 
     /* Check if data is available (DR bit) */
     if (inb(g_serial_state.port + SERIAL_LSR) & SERIAL_LSR_DR) {
-        *data = (char)inb(g_serial_state.port + SERIAL_RBR);
+        *data = (char) inb(g_serial_state.port + SERIAL_RBR);
         return 1;
     }
 
@@ -568,12 +604,12 @@ int serial_read_char(char* data) {
  *
  * A failed serial port may still have been initialized successfully,
  * but encountered a hardware error during operation (e.g., timeout).
- * 
+ *
  * @note This function accesses the encapsulated state structure
  * @note For SMP safety, uses memory barrier to ensure latest value
  */
 int serial_has_failed(void) {
-    rmb();  /* Ensure we see latest state */
+    rmb(); /* Ensure we see latest state */
     return g_serial_state.failed;
 }
 
@@ -586,12 +622,12 @@ int serial_has_failed(void) {
  *   SERIAL_ERROR_TIMEOUT (1)   - Hardware timeout (not responding)
  *   SERIAL_ERROR_INIT_FAIL (2) - Initialization failed
  *   SERIAL_ERROR_NULL_PTR (3)  - Null pointer passed to function
- *   
+ *
  * @note This function accesses the encapsulated state structure
  * @note For SMP safety, uses memory barrier to ensure latest value
  */
 uint32_t serial_get_error_code(void) {
-    rmb();  /* Ensure we see latest state */
+    rmb(); /* Ensure we see latest state */
     return g_serial_state.error_code;
 }
 
@@ -601,12 +637,12 @@ uint32_t serial_get_error_code(void) {
  *
  * This counter increments each time a serial operation times out.
  * Useful for diagnosing intermittent hardware issues.
- * 
+ *
  * @note This function accesses the encapsulated state structure
  * @note For SMP safety, uses memory barrier to ensure latest value
  */
 uint32_t serial_get_timeout_count(void) {
-    rmb();  /* Ensure we see latest state */
+    rmb(); /* Ensure we see latest state */
     return g_serial_state.timeout_count;
 }
 
@@ -617,10 +653,10 @@ uint32_t serial_get_timeout_count(void) {
  * Useful for recovery attempts or re-initialization.
  */
 void serial_clear_error(void) {
-    wmb();  /* Ensure ordering */
+    wmb(); /* Ensure ordering */
     g_serial_state.failed = 0;
     g_serial_state.error_code = SERIAL_ERROR_NONE;
-    wmb();  /* Ensure cleared state is visible */
+    wmb(); /* Ensure cleared state is visible */
 }
 
 /* ==========================================
@@ -658,12 +694,12 @@ int serial_reinit(uint16_t port, uint32_t baud) {
      * if the port is marked as failed. We must clear the state
      * to allow a fresh initialization attempt.
      * ========================================== */
-    wmb();  /* Ensure ordering */
+    wmb(); /* Ensure ordering */
     g_serial_state.failed = 0;
     g_serial_state.error_code = SERIAL_ERROR_NONE;
-    atomic_store32(&g_serial_state.timeout_count, 0);  /* CRIT-001: Atomic reset */
-    g_serial_state.initialized = 0;    /* Clear initialized flag for fresh init */
-    wmb();  /* Ensure cleared state is visible before re-init */
+    atomic_store32(&g_serial_state.timeout_count, 0); /* CRIT-001: Atomic reset */
+    g_serial_state.initialized = 0;                   /* Clear initialized flag for fresh init */
+    wmb(); /* Ensure cleared state is visible before re-init */
 
     /* Now perform normal initialization */
     return serial_init(port, baud);
@@ -688,15 +724,15 @@ int serial_reinit_default(void) {
  */
 const char* serial_get_error_string(uint32_t error_code) {
     switch (error_code) {
-        case SERIAL_ERROR_NONE:
-            return "No error";
-        case SERIAL_ERROR_TIMEOUT:
-            return "Serial hardware timeout (not responding)";
-        case SERIAL_ERROR_INIT_FAIL:
-            return "Serial initialization failed";
-        case SERIAL_ERROR_NULL_PTR:
-            return "Null pointer argument";
-        default:
-            return "Unknown error code";
+    case SERIAL_ERROR_NONE:
+        return "No error";
+    case SERIAL_ERROR_TIMEOUT:
+        return "Serial hardware timeout (not responding)";
+    case SERIAL_ERROR_INIT_FAIL:
+        return "Serial initialization failed";
+    case SERIAL_ERROR_NULL_PTR:
+        return "Null pointer argument";
+    default:
+        return "Unknown error code";
     }
 }

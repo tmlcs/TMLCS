@@ -1,7 +1,7 @@
 #include "vga.h"
+#include "barriers.h"
 #include "constants.h"
 #include "spinlock.h"
-#include "barriers.h"
 
 /* Use centralized barriers from barriers.h
  * Previous: Local #define mb()/rmb()/wmb() definitions
@@ -252,19 +252,19 @@ size_t vga_get_cursor_row(void) {
     return cursor_row;
 }
 
-void vga_set_cursor(size_t col, size_t row) {
+void vga_set_cursor(vga_pos_t pos) {
     vga_begin_atomic();
 
     /* Clamp values to valid range */
-    if (col >= VGA_COLS) {
-        col = VGA_COLS - 1;
+    if (pos.col.value >= VGA_COLS) {
+        pos.col.value = VGA_COLS - 1;
     }
-    if (row >= VGA_ROWS) {
-        row = VGA_ROWS - 1;
+    if (pos.row.value >= VGA_ROWS) {
+        pos.row.value = VGA_ROWS - 1;
     }
 
-    cursor_col = col;
-    cursor_row = row;
+    cursor_col = pos.col.value;
+    cursor_row = pos.row.value;
     mb();
 
     vga_end_atomic();
@@ -291,12 +291,30 @@ bool vga_advance_cursor(void) {
 /* =============================================================================
  * Low-Level Character Output
  * =============================================================================
+ *
+ * INTERRUPT SAFETY: [INTERRUPT-UNSAFE]
+ * These functions acquire vga_lock and MUST NOT be called from:
+ *   - Interrupt handlers
+ *   - Exception handlers
+ *   - NMI handlers
+ *
+ * For interrupt-safe output, use:
+ *   - vga_put_char_early() - Direct MMIO, no lock
+ *   - vga_put_string_early() - Direct MMIO, no lock
+ *   - serial output (has separate lock)
+ *
+ * Tracking issue: #SMP-003 (VGA interrupt safety)
+ * =============================================================================
  */
 
-void vga_put_char_at(char character, size_t col, size_t row, uint8_t fg, uint8_t bg) {
+/**
+ * @brief Write character at specific position with color
+ * @note Using type-safe wrappers prevents parameter swapping bugs
+ */
+void vga_put_char_at(char character, vga_col_t col, vga_row_t row, vga_colors_t colors) {
     vga_begin_atomic();
 
-    if (!is_valid_position(row, col)) {
+    if (!is_valid_position(row.value, col.value)) {
         vga_end_atomic();
         return;
     }
@@ -305,6 +323,8 @@ void vga_put_char_at(char character, size_t col, size_t row, uint8_t fg, uint8_t
      * Invalid colors are clamped to safe defaults (white on black)
      * This prevents display corruption from invalid color values
      */
+    uint8_t fg = colors.fg;
+    uint8_t bg = colors.bg;
     if (!is_valid_color(fg)) {
         fg = VGA_COLOR_WHITE;
     }
@@ -312,7 +332,7 @@ void vga_put_char_at(char character, size_t col, size_t row, uint8_t fg, uint8_t
         bg = VGA_COLOR_BLACK;
     }
 
-    size_t idx = vga_index(row, col);
+    size_t idx = vga_index(row.value, col.value);
     uint8_t color_attr = vga_make_color(fg, bg);
 
     /* Atomic 16-bit write */
@@ -388,8 +408,24 @@ void vga_put_string(const char* str) {
         return;
     }
 
-    /* Limit maximum length */
-    constexpr size_t MAX_STRING_LEN = 4096;
+    /* Limit maximum length to prevent holding VGA lock for too long.
+     *
+     * SMP CONSIDERATION:
+     * The VGA lock is held for the entire duration of this function.
+     * A very long string could block other CPUs from writing to VGA,
+     * causing visible output delays or apparent system hangs.
+     *
+     * 256 characters is sufficient for:
+     *   - Most debug messages (~50-100 chars)
+     *   - Error messages (~100-150 chars)
+     *   - Test output lines (~80 chars = one screen row)
+     *
+     * For longer output, consider:
+     *   - Using serial output instead
+     *   - Breaking into multiple print_str() calls
+     *   - Implementing periodic lock release (future enhancement)
+     */
+    constexpr size_t MAX_STRING_LEN = 256;
 
     for (size_t i = 0; i < MAX_STRING_LEN && str[i] != '\0'; i++) {
         switch (str[i]) {
@@ -456,4 +492,81 @@ void vga_end_atomic(void) {
 
 bool vga_try_begin_atomic(void) {
     return vga_try_lock();
+}
+
+/* =============================================================================
+ * Interrupt-Safe Functions (EARLY PANIC / DEBUG)
+ * =============================================================================
+ * These functions DO NOT use locks and are safe to call from:
+ *   - Interrupt handlers
+ *   - Exception handlers
+ *   - Early boot code (before spinlock initialization)
+ *   - Panic/error paths where deadlock is unacceptable
+ *
+ * WARNING: These functions are NOT SMP-safe!
+ *   - No locking means concurrent access may corrupt output
+ *   - Only use when system is already in fatal state
+ *   - Do NOT use for normal operation
+ *
+ * Tracking issue: #SMP-003 (VGA interrupt safety)
+ * =============================================================================
+ */
+
+void vga_put_char_early(char character, vga_pos_t pos, uint8_t color) {
+    /* Direct MMIO write - no lock, no bounds checking beyond screen */
+    if (pos.row.value >= VGA_ROWS || pos.col.value >= VGA_COLS) {
+        return;
+    }
+
+    size_t idx = pos.row.value * VGA_COLS + pos.col.value;
+    volatile uint16_t* cell_ptr = reinterpret_cast<volatile uint16_t*>(&vga_buffer[idx]);
+
+    /* Atomic 16-bit write: character + color attribute */
+    *cell_ptr = static_cast<uint16_t>(static_cast<uint8_t>(character)) |
+                (static_cast<uint16_t>(color) << 8);
+
+    mb(); /* Ensure write is visible */
+}
+
+void vga_put_string_early(const char* str, vga_pos_t pos, uint8_t color) {
+    if (str == nullptr) {
+        return;
+    }
+
+    /* Direct MMIO writes - no lock */
+    size_t current_col = pos.col.value;
+    size_t current_row = pos.row.value;
+    size_t start_col = pos.col.value;
+
+    for (size_t i = 0; str[i] != '\0'; i++) {
+        /* Handle basic control characters */
+        if (str[i] == '\n') {
+            current_col = start_col; /* Return to start of line */
+            current_row++;
+            if (current_row >= VGA_ROWS) {
+                current_row = VGA_ROWS - 1; /* Clamp to last row */
+            }
+            continue;
+        }
+
+        if (str[i] == '\r') {
+            current_col = start_col; /* Return to start of line */
+            continue;
+        }
+
+        /* Stop at end of row */
+        if (current_col >= VGA_COLS) {
+            break;
+        }
+
+        /* Stop at end of screen */
+        if (current_row >= VGA_ROWS) {
+            break;
+        }
+
+        vga_put_char_early(str[i], vga_make_pos(vga_col(current_col), vga_row(current_row)), color);
+        current_col++;
+    }
+
+    mb(); /* Ensure all writes are visible */
 }

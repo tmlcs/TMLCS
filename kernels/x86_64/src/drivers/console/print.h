@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "vga.h" /* For vga_pos_t type-safe position */
 
 /* ==========================================
  * C/C++ linkage guards
@@ -133,12 +134,18 @@ size_t print_get_cursor_col(void);
 size_t print_get_cursor_row(void);
 
 /**
- * @brief Get current cursor position (legacy compatibility)
- * @param col Pointer to store column (can be NULL)
- * @param row Pointer to store row (can be NULL)
- * @note If col or row are NULL, that parameter is not written
+ * @brief Get current cursor position as type-safe struct
+ * @return vga_pos_t with column and row
+ * @note Using vga_pos_t prevents accidentally swapping col/row
+ *
+ * @example
+ *   vga_pos_t pos = print_get_cursor_pos();
+ *   print_str("Cursor at: ");
+ *   print_dec(pos.col.value);
+ *   print_str(", ");
+ *   print_dec(pos.row.value);
  */
-void print_get_cursor(size_t* col, size_t* row);
+vga_pos_t print_get_cursor_pos(void);
 
 /**
  * @brief Set cursor position

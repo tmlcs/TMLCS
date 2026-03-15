@@ -19,21 +19,29 @@ extern uint8_t test_bg;
 void test_query_functions() {
     serial_write_str("\r\n=== Query Functions Test ===\r\n");
 
-    // Test print_get_cursor() - get current cursor position
-    print_get_cursor(&test_cursor_col, &test_cursor_row);
+    // Test print_get_cursor_pos() - get current cursor position
+    {
+        vga_pos_t pos = print_get_cursor_pos();
+        test_cursor_col = pos.col.value;
+        test_cursor_row = pos.row.value;
+    }
     serial_write_str("Current cursor: col=");
     serial_write_dec((uint32_t)test_cursor_col);
     serial_write_str(", row=");
     serial_write_dec((uint32_t)test_cursor_row);
     serial_write_str("\r\n");
-    serial_write_str("print_get_cursor: OK\r\n");
+    serial_write_str("print_get_cursor_pos: OK\r\n");
 
     // Test print_set_cursor() - set cursor to specific position
     serial_write_str("Setting cursor to (40, 12)...\r\n");
     print_set_cursor(40, 12);
 
     // Verify new position
-    print_get_cursor(&test_cursor_col, &test_cursor_row);
+    {
+        vga_pos_t pos = print_get_cursor_pos();
+        test_cursor_col = pos.col.value;
+        test_cursor_row = pos.row.value;
+    }
     if (test_cursor_col == 40 && test_cursor_row == 12) {
         serial_write_str("Cursor set successfully: col=");
         serial_write_dec((uint32_t)test_cursor_col);
@@ -48,7 +56,11 @@ void test_query_functions() {
     // Test print_set_cursor() boundary clamping
     // Test 1: Column > 79 should clamp to 79
     print_set_cursor(100, 10);
-    print_get_cursor(&test_cursor_col, &test_cursor_row);
+    {
+        vga_pos_t pos = print_get_cursor_pos();
+        test_cursor_col = pos.col.value;
+        test_cursor_row = pos.row.value;
+    }
     if (test_cursor_col == 79 && test_cursor_row == 10) {
         serial_write_str("print_set_cursor clamp col: OK\r\n");
     } else {
@@ -57,7 +69,11 @@ void test_query_functions() {
 
     // Test 2: Row > 24 should clamp to 24 (column also clamped from 100 to 79)
     print_set_cursor(100, 50);
-    print_get_cursor(&test_cursor_col, &test_cursor_row);
+    {
+        vga_pos_t pos = print_get_cursor_pos();
+        test_cursor_col = pos.col.value;
+        test_cursor_row = pos.row.value;
+    }
     if (test_cursor_col == 79 && test_cursor_row == 24) {
         serial_write_str("print_set_cursor clamp row: OK\r\n");
     } else {
@@ -66,7 +82,11 @@ void test_query_functions() {
 
     // Test 3: Both at max boundary (79, 24)
     print_set_cursor(79, 24);
-    print_get_cursor(&test_cursor_col, &test_cursor_row);
+    {
+        vga_pos_t pos = print_get_cursor_pos();
+        test_cursor_col = pos.col.value;
+        test_cursor_row = pos.row.value;
+    }
     if (test_cursor_col == 79 && test_cursor_row == 24) {
         serial_write_str("print_set_cursor max boundary: OK\r\n");
     } else {
@@ -75,7 +95,11 @@ void test_query_functions() {
 
     // Test 4: Zero position (0, 0)
     print_set_cursor(0, 0);
-    print_get_cursor(&test_cursor_col, &test_cursor_row);
+    {
+        vga_pos_t pos = print_get_cursor_pos();
+        test_cursor_col = pos.col.value;
+        test_cursor_row = pos.row.value;
+    }
     if (test_cursor_col == 0 && test_cursor_row == 0) {
         serial_write_str("print_set_cursor zero: OK\r\n");
     } else {

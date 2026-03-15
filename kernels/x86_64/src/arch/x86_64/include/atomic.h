@@ -331,18 +331,10 @@ static inline void atomic_store64(volatile uint64_t* ptr, uint64_t value) {
  *     bool success = atomic_compare_exchange32(&value, &expected, 20);
  *     // success == false, value unchanged, expected is now 10
  */
-static inline bool atomic_compare_exchange32(
-    volatile uint32_t* ptr,
-    uint32_t* expected,
-    uint32_t desired)
-{
-    return __atomic_compare_exchange_n(
-        ptr,
-        expected,
-        desired,
-        0,  /* weak = false (strong CAS) */
-        __ATOMIC_SEQ_CST,
-        __ATOMIC_SEQ_CST);
+static inline bool atomic_compare_exchange32(volatile uint32_t* ptr, uint32_t* expected,
+                                             uint32_t desired) {
+    return __atomic_compare_exchange_n(ptr, expected, desired, 0, /* weak = false (strong CAS) */
+                                       __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
 }
 
 /**
@@ -366,18 +358,10 @@ static inline bool atomic_compare_exchange32(
  *     bool success = atomic_compare_exchange64(&value, &expected, 20);
  *     // success == true, value is now 20
  */
-static inline bool atomic_compare_exchange64(
-    volatile uint64_t* ptr,
-    uint64_t* expected,
-    uint64_t desired)
-{
-    return __atomic_compare_exchange_n(
-        ptr,
-        expected,
-        desired,
-        0,  /* weak = false (strong CAS) */
-        __ATOMIC_SEQ_CST,
-        __ATOMIC_SEQ_CST);
+static inline bool atomic_compare_exchange64(volatile uint64_t* ptr, uint64_t* expected,
+                                             uint64_t desired) {
+    return __atomic_compare_exchange_n(ptr, expected, desired, 0, /* weak = false (strong CAS) */
+                                       __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
 }
 
 /* =============================================================================

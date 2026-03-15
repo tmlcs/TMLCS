@@ -20,8 +20,8 @@
 extern "C" {
 #endif
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 /* =============================================================================
  * Compiler Memory Barriers
@@ -206,12 +206,12 @@ static inline void hw_wmb(void) {
  *   }
  *   // Critical section - all operations happen after acquire
  */
-#define smp_load_acquire(p)                                              \
-    ({                                                                   \
-        typeof(*(p)) val;                                                \
-        val = *(p);                                                      \
-        rmb();  /* Ensure subsequent ops happen after load */            \
-        val;                                                             \
+#define smp_load_acquire(p)                                                                        \
+    ({                                                                                             \
+        typeof(*(p)) val;                                                                          \
+        val = *(p);                                                                                \
+        rmb(); /* Ensure subsequent ops happen after load */                                       \
+        val;                                                                                       \
     })
 
 /**
@@ -229,10 +229,10 @@ static inline void hw_wmb(void) {
  *   // Critical section - all operations happen before release
  *   smp_store_release(&lock->locked, 0);  // Release lock
  */
-#define smp_store_release(p, v)                                          \
-    do {                                                                 \
-        wmb();  /* Ensure prior ops happen before store */               \
-        *(p) = (v);                                                      \
+#define smp_store_release(p, v)                                                                    \
+    do {                                                                                           \
+        wmb(); /* Ensure prior ops happen before store */                                          \
+        *(p) = (v);                                                                                \
     } while (0)
 
 /* =============================================================================
@@ -322,7 +322,7 @@ static inline void cpu_pause(void) {
  * @see https://www.felixcloutier.com/x86/prefetch
  */
 static inline void prefetch_read(const void* ptr) {
-    __asm__ volatile("prefetcht0 %0" :: "m"(*(const char*)ptr));
+    __asm__ volatile("prefetcht0 %0" ::"m"(*(const char*) ptr));
 }
 
 /**
@@ -340,7 +340,7 @@ static inline void prefetch_read(const void* ptr) {
  * @see https://www.felixcloutier.com/x86/prefetch
  */
 static inline void prefetch_write(void* ptr) {
-    __asm__ volatile("prefetchw %0" :: "m"(*(char*)ptr));
+    __asm__ volatile("prefetchw %0" ::"m"(*(char*) ptr));
 }
 
 #ifdef __cplusplus

@@ -94,16 +94,16 @@ size_t print_get_cursor_row(void) {
     return vga_get_cursor_row();
 }
 
-/* Legacy compatibility function */
-void print_get_cursor(size_t* col, size_t* row) {
-    if (col)
-        *col = vga_get_cursor_col();
-    if (row)
-        *row = vga_get_cursor_row();
+/* Type-safe cursor position getter - preferred API */
+vga_pos_t print_get_cursor_pos(void) {
+    vga_pos_t pos;
+    pos.col = vga_col(vga_get_cursor_col());
+    pos.row = vga_row(vga_get_cursor_row());
+    return pos;
 }
 
 void print_set_cursor(size_t col, size_t row) {
-    vga_set_cursor(col, row);
+    vga_set_cursor(vga_make_pos(vga_col(col), vga_row(row)));
 }
 
 bool print_advance_cursor(void) {

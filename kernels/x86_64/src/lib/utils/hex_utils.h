@@ -26,9 +26,15 @@ extern "C" {
  *
  * @param buffer Output buffer (MUST be at least 19 bytes: 2 + 16 + 1)
  * @param value 64-bit unsigned value to convert
- * @return Pointer to buffer (for chaining)
+ * @return Pointer to buffer (for chaining), or NULL if buffer is NULL
+ *
+ * @note Returns NULL if buffer is NULL - no triple fault
  */
 inline char* uint64_to_hex_string(char* buffer, uint64_t value) {
+    if (buffer == nullptr) {
+        return nullptr;
+    }
+
     static const char hex_chars[] = "0123456789ABCDEF";
 
     buffer[0] = '0';
@@ -52,9 +58,15 @@ inline char* uint64_to_hex_string(char* buffer, uint64_t value) {
  *
  * @param buffer Output buffer (MUST be at least 11 bytes: 2 + 8 + 1)
  * @param value 32-bit unsigned value to convert
- * @return Pointer to buffer (for chaining)
+ * @return Pointer to buffer (for chaining), or NULL if buffer is NULL
+ *
+ * @note Returns NULL if buffer is NULL - no triple fault
  */
 inline char* uint32_to_hex_string(char* buffer, uint32_t value) {
+    if (buffer == nullptr) {
+        return nullptr;
+    }
+
     static const char hex_chars[] = "0123456789ABCDEF";
 
     buffer[0] = '0';

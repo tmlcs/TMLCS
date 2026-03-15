@@ -1,6 +1,7 @@
 #include "spinlock.h"
-#include "constants.h"
 #include "barriers.h"
+#include "constants.h"
+#include "serial.h"
 
 /* Use centralized barriers from barriers.h
  * Previous: Local #define barrier()
@@ -358,4 +359,45 @@ void vga_unlock(void) {
 
 bool vga_try_lock(void) {
     return spinlock_try_acquire(&g_vga_lock);
+}
+
+/* =============================================================================
+ * Serial Spinlock Instance
+ * =============================================================================
+ * Global spinlock for protecting serial port operations in SMP environments.
+ * This lock must be held when accessing:
+ *   - UART registers (THR, RBR, LSR, etc.)
+ *   - Serial driver state (g_serial_state)
+ *
+ * Benefits:
+ *   - Prevents character interleaving from multiple CPUs
+ *   - Ensures atomic multi-character output
+ *   - SMP-safe with interrupt handling (same as VGA lock)
+ *
+ * Usage:
+ *   - Internal: All serial_write_* functions acquire lock automatically
+ *   - External: Use serial_lock()/serial_unlock() for multi-operation atomicity
+ *
+ * Tracking issue: #SMP-002 (Serial driver SMP safety)
+ * =============================================================================
+ */
+
+/* Global serial lock - initialized to unlocked state */
+spinlock_t g_serial_lock = SPINLOCK_INIT;
+
+/* =============================================================================
+ * Lock/Unlock helpers for serial driver
+ * =============================================================================
+ */
+
+void serial_lock(void) {
+    spinlock_acquire(&g_serial_lock);
+}
+
+void serial_unlock(void) {
+    spinlock_release(&g_serial_lock);
+}
+
+bool serial_try_lock(void) {
+    return spinlock_try_acquire(&g_serial_lock);
 }

@@ -94,23 +94,29 @@ extern "C" {
  * This provides:
  *   - Better encapsulation (no global variables exposed)
  *   - Easier testing (state can be mocked)
- *   - SMP safety (all state in one protected structure)
+ *   - SMP safety (all state protected by serial spinlock)
  *   - Future extensibility (easy to add multiple ports)
  *
  * @note All fields are volatile for hardware safety
- * @note For SMP, access is protected by memory barriers (rmb/wmb/mb)
- * @note Functions use rmb() before reading state to ensure
- *       visibility across CPUs. However, this driver is NOT fully SMP-safe
- *       for concurrent write operations. Multiple CPUs may interleave output.
+ * @note For SMP, access is protected by the global serial spinlock
+ *       (g_serial_lock declared in spinlock.cpp)
  *
- * SMP Threading Model:
- *   - serial_write_char(): Uses rmb() for state checks, but NOT atomic
- *   - Concurrent calls from multiple CPUs may interleave characters
- *   - For full SMP safety, protect with external spinlock
- *   - State modifications (init, reinit, clear_error) use wmb() for visibility
- *   - timeout_count: Uses atomic operations (atomic_inc32_relaxed, atomic_store32_relaxed)
+ * SMP Threading Model (UPDATED - #SMP-002):
+ *   - All serial_write_* functions acquire serial_lock internally
+ *   - Concurrent calls from multiple CPUs are now fully serialized
+ *   - Character interleaving is prevented
+ *   - State modifications are protected by the spinlock
+ *   - timeout_count: Uses atomic operations for statistics
  *
- * @see serial_write_char() for threading documentation
+ * Usage for multi-operation atomicity:
+ *   @code
+ *   serial_lock();
+ *   serial_write_str("Value: ");
+ *   serial_write_hex(value);
+ *   serial_unlock();
+ *   @endcode
+ *
+ * @see serial_lock(), serial_unlock() in spinlock.h
  * @see atomic.h for atomic operations used in counters
  */
 typedef struct SerialState {
@@ -149,26 +155,25 @@ int serial_is_initialized(void);
  * @brief Write a character to serial
  * @param data Character to write
  *
- * @note This function uses memory barriers (rmb) for SMP safety.
- *       State checks (initialized, failed) are protected by read barriers to
- *       ensure visibility across CPUs.
+ * @note SMP Safety (UPDATED - #SMP-002): This function is NOW fully SMP-safe.
+ *       It acquires the global serial spinlock internally before accessing
+ *       UART hardware. Concurrent calls from multiple CPUs are serialized.
  *
- * @note SMP Safety: This function is NOT atomic. Concurrent calls from multiple
- *       CPUs may interleave characters. For full SMP safety when printing from
- *       multiple CPUs, protect with a spinlock:
+ * @note The spinlock is acquired/released automatically for each call.
+ *       For multi-operation atomicity, use serial_lock()/serial_unlock():
  *       @code
- *       spinlock_acquire(&serial_lock);
- *       serial_write_char('A');
- *       serial_write_char('B');
- *       spinlock_release(&serial_lock);
+ *       serial_lock();
+ *       serial_write_str("Value: ");
+ *       serial_write_hex(value);
+ *       serial_unlock();
  *       @endcode
  *
  * @note State Validation: The function checks initialized and failed state
- *       before and after waiting for transmitter. If state changes during
- *       the wait (e.g., concurrent serial_reinit), the write is aborted.
+ *       while holding the lock. If initialization fails during the wait,
+ *       the write is aborted safely.
  *
- * @see serial.h "SMP Threading Model" for complete documentation
- * @see spinlock.h for spinlock API
+ * @see serial_lock(), serial_unlock() in spinlock.h
+ * @see serial_write_str() for string output
  */
 void serial_write_char(char data);
 
@@ -312,6 +317,49 @@ int serial_reinit_default(void);
  * @note String is static - do not free or modify.
  */
 const char* serial_get_error_string(uint32_t error_code);
+
+/* ==========================================
+ * SMP Safety - Serial Spinlock
+ * ==========================================
+ * These functions provide access to the global serial spinlock
+ * for multi-operation atomicity.
+ *
+ * Usage:
+ *   // Single operations are automatically locked internally
+ *   serial_write_char('A');
+ *
+ *   // Multiple operations - manually lock for atomicity
+ *   serial_lock();
+ *   serial_write_str("Hello");
+ *   serial_write_hex(value);
+ *   serial_unlock();
+ *
+ * @note All serial_write_* functions acquire the lock internally
+ * @note Use serial_lock()/serial_unlock() for multi-operation atomicity
+ * @note Declared in spinlock.h, implemented in spinlock.cpp
+ * ==========================================
+ */
+
+/**
+ * @brief Acquire serial lock for multi-operation atomicity
+ * @note Disables interrupts on local CPU to prevent deadlock
+ * @see spinlock.h for full documentation
+ */
+void serial_lock(void);
+
+/**
+ * @brief Release serial lock
+ * @note Restores interrupt state to what it was before acquire
+ * @see spinlock.h for full documentation
+ */
+void serial_unlock(void);
+
+/**
+ * @brief Try to acquire serial lock (non-blocking)
+ * @return true if acquired, false if already locked
+ * @see spinlock.h for full documentation
+ */
+bool serial_try_lock(void);
 
 #ifdef __cplusplus
 }

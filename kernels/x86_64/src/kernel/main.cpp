@@ -2,6 +2,8 @@
 #include "panic.h"
 #include "print.h"
 #include "serial.h"
+#include "string.h"
+#include "vga.h"
 
 // Enable debug macros for testing
 #define DEBUG_ENABLE 1
@@ -60,6 +62,9 @@ uint8_t test_fg, test_bg;
 // Displays error directly to VGA buffer without using print_* functions.
 // Falls back to CPU halt if VGA is not available.
 // Used when both serial and VGA initialization fail.
+//
+// INTERRUPT-SAFE: Does not acquire any locks.
+// Uses vga_put_string_early() for direct MMIO writes.
 // ==========================================
 static void early_panic(const char* msg) {
     // Try VGA buffer directly (no driver initialization)
@@ -72,21 +77,16 @@ static void early_panic(const char* msg) {
     if (vga[0] == ((VGA_COLOR_WHITE_ON_RED << 8) | ' ')) {
         // VGA is available - display error
         vga[0] = saved;  // Restore
-        vga[1] = (VGA_COLOR_WHITE_ON_RED << 8) | 'E';
-        vga[2] = (VGA_COLOR_WHITE_ON_RED << 8) | 'R';
-        vga[3] = (VGA_COLOR_WHITE_ON_RED << 8) | 'R';
-        vga[4] = (VGA_COLOR_WHITE_ON_RED << 8) | 'O';
-        vga[5] = (VGA_COLOR_WHITE_ON_RED << 8) | 'R';
 
-        size_t i = 0;
-        size_t pos = 7;
-        while (msg[i] != '\0' && pos < VGA_COLS) {
-            vga[pos++] = (VGA_COLOR_WHITE_ON_RED << 8) | msg[i++];
-        }
+        // Use vga_put_string_early for interrupt-safe output
+        // This function does NOT acquire locks, preventing deadlock
+        vga_put_string_early("ERROR: ", vga_make_pos(vga_col(0), vga_row(0)),
+                             VGA_COLOR_WHITE_ON_RED);
+        vga_put_string_early(msg, vga_make_pos(vga_col(7), vga_row(0)), VGA_COLOR_WHITE_ON_RED);
 
         // Fill rest of first row with spaces for clarity
-        while (pos < VGA_COLS) {
-            vga[pos++] = (VGA_COLOR_WHITE_ON_RED << 8) | ' ';
+        for (size_t pos = 7 + strlen(msg); pos < VGA_COLS; pos++) {
+            vga[pos] = (VGA_COLOR_WHITE_ON_RED << 8) | ' ';
         }
 
         for (;;) {

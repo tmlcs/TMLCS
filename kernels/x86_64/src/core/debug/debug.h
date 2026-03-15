@@ -90,7 +90,7 @@ extern "C" {
     } while (0)
 
 /* ==========================================
- * Debugging Macros - Advanced Level 
+ * Debugging Macros - Advanced Level
  * ========================================== */
 
 /**
