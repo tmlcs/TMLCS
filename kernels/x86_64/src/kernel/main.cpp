@@ -1,7 +1,7 @@
+#include "constants.h"
+#include "panic.h"
 #include "print.h"
 #include "serial.h"
-#include "panic.h"
-#include "constants.h"
 
 // Enable debug macros for testing
 #define DEBUG_ENABLE 1
@@ -9,16 +9,17 @@
 
 // Include test function declarations
 #include "../../tests/test_bss.h"
-#include "../../tests/test_memory.h"
 #include "../../tests/test_color.h"
 #include "../../tests/test_debug.h"
+#include "../../tests/test_hardware.h"
+#include "../../tests/test_memory.h"
 #include "../../tests/test_print.h"
 #include "../../tests/test_query.h"
 #include "../../tests/test_serial.h"
+#include "../../tests/test_serial_signed.h"
+#include "../../tests/test_spinlock.h"
 #include "../../tests/test_string.h"
 #include "../../tests/test_strlcpy.h"
-#include "../../tests/test_serial_signed.h"
-#include "../../tests/test_hardware.h"
 
 // Centralized version constant
 static constexpr const char* OS_VERSION = "GLOBEX_OS v0.015_x64";
@@ -28,19 +29,20 @@ static constexpr const char* OS_VERSION = "GLOBEX_OS v0.015_x64";
 // ==========================================
 // These variables are shared between main.cpp and test modules.
 // They are declared extern in test files and defined here.
+// Naming convention: test_<purpose> for consistency
 // ==========================================
 
 // BSS test variable (no explicit initializer - MUST be zeroed by boot code)
-uint32_t bss_test_variable;
+uint32_t test_bss_variable;
 
 // Data section test variable
-uint32_t data_test_variable = 0x12345678;
+uint32_t test_data_variable = 0x12345678;
 
 // High memory test pointer (80MB - within 2GiB mapped region)
-volatile uint32_t* high_mem_test = reinterpret_cast<volatile uint32_t*>(0x05000000);
+volatile uint32_t* test_high_mem_ptr = reinterpret_cast<volatile uint32_t*>(0x05000000);
 
 // Debug macros test variable
-uint32_t debug_test_value = 0xCAFEBABE;
+uint32_t test_debug_value = 0xCAFEBABE;
 
 // Print functions test variables
 uint64_t test_u64_value = 0x123456789ABCDEF0ULL;
@@ -88,14 +90,14 @@ static void early_panic(const char* msg) {
         }
 
         for (;;) {
-            __asm__ volatile ("hlt");
+            __asm__ volatile("hlt");
         }
     }
 
     // VGA not available - just halt (no output possible)
     // This is the absolute worst case - system is dead silent
     for (;;) {
-        __asm__ volatile ("hlt");
+        __asm__ volatile("hlt");
     }
 }
 
@@ -113,10 +115,10 @@ extern "C" [[noreturn]] void kernel_main() {
     // boot code bugs early. If BSS is not zeroed, the boot code
     // has a critical bug and we fail immediately.
     //
-    // bss_test_variable is a uint32_t without explicit initializer,
+    // test_bss_variable is a uint32_t without explicit initializer,
     // so it MUST be in .bss section and MUST be zeroed by boot code.
     // ==========================================
-    DEBUG_ASSERT(bss_test_variable == 0);
+    DEBUG_ASSERT(test_bss_variable == 0);
 
     // ==========================================
     // Initialize Hardware with Robust Fallback
@@ -167,7 +169,7 @@ extern "C" [[noreturn]] void kernel_main() {
 
         // Halt - system cannot continue safely without serial
         for (;;) {
-            __asm__ volatile ("hlt");
+            __asm__ volatile("hlt");
         }
     }
 
@@ -221,10 +223,11 @@ extern "C" [[noreturn]] void kernel_main() {
     test_serial_null_pointer_handling();  // Null pointer should not mark hardware failed
     test_string_functions();
     test_string_null_pointer_safety();  // NULL pointer validation in string functions
-    test_strlcpy_safe_copy();  // Safe bounded string copy
+    test_strlcpy_safe_copy();           // Safe bounded string copy
     test_strlcpy_vs_strcpy_overflow();  // Overflow prevention demo
-    test_memcpy_overlap_detection();  // Overlap detection in DEBUG mode
+    test_memcpy_overlap_detection();    // Overlap detection in DEBUG mode
     test_serial_signed_numbers();
+    test_spinlock();  // Spinlock tests (initialization, acquire/release, SMP safety)
     test_hardware_info();
 
     // ==========================================
@@ -241,11 +244,11 @@ extern "C" [[noreturn]] void kernel_main() {
 
     // Debug mode status
     print_str("Debug mode: ");
-    #if DEBUG_ENABLE
+#if DEBUG_ENABLE
     print_str("ON\r\n");
-    #else
+#else
     print_str("OFF\r\n");
-    #endif
+#endif
 
     print_str("\r\n");
     print_str("System ready.\r\n");
@@ -268,6 +271,7 @@ extern "C" [[noreturn]] void kernel_main() {
     serial_write_str("Test: String NULL safety - OK\r\n");
     serial_write_str("Test: strlcpy safe copy - OK\r\n");
     serial_write_str("Test: Serial signed numbers - OK\r\n");
+    serial_write_str("Test: Spinlock (init, acquire/release, SMP) - OK\r\n");
     serial_write_str("Test: Hardware info (CPUID) - OK\r\n");
     serial_write_str("System halted - press reset to restart\r\n");
 
@@ -275,6 +279,6 @@ extern "C" [[noreturn]] void kernel_main() {
     // Kernel idle loop - never return
     // ==========================================
     for (;;) {
-        __asm__ volatile ("hlt");
+        __asm__ volatile("hlt");
     }
 }

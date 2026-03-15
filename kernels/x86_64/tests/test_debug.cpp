@@ -15,20 +15,21 @@
  * ========================================== */
 
 // Forward declaration from main.cpp
-extern uint32_t debug_test_value;
+// Naming convention: test_<purpose> for consistency
+extern uint32_t test_debug_value;
 
 void test_debug_macros() {
     serial_write_str("\r\n=== Debug Macros Test ===\r\n");
 
-    // Test DEBUG_PRINTLN [D002]
+    // Test DEBUG_PRINTLN
     DEBUG_PRINTLN("Testing DEBUG_PRINTLN...");
     serial_write_str("[DEBUG MACRO] DEBUG_PRINTLN: OK\r\n");
 
     // Test DEBUG_VAR
-    DEBUG_VAR(debug_test_value, debug_test_value);
+    DEBUG_VAR(test_debug_value, test_debug_value);
     serial_write_str("[DEBUG MACRO] DEBUG_VAR: OK\r\n");
 
-    // Test DEBUG_ASSERT [D003] - with true condition (should not fail)
+    // Test DEBUG_ASSERT - with true condition (should not fail)
     // Use actual variable comparison instead of tautology
     uint32_t test_val = 42;
     DEBUG_ASSERT(test_val == 42);

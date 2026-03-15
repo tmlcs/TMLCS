@@ -47,19 +47,10 @@
  * ==========================================
  * SERIAL_MAX_WAIT: Maximum iterations for busy-wait loops
  * This prevents infinite hangs if hardware fails to respond
- * 
+ *
  * Note: Using SERIAL_MAX_TIMEOUT from constants.h for consistency
  */
 #define SERIAL_MAX_WAIT  SERIAL_MAX_TIMEOUT
-
-/* ==========================================
- * Serial Error Codes
- * ==========================================
- */
-#define SERIAL_ERROR_NONE       0
-#define SERIAL_ERROR_TIMEOUT    1
-#define SERIAL_ERROR_INIT_FAIL  2
-#define SERIAL_ERROR_NULL_PTR   3
 
 /* ==========================================
  * Serial Driver State

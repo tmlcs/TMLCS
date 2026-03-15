@@ -11,7 +11,8 @@
  * ========================================== */
 
 // Forward declaration from main.cpp
-extern volatile uint32_t* high_mem_test;
+// Naming convention: test_<purpose> for consistency
+extern volatile uint32_t* test_high_mem_ptr;
 
 void test_memory_mapping() {
     serial_write_str("\r\n=== Memory Mapping Test ===\r\n");
@@ -66,10 +67,10 @@ void test_memory_mapping() {
     uint32_t read_back = 0;
 
     // Write pattern to high memory
-    *high_mem_test = test_pattern;
+    *test_high_mem_ptr = test_pattern;
 
     // Read back
-    read_back = *high_mem_test;
+    read_back = *test_high_mem_ptr;
 
     serial_write_str("Write pattern: 0x");
     serial_write_hex(test_pattern);
