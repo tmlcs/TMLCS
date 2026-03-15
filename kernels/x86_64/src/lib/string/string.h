@@ -1,8 +1,8 @@
 #ifndef STRING_H
 #define STRING_H
 
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -70,7 +70,7 @@ char* strcpy(char* dest, const char* src);
  * @return Length of source string (not including null terminator)
  *
  * Safe bounded string copy that prevents buffer overflow.
- * 
+ *
  * Guarantees:
  *   - Never writes more than destsize bytes (including null terminator)
  *   - Always null-terminates if destsize > 0

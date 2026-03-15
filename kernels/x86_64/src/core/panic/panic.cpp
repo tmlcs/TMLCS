@@ -5,28 +5,28 @@
 /* ==========================================
  * panic() - Kernel panic with error code
  * ==========================================
- * 
+ *
  * @assembly
- *   Instrucción 1: cli
- *     - Propósito: Clear Interrupt Flag (deshabilitar interrupciones)
- *     - Efectos: IF bit en RFLAGS = 0
- *     - Ciclos: ~3
- *     - Barreras: Implícita (instrucción privilegiada)
- *     - Por qué: Prevenir que interrupciones interrumpan el panic
- *   
- *   Instrucción 2: hlt (en bucle infinito)
- *     - Propósito: Halt CPU until next external interrupt
- *     - Efectos: CPU entra en estado de bajo consumo
- *     - Ciclos: N/A (CPU detenido hasta interrupt)
- *     - Barreras: Implícita
- *     - Por qué: Detener CPU de forma segura, no ejecutar código basura
- * 
- * @note cli es necesario porque si STI estuviera activo, una interrupción
- *       podría intentar usar la consola mientras escribimos el panic
- * @note hlt en bucle infinito es el patrón estándar para kernel panic
- * @note Las interrupciones NMI (Non-Maskable) aún pueden ocurrir
- * 
- * @see sti() para habilitar interrupciones (NO llamar después de cli en panic)
+ *   Instruction 1: cli
+ *     - Purpose: Clear Interrupt Flag (disable interrupts)
+ *     - Effects: IF bit in RFLAGS = 0
+ *     - Cycles: ~3
+ *     - Barriers: Implicit (privileged instruction)
+ *     - Why: Prevent interrupts from interrupting the panic
+ *
+ *   Instruction 2: hlt (in infinite loop)
+ *     - Purpose: Halt CPU until next external interrupt
+ *     - Effects: CPU enters low-power state
+ *     - Cycles: N/A (CPU halted until interrupt)
+ *     - Barriers: Implicit
+ *     - Why: Stop CPU safely, do not execute garbage code
+ *
+ * @note cli is necessary because if STI were active, an interrupt
+ *       could try to use the console while we write the panic
+ * @note hlt in infinite loop is the standard pattern for kernel panic
+ * @note NMI (Non-Maskable) interrupts can still occur
+ *
+ * @see sti() to enable interrupts (DO NOT call after cli in panic)
  * @see https://www.felixcloutier.com/x86/cli
  * @see https://www.felixcloutier.com/x86/hlt
  * ==========================================
@@ -39,7 +39,7 @@ void panic(const char* message, uint32_t error_code) {
      * to prevent reentrancy issues if an interrupt handler
      * tries to use serial/print functions
      */
-    __asm__ volatile ("cli");
+    __asm__ volatile("cli");
 
     /* ==========================================
      * Try to initialize serial if not ready
@@ -54,13 +54,13 @@ void panic(const char* message, uint32_t error_code) {
     serial_write_str("\r\n\r\n");
     serial_write_str("!!! KERNEL PANIC !!!\r\n");
     serial_write_str("\r\n");
-    
+
     if (message != nullptr) {
         serial_write_str("Error: ");
         serial_write_str(message);
         serial_write_str("\r\n");
     }
-    
+
     serial_write_str("Error Code: 0x");
     serial_write_hex(error_code);
     serial_write_str("\r\n");
@@ -69,7 +69,7 @@ void panic(const char* message, uint32_t error_code) {
     /* ==========================================
      * Error message via VGA (if initialized)
      * ==========================================
-     * HIGH-007: Use print_is_initialized() instead of print_detect()
+     * Use print_is_initialized() instead of print_detect()
      * to ensure VGA is fully initialized before using print_clear().
      * print_detect() only tests hardware presence, but print_clear()
      * requires full initialization.
@@ -97,29 +97,29 @@ void panic(const char* message, uint32_t error_code) {
     /* ==========================================
      * Infinite loop with HLT - never return
      * ==========================================
-     * 
+     *
      * @assembly
-     *   Instrucción: hlt
-     *     - Propósito: Halt CPU until next external interrupt
-     *     - Efectos: CPU entra en estado de bajo consumo, detiene ejecución
-     *     - Ciclos: N/A (CPU detenido)
-     *     - Barreras: Implícita
-     *   
-     *   Bucle for(;;):
-     *     - Reinicia hlt después de cada interrupción
-     *     - NMI (Non-Maskable Interrupts) pueden despertar el CPU
-     *     - Reset hardware es la única forma de recuperar el sistema
-     * 
-     * @note hlt es preferible a un bucle empty porque:
-     *   - Reduce consumo de energía
-     *   - Previene ejecución de código basura
-     *   - Permite debugging con hardware externo
-     * @note Después de panic(), el sistema está muerto - solo reset lo recupera
-     * 
+     *   Instruction: hlt
+     *     - Purpose: Halt CPU until next external interrupt
+     *     - Effects: CPU enters low-power state, stops execution
+     *     - Cycles: N/A (CPU halted)
+     *     - Barriers: Implicit
+     *
+     *   for(;;) loop:
+     *     - Restarts hlt after each interrupt
+     *     - NMI (Non-Maskable Interrupts) can wake the CPU
+     *     - Hardware reset is the only way to recover the system
+     *
+     * @note hlt is preferable to an empty loop because:
+     *   - Reduces power consumption
+     *   - Prevents execution of garbage code
+     *   - Allows debugging with external hardware
+     * @note After panic(), the system is dead - only reset recovers it
+     *
      * @see https://www.felixcloutier.com/x86/hlt
      */
     for (;;) {
-        __asm__ volatile ("hlt");
+        __asm__ volatile("hlt");
     }
 }
 

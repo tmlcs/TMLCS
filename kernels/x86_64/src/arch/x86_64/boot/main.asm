@@ -172,7 +172,7 @@ setup_page_tables:
     ; ==========================================
     ; VERIFICATION: Read back critical entries
     ; ==========================================
-    ; CRIT-001 FIX: Preserve ebx register (callee-saved per System V ABI)
+    ; Preserve ebx register (callee-saved per System V ABI)
     push ebx
 
     ; Verify L4[0] -> L3 mapping was written correctly

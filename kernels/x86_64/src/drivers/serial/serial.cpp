@@ -3,44 +3,39 @@
 #include "hex_utils.h"
 #include "decimal_utils.h"
 #include "constants.h"
+#include "atomic.h"
+#include "barriers.h"
 
-/* ==========================================
+/* =============================================================================
  * Memory Barriers for SMP Safety
- * ==========================================
+ * =============================================================================
+ * Using centralized barriers from barriers.h instead of local definitions.
+ * This ensures consistency across all drivers and provides both compiler
+ * and hardware barrier options.
+ *
  * volatile prevents compiler optimization but doesn't guarantee:
  *   - Atomicity of read-modify-write operations
  *   - Memory ordering across CPUs
  *   - Visibility of writes to other CPUs
  *
  * These barriers ensure proper ordering on x86_64:
- *   - mb()  : Full memory barrier (load + store)
- *   - rmb() : Read memory barrier (load ordering)
- *   - wmb() : Write memory barrier (store ordering)
+ *   - mb()  : Full memory barrier (compiler only, x86_64 has strong HW ordering)
+ *   - rmb() : Read memory barrier (compiler only)
+ *   - wmb() : Write memory barrier (compiler only)
+ *   - hw_mb(), hw_rmb(), hw_wmb(): Hardware barriers (LFENCE/SFENCE)
  *
  * Note: x86_64 has strong memory ordering, but barriers are still
  * needed for SMP correctness and to prevent compiler reordering.
  *
- * @assembly
- *   Instrucción: "" (empty inline assembly)
- *   Clobbers: "memory" - tells compiler that memory may be modified
- *   Propósito: Prevenir reordenamiento de instrucciones por el compilador
- *   Efectos: 
- *     - mb()  : Barrera completa (lectura + escritura)
- *     - rmb() : Barrera de lectura (ordenamiento de loads)
- *     - wmb() : Barrera de escritura (ordenamiento de stores)
- *   Ciclos: 0 (es una directiva al compilador, no genera código)
- *   Barreras: Explícita vía clobber "memory"
- * 
- * @note En x86_64, el hardware tiene ordenamiento fuerte, pero el
- *       compilador puede reordenar instrucciones. Esta barrera lo previene.
- * @note El clobber "memory" le dice al compilador que cualquier acceso
- *       a memoria debe completarse antes de continuar.
- * 
- * @see mb(), rmb(), wmb() macros
+ * Migrated from local #define barriers to centralized barriers.h
+ * This provides:
+ *   - Consistent barrier semantics across all drivers
+ *   - Option to use hardware barriers (hw_mb) when needed
+ *   - Better documentation and maintainability
+ *
+ * @see src/arch/x86_64/include/barriers.h for complete documentation
+ * =============================================================================
  */
-#define mb()  __asm__ volatile ("" ::: "memory")
-#define rmb() __asm__ volatile ("" ::: "memory")
-#define wmb() __asm__ volatile ("" ::: "memory")
 
 /* ==========================================
  * Timeout Configuration
@@ -59,15 +54,23 @@
  * be optimized/cached by the compiler
  *
  * For SMP safety, all accesses to this structure
- * must use memory barriers (mb/rmb/wmb) to ensure:
+ * must use memory barriers from barriers.h to ensure:
  *   - Proper ordering of reads/writes across CPUs
  *   - Visibility of changes to all processors
- *   - Atomicity for compound operations (protected by barriers)
- * 
+ *   - Atomicity for compound operations (protected by barriers + atomics)
+ *
+ * Now uses centralized barriers from barriers.h
+ * instead of local #define barriers. This provides:
+ *   - Consistent barrier semantics across all drivers
+ *   - Option to use hardware barriers (hw_mb) for MMIO operations
+ *   - Better documentation and maintainability
+ *
  * Encapsulation Benefits:
  *   - All state in one place (easier to debug)
  *   - Can be passed to functions (easier to test)
  *   - Clear interface via getter functions
+ *
+ * @see src/arch/x86_64/include/barriers.h for barrier documentation
  */
 static SerialState_t g_serial_state;  /* Zero-initialized by default (BSS) */
 
@@ -258,7 +261,7 @@ int serial_init(uint16_t port, uint32_t baud) {
     wmb();  /* Clear prior state */
     g_serial_state.failed = 0;
     g_serial_state.error_code = SERIAL_ERROR_NONE;
-    g_serial_state.timeout_count = 0;
+    atomic_store32(&g_serial_state.timeout_count, 0);
     wmb();  /* Ensure state is visible before proceeding */
 
     /* Save port */
@@ -378,12 +381,28 @@ static bool serial_wait_transmit_empty_timeout(uint32_t timeout) {
      *   2. Record error code
      *   3. Increment timeout counter for diagnostics
      *   4. Report failure via VGA if available
+     *
+     * Use atomic increment for timeout_count
+     * to ensure SMP safety. Multiple CPUs may timeout
+     * concurrently, and we need accurate statistics.
      * ========================================== */
     wmb();  /* Ensure ordering of failure state */
     g_serial_state.failed = 1;
     g_serial_state.error_code = SERIAL_ERROR_TIMEOUT;
-    g_serial_state.timeout_count++;  /* Note: RMW not atomic without lock */
     wmb();  /* Ensure failure state is visible */
+
+    /* Atomic increment for timeout counter
+     * Uses relaxed ordering since this is a statistics counter
+     * and exact ordering doesn't matter for diagnostics.
+     * 
+     * @assembly
+     *   Instruction: LOCK XADD or LOCK CMPXCHG
+     *   Memory Ordering: Relaxed (__ATOMIC_RELAXED)
+     *   Cycles: ~10-20 (with LOCK prefix)
+     *   SMP-Safe: Yes - atomic read-modify-write
+     */
+    atomic_inc32_relaxed(&g_serial_state.timeout_count);
+    wmb();  /* Ensure counter update is visible */
 
     /* Use print_is_initialized() instead of print_detect()
      * print_detect() performs a hardware test write which may not be safe
@@ -642,7 +661,7 @@ int serial_reinit(uint16_t port, uint32_t baud) {
     wmb();  /* Ensure ordering */
     g_serial_state.failed = 0;
     g_serial_state.error_code = SERIAL_ERROR_NONE;
-    g_serial_state.timeout_count = 0;  /* Reset timeout counter for fresh start */
+    atomic_store32(&g_serial_state.timeout_count, 0);  /* CRIT-001: Atomic reset */
     g_serial_state.initialized = 0;    /* Clear initialized flag for fresh init */
     wmb();  /* Ensure cleared state is visible before re-init */
 

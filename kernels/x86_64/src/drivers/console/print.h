@@ -1,8 +1,8 @@
 #ifndef PRINT_H
 #define PRINT_H
 
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 /* ==========================================
  * C/C++ linkage guards
@@ -43,11 +43,11 @@ typedef enum PrintColor {
  * ==========================================
  * This module provides high-level formatted output functions.
  * It uses the low-level VGA driver (vga.h) for hardware access.
- * 
+ *
  * Separation of concerns:
  *   - vga.h/vga.cpp: Low-level hardware access, cursor, colors (SMP-safe)
  *   - print.h/print.cpp: High-level formatting (decimal, hex, strings)
- * 
+ *
  * SMP Safety:
  *   - All functions are SMP-safe via VGA driver spinlock
  *   - Use print_begin_atomic()/print_end_atomic() for multi-operation atomicity

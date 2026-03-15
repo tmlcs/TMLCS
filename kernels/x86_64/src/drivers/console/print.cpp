@@ -1,21 +1,21 @@
 #include "print.h"
-#include "vga.h"
-#include "string.h"
-#include "hex_utils.h"
-#include "decimal_utils.h"
 #include "constants.h"
+#include "decimal_utils.h"
+#include "hex_utils.h"
+#include "string.h"
+#include "vga.h"
 
 /* =============================================================================
  * Print Driver - High-Level Formatting API
  * =============================================================================
- * 
+ *
  * This module provides high-level formatted output functions.
  * It uses the low-level VGA driver (vga.h) for hardware access.
- * 
+ *
  * Separation of concerns:
  *   - vga.h/vga.cpp: Low-level hardware access, cursor, colors (SMP-safe)
  *   - print.h/print.cpp: High-level formatting (decimal, hex, strings)
- * 
+ *
  * SMP Safety:
  *   - VGA driver functions are already SMP-safe
  *   - This module calls vga_*() functions which handle locking internally
@@ -96,8 +96,10 @@ size_t print_get_cursor_row(void) {
 
 /* Legacy compatibility function */
 void print_get_cursor(size_t* col, size_t* row) {
-    if (col) *col = vga_get_cursor_col();
-    if (row) *row = vga_get_cursor_row();
+    if (col)
+        *col = vga_get_cursor_col();
+    if (row)
+        *row = vga_get_cursor_row();
 }
 
 void print_set_cursor(size_t col, size_t row) {
@@ -114,13 +116,13 @@ bool print_advance_cursor(void) {
  */
 
 void print_hex(uint32_t value) {
-    char buffer[11];  /* "0x" + 8 digits + null = 11 bytes */
+    char buffer[11]; /* "0x" + 8 digits + null = 11 bytes */
     uint32_to_hex_string(buffer, value);
     vga_put_string(buffer);
 }
 
 void print_hex64(uint64_t value) {
-    char buffer[19];  /* "0x" + 16 digits + null = 19 bytes */
+    char buffer[19]; /* "0x" + 16 digits + null = 19 bytes */
     uint64_to_hex_string(buffer, value);
     vga_put_string(buffer);
 }
@@ -131,7 +133,7 @@ void print_hex64(uint64_t value) {
  */
 
 void print_dec(uint32_t value) {
-    char buffer[12];  /* Maximum 10 digits + null */
+    char buffer[DECIMAL_UINT32_BUFFER_SIZE]; /* DECIMAL_UINT32_MAX_DIGITS + null + guard */
     vga_put_string(uint32_to_decimal_string(buffer, value));
 }
 
@@ -151,7 +153,7 @@ void print_dec_signed(int32_t value) {
 }
 
 void print_dec64(uint64_t value) {
-    char buffer[22];  /* Maximum 20 digits + null */
+    char buffer[DECIMAL_UINT64_BUFFER_SIZE]; /* DECIMAL_UINT64_MAX_DIGITS + null + guard */
     vga_put_string(uint64_to_decimal_string(buffer, value));
 }
 
@@ -161,7 +163,8 @@ void print_dec64_signed(int64_t value) {
         /* Use two's complement to avoid undefined behavior.
          * For INT64_MIN (-9223372036854775808), negation would overflow in signed arithmetic.
          * Casting to uint64_t first, then negating in unsigned arithmetic is safe.
-         * Example: INT64_MIN -> (uint64_t)0x8000000000000000 -> -0x8000... = 0x8000... = 9223372036854775808
+         * Example: INT64_MIN -> (uint64_t)0x8000000000000000 -> -0x8000... = 0x8000... =
+         * 9223372036854775808
          */
         uint64_t abs_value = 0 - static_cast<uint64_t>(value);
         print_dec64(abs_value);

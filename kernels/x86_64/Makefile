@@ -29,7 +29,7 @@ QEMU_STDIO_FLAGS := -cdrom $(ISO_FILE) -serial stdio -no-reboot -no-shutdown
 # Include paths for all subdirectories
 CFLAGS := -ffreestanding -fno-exceptions -fno-rtti \
           -fno-stack-protector -nostdlib -nostartfiles \
-          -O2 -Wall -Wextra -Wpedantic -Werror \
+          -O2 -Wall -Wextra -Wpedantic -Werror -Wuninitialized \
           -I src/core \
           -I src/core/panic \
           -I src/core/debug \
@@ -38,7 +38,8 @@ CFLAGS := -ffreestanding -fno-exceptions -fno-rtti \
           -I src/drivers/serial \
           -I src/lib/string \
           -I src/lib/spinlock \
-          -I src/lib/utils
+          -I src/lib/utils \
+          -I src/arch/x86_64/include
 
 # ==========================================
 # Assembly Flags

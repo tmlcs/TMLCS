@@ -16,11 +16,11 @@ static inline bool memory_regions_overlap(const void* dest, const void* src, siz
     if (n == 0) {
         return false;
     }
-    
+
     /* Cast to uintptr_t for pointer arithmetic */
     uintptr_t d = reinterpret_cast<uintptr_t>(dest);
     uintptr_t s = reinterpret_cast<uintptr_t>(src);
-    
+
     /* Check overlap condition: dest < src + n && src < dest + n */
     return (d < s + n) && (s < d + n);
 }
@@ -36,7 +36,7 @@ static inline bool memory_regions_overlap(const void* dest, const void* src, siz
  * @param src Source pointer
  * @param n Number of bytes to copy
  * @return Pointer to dest
- * 
+ *
  * @note Added NULL pointer validation
  *       Returns dest if dest is NULL (no-op)
  *       Returns dest if src is NULL (no-op, avoids crash)
@@ -44,9 +44,9 @@ static inline bool memory_regions_overlap(const void* dest, const void* src, siz
 void* memmove(void* dest, const void* src, size_t n) {
     /* NULL pointer validation */
     if (dest == nullptr || src == nullptr) {
-        return dest;  /* No-op for NULL pointers, avoids triple fault */
+        return dest; /* No-op for NULL pointers, avoids triple fault */
     }
-    
+
     uint8_t* d = static_cast<uint8_t*>(dest);
     const uint8_t* s = static_cast<const uint8_t*>(src);
 
@@ -93,26 +93,26 @@ void* memmove(void* dest, const void* src, size_t n) {
 void* memcpy(void* dest, const void* src, size_t n) {
     /* NULL pointer validation */
     if (dest == nullptr || src == nullptr) {
-        return dest;  /* No-op for NULL pointers, avoids triple fault */
+        return dest; /* No-op for NULL pointers, avoids triple fault */
     }
-    
+
     uint8_t* d = static_cast<uint8_t*>(dest);
     const uint8_t* s = static_cast<const uint8_t*>(src);
 
-    /* ==========================================
-     * Overlap detection in DEBUG mode
-     * ==========================================
-     * If overlap is detected, report error via DEBUG_PRINT
-     * and fall back to memmove() to prevent corruption.
-     * ========================================== */
-    #ifdef DEBUG_ENABLE
+/* ==========================================
+ * Overlap detection in DEBUG mode
+ * ==========================================
+ * If overlap is detected, report error via DEBUG_PRINT
+ * and fall back to memmove() to prevent corruption.
+ * ========================================== */
+#ifdef DEBUG_ENABLE
     if (memory_regions_overlap(dest, src, n)) {
         DEBUG_PRINT("\r\n[MEMCPY OVERLAP DETECTED]\r\n");
         DEBUG_PRINT("  Using memmove() instead for safety\r\n");
         DEBUG_PRINT("  src:  0x");
-        DEBUG_PRINT_HEX((uintptr_t)src);
+        DEBUG_PRINT_HEX((uintptr_t) src);
         DEBUG_PRINT("\r\n  dest: 0x");
-        DEBUG_PRINT_HEX((uintptr_t)dest);
+        DEBUG_PRINT_HEX((uintptr_t) dest);
         DEBUG_PRINT("\r\n  size: ");
         DEBUG_PRINT_DEC(n);
         DEBUG_PRINT("\r\n");
@@ -120,7 +120,7 @@ void* memcpy(void* dest, const void* src, size_t n) {
         /* Use memmove for overlapping regions */
         return memmove(dest, src, n);
     }
-    #endif /* DEBUG_ENABLE */
+#endif /* DEBUG_ENABLE */
 
     /* Non-overlapping copy: simple forward copy */
     while (n--) {
@@ -139,16 +139,16 @@ void* memcpy(void* dest, const void* src, size_t n) {
  * @param c Byte value to set
  * @param n Number of bytes to set
  * @return Pointer to s
- * 
+ *
  * @note Added NULL pointer validation
  *       Returns s if s is NULL (no-op, avoids triple fault)
  */
 void* memset(void* s, int c, size_t n) {
     /* NULL pointer validation */
     if (s == nullptr) {
-        return s;  /* No-op for NULL pointer, avoids triple fault */
+        return s; /* No-op for NULL pointer, avoids triple fault */
     }
-    
+
     uint8_t* p = static_cast<uint8_t*>(s);
 
     while (n--) {
@@ -167,16 +167,16 @@ void* memset(void* s, int c, size_t n) {
  * @param s2 Second memory region
  * @param n Number of bytes to compare
  * @return 0 if equal, <0 if s1<s2, >0 if s1>s2
- * 
+ *
  * @note Added NULL pointer validation
  *       If either pointer is NULL, returns 0 (equal, no-op)
  */
 int memcmp(const void* s1, const void* s2, size_t n) {
     /* NULL pointer validation */
     if (s1 == nullptr || s2 == nullptr) {
-        return 0;  /* Consider NULL pointers as equal, avoids triple fault */
+        return 0; /* Consider NULL pointers as equal, avoids triple fault */
     }
-    
+
     const uint8_t* p1 = static_cast<const uint8_t*>(s1);
     const uint8_t* p2 = static_cast<const uint8_t*>(s2);
 
@@ -212,7 +212,7 @@ int memcmp(const void* s1, const void* s2, size_t n) {
 char* strcpy(char* dest, const char* src) {
     /* NULL pointer validation */
     if (dest == nullptr || src == nullptr) {
-        return dest;  /* No-op for NULL pointers, avoids triple fault */
+        return dest; /* No-op for NULL pointers, avoids triple fault */
     }
 
     char* original_dest = dest;
@@ -265,7 +265,7 @@ char* strcpy(char* dest, const char* src) {
 size_t strlcpy(char* dest, const char* src, size_t destsize) {
     /* NULL pointer validation */
     if (dest == nullptr || src == nullptr) {
-        return 0;  /* Cannot copy, return 0 */
+        return 0; /* Cannot copy, return 0 */
     }
 
     /* Handle zero-size buffer: just calculate source length */
@@ -292,10 +292,10 @@ size_t strlcpy(char* dest, const char* src, size_t destsize) {
  * strlen() - Calculate string length
  * ==========================================
  * Returns the length of a null-terminated string.
- * 
+ *
  * @param str Null-terminated string to measure
  * @return Number of characters before null terminator
- * 
+ *
  * @note Returns 0 for empty string ("")
  * @note Does not include null terminator in count
  * @note Safe: handles null pointer by returning 0
@@ -304,11 +304,11 @@ size_t strlen(const char* str) {
     if (str == nullptr) {
         return 0;  // Safe handling of null pointer
     }
-    
+
     size_t len = 0;
     while (str[len] != '\0') {
         len++;
     }
-    
+
     return len;
 }

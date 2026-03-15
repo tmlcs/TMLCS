@@ -1,15 +1,15 @@
 #ifndef SPINLOCK_H
 #define SPINLOCK_H
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /* =============================================================================
- * SPINLOCK API [Phase 2: SMP Preparation]
+ * SPINLOCK API
  * =============================================================================
  *
  * Basic spinlock implementation for x86_64 using atomic instructions.
@@ -26,19 +26,33 @@ extern "C" {
  *   Uses LOCK CMPXCHG instruction for atomic compare-and-swap.
  *   Spinlock is a simple ticket lock for fairness.
  *
+ *   Previous implementation had a fast path that acquired the lock without
+ *   disabling interrupts. This could cause deadlock in nested interrupt context.
+ *   The fast path has been removed. Now ALWAYS disables interrupts during acquire.
+ *
  * SMP SAFETY:
  *   - Safe for multi-processor systems
- *   - Disables interrupts on local CPU during acquire (prevents deadlock)
+ *   - ALWAYS disables interrupts on local CPU during acquire (prevents deadlock)
  *   - Re-enables interrupts on release (restores previous state)
  *   - Memory barriers ensure proper ordering
+ *   - No fast path - interrupt safety guaranteed in all cases
  *
  * Interrupt handling:
- *   - spinlock_acquire() saves interrupt state and disables interrupts
+ *   - spinlock_acquire() ALWAYS saves and disables interrupts
  *   - spinlock_release() RESTORES interrupt state to what it was before acquire
- *   - This prevents permanent interrupt disablement
+ *   - This prevents permanent interrupt disablement and nested deadlock
  *
- * Current status: Implementation ready, UP-tested
- * Tracking issue: #SMP-001
+ * DEADLOCK PREVENTION:
+ *   The previous fast path could cause this deadlock scenario:
+ *     1. CPU acquires lock via fast path (interrupts enabled)
+ *     2. Interrupt occurs on same CPU
+ *     3. Interrupt handler tries to acquire same lock
+ *     4. Handler spins forever (lock held, interrupts disabled in slow path)
+ *     5. Original code never resumes -> DEADLOCK
+ *
+ *   Fix: Always disable interrupts eliminates this scenario completely.
+ *
+ * Current status: Implementation ready, SMP-safe
  * =============================================================================
  */
 
@@ -56,7 +70,8 @@ typedef struct {
 /* Static initializer for spinlocks - C++17 compatible
  * Initialize both locked and interrupts_enabled fields
  */
-#define SPINLOCK_INIT { 0, false }
+#define SPINLOCK_INIT                                                                              \
+    { 0, false }
 
 /* =============================================================================
  * Core API
@@ -96,8 +111,8 @@ void spinlock_release(spinlock_t* lock);
  */
 
 /* Guard macro for automatic release (scope-based) */
-#define SPINLOCK_GUARD(lock) \
-    spinlock_acquire(lock); \
+#define SPINLOCK_GUARD(lock)                                                                       \
+    spinlock_acquire(lock);                                                                        \
     __attribute__((cleanup(spinlock_release_guard))) spinlock_t* _guard_lock = lock
 
 /* Helper function for cleanup attribute */

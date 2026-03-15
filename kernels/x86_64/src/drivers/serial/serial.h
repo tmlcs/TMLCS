@@ -1,8 +1,8 @@
 #ifndef SERIAL_H
 #define SERIAL_H
 
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,48 +29,48 @@ extern "C" {
  */
 
 /* When DLAB = 0 */
-#define SERIAL_RBR 0  /* Receiver Buffer Register (read) */
-#define SERIAL_THR  0  /* Transmitter Holding Register (write) */
-#define SERIAL_IER  1  /* Interrupt Enable Register */
+#define SERIAL_RBR 0 /* Receiver Buffer Register (read) */
+#define SERIAL_THR 0 /* Transmitter Holding Register (write) */
+#define SERIAL_IER 1 /* Interrupt Enable Register */
 
 /* When DLAB = 1 */
-#define SERIAL_DLL  0  /* Divisor Latch Low byte */
-#define SERIAL_DLM  1  /* Divisor Latch High byte */
+#define SERIAL_DLL 0 /* Divisor Latch Low byte */
+#define SERIAL_DLM 1 /* Divisor Latch High byte */
 
 /* Common registers (DLAB-independent) */
-#define SERIAL_IIR  2  /* Interrupt Identification Register (read) */
-#define SERIAL_FCR  2  /* FIFO Control Register (write) */
-#define SERIAL_LCR  3  /* Line Control Register */
-#define SERIAL_MCR  4  /* Modem Control Register */
-#define SERIAL_LSR  5  /* Line Status Register */
-#define SERIAL_MSR  6  /* Modem Status Register */
-#define SERIAL_SR   7  /* Scratch Register */
+#define SERIAL_IIR 2 /* Interrupt Identification Register (read) */
+#define SERIAL_FCR 2 /* FIFO Control Register (write) */
+#define SERIAL_LCR 3 /* Line Control Register */
+#define SERIAL_MCR 4 /* Modem Control Register */
+#define SERIAL_LSR 5 /* Line Status Register */
+#define SERIAL_MSR 6 /* Modem Status Register */
+#define SERIAL_SR 7  /* Scratch Register */
 
 /* ==========================================
  * Line Status Register (LSR) Bits
  * ========================================== */
-#define SERIAL_LSR_DR   0x01  /* Data Ready (data in RBR) */
-#define SERIAL_LSR_OE   0x02  /* Overrun Error */
-#define SERIAL_LSR_PE   0x04  /* Parity Error */
-#define SERIAL_LSR_FE   0x08  /* Framing Error */
-#define SERIAL_LSR_BI   0x10  /* Break Interrupt */
-#define SERIAL_LSR_THRE 0x20  /* Transmitter Holding Register Empty */
-#define SERIAL_LSR_TEMT 0x40  /* Transmitter Empty (both THR and shift register) */
-#define SERIAL_LSR_EF   0x80  /* Error in FIFO (16550+) */
+#define SERIAL_LSR_DR 0x01   /* Data Ready (data in RBR) */
+#define SERIAL_LSR_OE 0x02   /* Overrun Error */
+#define SERIAL_LSR_PE 0x04   /* Parity Error */
+#define SERIAL_LSR_FE 0x08   /* Framing Error */
+#define SERIAL_LSR_BI 0x10   /* Break Interrupt */
+#define SERIAL_LSR_THRE 0x20 /* Transmitter Holding Register Empty */
+#define SERIAL_LSR_TEMT 0x40 /* Transmitter Empty (both THR and shift register) */
+#define SERIAL_LSR_EF 0x80   /* Error in FIFO (16550+) */
 
 /* ==========================================
  * Line Control Register (LCR) Bits
  * ========================================== */
-#define SERIAL_LCR_DLAB 0x80  /* Divisor Latch Access Bit */
-#define SERIAL_LCR_8N1  0x03  /* 8 bits, no parity, 1 stop bit */
+#define SERIAL_LCR_DLAB 0x80 /* Divisor Latch Access Bit */
+#define SERIAL_LCR_8N1 0x03  /* 8 bits, no parity, 1 stop bit */
 
 /* ==========================================
  * Modem Control Register (MCR) Bits
  * ========================================== */
-#define SERIAL_MCR_DTR  0x01  /* Data Terminal Ready */
-#define SERIAL_MCR_RTS  0x02  /* Request To Send */
-#define SERIAL_MCR_OUT1 0x04  /* Auxiliary output 1 */
-#define SERIAL_MCR_OUT2 0x08  /* Auxiliary output 2 (enable interrupts) */
+#define SERIAL_MCR_DTR 0x01  /* Data Terminal Ready */
+#define SERIAL_MCR_RTS 0x02  /* Request To Send */
+#define SERIAL_MCR_OUT1 0x04 /* Auxiliary output 1 */
+#define SERIAL_MCR_OUT2 0x08 /* Auxiliary output 2 (enable interrupts) */
 
 /* ==========================================
  * Default Configuration
@@ -82,10 +82,10 @@ extern "C" {
  * Serial Error Codes
  * ==========================================
  */
-#define SERIAL_ERROR_NONE       0
-#define SERIAL_ERROR_TIMEOUT    1
-#define SERIAL_ERROR_INIT_FAIL  2
-#define SERIAL_ERROR_NULL_PTR   3
+#define SERIAL_ERROR_NONE 0
+#define SERIAL_ERROR_TIMEOUT 1
+#define SERIAL_ERROR_INIT_FAIL 2
+#define SERIAL_ERROR_NULL_PTR 3
 
 /* ==========================================
  * Serial Driver State Structure
@@ -96,16 +96,29 @@ extern "C" {
  *   - Easier testing (state can be mocked)
  *   - SMP safety (all state in one protected structure)
  *   - Future extensibility (easy to add multiple ports)
- * 
+ *
  * @note All fields are volatile for hardware safety
- * @note For SMP, access must be protected by memory barriers
+ * @note For SMP, access is protected by memory barriers (rmb/wmb/mb)
+ * @note Functions use rmb() before reading state to ensure
+ *       visibility across CPUs. However, this driver is NOT fully SMP-safe
+ *       for concurrent write operations. Multiple CPUs may interleave output.
+ *
+ * SMP Threading Model:
+ *   - serial_write_char(): Uses rmb() for state checks, but NOT atomic
+ *   - Concurrent calls from multiple CPUs may interleave characters
+ *   - For full SMP safety, protect with external spinlock
+ *   - State modifications (init, reinit, clear_error) use wmb() for visibility
+ *   - timeout_count: Uses atomic operations (atomic_inc32_relaxed, atomic_store32_relaxed)
+ *
+ * @see serial_write_char() for threading documentation
+ * @see atomic.h for atomic operations used in counters
  */
 typedef struct SerialState {
-    volatile int initialized;       /**< 1 if initialized, 0 if not */
-    volatile uint16_t port;         /**< Base port address (e.g., 0x3F8) */
-    volatile int failed;            /**< 1 if failed, 0 if OK */
-    volatile uint32_t error_code;   /**< Last error code */
-    volatile uint32_t timeout_count; /**< Count of timeout errors */
+    volatile int initialized;        /**< 1 if initialized, 0 if not */
+    volatile uint16_t port;          /**< Base port address (e.g., 0x3F8) */
+    volatile int failed;             /**< 1 if failed, 0 if OK */
+    volatile uint32_t error_code;    /**< Last error code */
+    volatile uint32_t timeout_count; /**< Count of timeout errors (atomic via atomic.h) */
 } SerialState_t;
 
 /* ==========================================
@@ -135,6 +148,27 @@ int serial_is_initialized(void);
 /**
  * @brief Write a character to serial
  * @param data Character to write
+ *
+ * @note This function uses memory barriers (rmb) for SMP safety.
+ *       State checks (initialized, failed) are protected by read barriers to
+ *       ensure visibility across CPUs.
+ *
+ * @note SMP Safety: This function is NOT atomic. Concurrent calls from multiple
+ *       CPUs may interleave characters. For full SMP safety when printing from
+ *       multiple CPUs, protect with a spinlock:
+ *       @code
+ *       spinlock_acquire(&serial_lock);
+ *       serial_write_char('A');
+ *       serial_write_char('B');
+ *       spinlock_release(&serial_lock);
+ *       @endcode
+ *
+ * @note State Validation: The function checks initialized and failed state
+ *       before and after waiting for transmitter. If state changes during
+ *       the wait (e.g., concurrent serial_reinit), the write is aborted.
+ *
+ * @see serial.h "SMP Threading Model" for complete documentation
+ * @see spinlock.h for spinlock API
  */
 void serial_write_char(char data);
 

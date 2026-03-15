@@ -1,9 +1,9 @@
 #ifndef VGA_H
 #define VGA_H
 
-#include <stdint.h>
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -12,36 +12,36 @@ extern "C" {
 /* =============================================================================
  * VGA Text Mode Driver API
  * =============================================================================
- * 
+ *
  * Low-level VGA text mode driver for x86_64.
  * Provides direct access to VGA hardware at 0xB8000.
- * 
+ *
  * Features:
  *   - 80x25 text mode
  *   - 16 colors (4-bit foreground + 4-bit background)
  *   - Hardware cursor control
  *   - SMP-safe with spinlock protection
- * 
+ *
  * Memory Layout:
  *   - VGA Buffer: 0xB8000 (80 * 25 * 2 = 4000 bytes)
  *   - Each cell: 2 bytes (char + attribute)
- * 
+ *
  * SMP Safety:
  *   - All functions are SMP-safe via spinlock
  *   - Lock is acquired per-operation
  *   - Use vga_begin_atomic()/vga_end_atomic() for multi-operation atomicity
- * 
+ *
  * Usage:
  *   // Single operation (automatically locked)
  *   vga_put_char('A', 0, 0, VGA_COLOR_WHITE, VGA_COLOR_BLACK);
- *   
+ *
  *   // Multiple operations (manually locked)
  *   vga_begin_atomic();
  *   vga_set_cursor(0, 0);
  *   vga_set_color(VGA_COLOR_GREEN, VGA_COLOR_BLACK);
  *   vga_put_string("Hello");
  *   vga_end_atomic();
- * 
+ *
  * Tracking issue: #SMP-001
  * =============================================================================
  */
@@ -78,7 +78,7 @@ typedef enum {
  *       in constants.h. We re-define VGA_BUFFER_SIZE here with correct byte size.
  * =============================================================================
  */
-#define VGA_BUFFER_SIZE_BYTES  (VGA_ROWS * VGA_COLS * VGA_CELL_SIZE)
+#define VGA_BUFFER_SIZE_BYTES (VGA_ROWS * VGA_COLS * VGA_CELL_SIZE)
 
 /* =============================================================================
  * VGA Cell Structure (packed for 2 bytes)
@@ -135,6 +135,10 @@ void vga_clear_row(size_t row);
  * @param foreground Foreground color (0-15)
  * @param background Background color (0-15)
  * @return Combined color attribute byte
+ *
+ * @note Invalid colors (>15) are clamped to safe defaults
+ *       (white foreground, black background)
+ * @note This function validates inputs before use
  */
 uint8_t vga_set_color(uint8_t foreground, uint8_t background);
 
@@ -149,6 +153,10 @@ uint8_t vga_get_color(void);
  * @param fg Foreground color (0-15)
  * @param bg Background color (0-15)
  * @return Combined color byte
+ *
+ * @note Colors are clamped to 4-bit range (0-15) using bitwise AND
+ *       This prevents overflow into higher bits
+ * @note No error returned - invalid colors are silently clamped
  */
 uint8_t vga_make_color(uint8_t fg, uint8_t bg);
 
@@ -192,11 +200,15 @@ bool vga_advance_cursor(void);
  * @param character ASCII character
  * @param col Column (0-79)
  * @param row Row (0-24)
- * @param fg Foreground color
- * @param bg Background color
+ * @param fg Foreground color (0-15)
+ * @param bg Background color (0-15)
+ *
+ * @note Invalid colors are clamped to safe defaults
+ *       (white foreground, black background) before use
+ * @note Position is validated - invalid positions are silently ignored
+ * @note SMP-safe via spinlock protection
  */
-void vga_put_char_at(char character, size_t col, size_t row, 
-                     uint8_t fg, uint8_t bg);
+void vga_put_char_at(char character, size_t col, size_t row, uint8_t fg, uint8_t bg);
 
 /**
  * Write character at cursor position with current color

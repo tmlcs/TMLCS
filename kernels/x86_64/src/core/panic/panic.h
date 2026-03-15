@@ -1,8 +1,8 @@
 #ifndef PANIC_H
 #define PANIC_H
 
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -41,12 +41,12 @@ void panic_simple(const char* message);
  *
  * @note Convenience macro - expands to panic_simple() if fails
  */
-#define PANIC_IF_FALSE(condition, message) \
-    do { \
-        if (!(condition)) { \
-            panic_simple(message); \
-        } \
-    } while(0)
+#define PANIC_IF_FALSE(condition, message)                                                         \
+    do {                                                                                           \
+        if (!(condition)) {                                                                        \
+            panic_simple(message);                                                                 \
+        }                                                                                          \
+    } while (0)
 
 #ifdef __cplusplus
 }
