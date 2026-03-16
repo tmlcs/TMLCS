@@ -1,0 +1,204 @@
+# =============================================================================
+# GLOBEX_OS - GitHub Actions CI/CD Workflow
+# =============================================================================
+# Runs on: push, pull_request
+# Jobs: build, test, static-analysis
+# =============================================================================
+
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "dev", "main", "master" ]
+  pull_request:
+    branches: [ "dev", "main", "master" ]
+
+jobs:
+  # ==========================================================================
+  # Build Job - Verify compilation
+  # ==========================================================================
+  build:
+    name: Build Kernel
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            g++ \
+            nasm \
+            binutils \
+            grub-common \
+            grub-pc-bin \
+            xorriso \
+            qemu-system-x86
+      
+      - name: Verify tools
+        working-directory: kernels/x86_64
+        run: make verify-tools
+      
+      - name: Build kernel
+        working-directory: kernels/x86_64
+        run: make build-x86_64
+      
+      - name: Upload kernel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-bin
+          path: kernels/x86_64/dist/x86_64/kernel.bin
+          retention-days: 7
+      
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-iso
+          path: kernels/x86_64/dist/x86_64/kernel.iso
+          retention-days: 7
+
+  # ==========================================================================
+  # Test Job - Run kernel tests in QEMU
+  # ==========================================================================
+  test:
+    name: Run Tests
+    runs-on: ubuntu-22.04
+    needs: build
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            qemu-system-x86
+      
+      - name: Download kernel artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: kernel-iso
+          path: kernels/x86_64/dist/x86_64/
+      
+      - name: Run tests in QEMU
+        working-directory: kernels/x86_64
+        run: |
+          timeout 30 qemu-system-x86_64 \
+            -cdrom dist/x86_64/kernel.iso \
+            -serial file:serial_output.log \
+            -no-reboot \
+            -no-shutdown \
+            -display none
+      
+      - name: Verify test results
+        working-directory: kernels/x86_64
+        run: ../../scripts/verify_tests.sh serial_output.log
+      
+      - name: Upload test output
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-output
+          path: kernels/x86_64/serial_output.log
+          retention-days: 7
+
+  # ==========================================================================
+  # Static Analysis Job - Run clang-tidy and cppcheck
+  # ==========================================================================
+  static-analysis:
+    name: Static Analysis
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang-tidy \
+            cppcheck
+      
+      - name: Make analyze script executable
+        run: chmod +x scripts/analyze.sh
+      
+      - name: Run static analysis
+        run: ./scripts/analyze.sh
+        continue-on-error: true  # Don't fail PR, just report
+      
+      - name: Upload analysis report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: analysis-report
+          path: |
+            clang-tidy-report.txt
+            cppcheck-report.txt
+          retention-days: 7
+
+  # ==========================================================================
+  # Code Style Job - Verify formatting
+  # ==========================================================================
+  code-style:
+    name: Code Style
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format
+      
+      - name: Check formatting
+        working-directory: kernels/x86_64
+        run: |
+          # Find all C++ files and check formatting
+          find src -name "*.cpp" -o -name "*.h" -o -name "*.hpp" | while read file; do
+            clang-format --dry-run --Werror "$file"
+          done
+
+  # ==========================================================================
+  # Summary Job - Aggregate results
+  # ==========================================================================
+  summary:
+    name: Summary
+    runs-on: ubuntu-22.04
+    needs: [build, test, static-analysis, code-style]
+    if: always()
+    
+    steps:
+      - name: Check job statuses
+        run: |
+          echo "## Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.build.result }}" == "success" ]; then
+            echo "✅ Build: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Build: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.test.result }}" == "success" ]; then
+            echo "✅ Tests: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Tests: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.static-analysis.result }}" == "success" ]; then
+            echo "✅ Static Analysis: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️  Static Analysis: ISSUES FOUND" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.code-style.result }}" == "success" ]; then
+            echo "✅ Code Style: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Code Style: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi

@@ -1,0 +1,23 @@
+# =============================================================================
+# GLOBEX_OS - Static Analysis Configuration for clang-tidy
+# =============================================================================
+# For use with IDE integration. The analyze.sh script uses command-line checks.
+# =============================================================================
+
+---
+Checks: '-*,bugprone-*,cert-*,misc-*,performance-*,portability-*,readability-*,clang-analyzer-*,-clang-analyzer-cplusplus.NewDelete,-clang-analyzer-cplusplus.NewDeleteLeaks,-readability-magic-numbers,-bugprone-narrowing-conversions'
+FormatStyle: file
+HeaderFilterRegex: '.*'
+AnalyzeTemporaryDtors: false
+WarningsAsErrors: ''
+ExtraArgs:
+  - -xc++
+  - -std=c++17
+  - -ffreestanding
+  - -fno-exceptions
+  - -fno-rtti
+  - -nostdlib
+  - -fno-stack-protector
+  - -O2
+  - -Wall
+  - -Wextra

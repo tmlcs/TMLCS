@@ -26,8 +26,8 @@ kernels/x86_64/
 │   │   ├── idt/            # Interrupt Descriptor Table
 │   │   ├── include/        # Architecture-specific headers
 │   │   │   ├── atomic.h     # Atomic operations (LOCK-prefixed instructions)
-│   │   │   └── barriers.h   # Memory barriers
-│   │   └── paging/         # Paging implementation
+│   │   │   └── barriers.h   # Memory barriers (compiler + hardware)
+│   │   └── paging/         # Page table management
 │   ├── core/
 │   │   ├── constants.h      # VGA, Multiboot, memory constants
 │   │   ├── debug/
@@ -63,8 +63,8 @@ kernels/x86_64/
 │   ├── test_memory.*        # Memory mapping tests
 │   ├── test_print.*         # Print function tests (64-bit, signed)
 │   ├── test_query.*         # Cursor/color query tests
-│   ├── test_serial_signed.* # Signed number output tests
 │   ├── test_serial.*        # Serial baud rate tests
+│   ├── test_serial_signed.* # Signed number output tests
 │   ├── test_spinlock.*      # Spinlock SMP safety tests
 │   ├── test_string.*        # String function tests
 │   └── test_strlcpy.*       # Safe string copy tests
@@ -95,6 +95,8 @@ Required tools (verify with `make verify-tools`):
 - `grub-mkrescue` - GRUB ISO creator
 - `qemu-system-x86_64` - QEMU emulator
 - `clang-format` - Code formatting (for `scripts/format.sh`)
+- `clang-tidy` - Static analysis (optional)
+- `cppcheck` - Static analysis (optional)
 
 ### Build Commands
 
@@ -110,6 +112,8 @@ Required tools (verify with `make verify-tools`):
 | `make rebuild` | Clean and rebuild |
 | `make verify-tools` | Check if all required tools are available |
 | `make help` | Show all available targets |
+| `make analyze` | Run static analysis (clang-tidy + cppcheck) |
+| `make analyze-verbose` | Run static analysis with output logging |
 
 ### Compiler Flags
 
@@ -235,6 +239,21 @@ Configuration:
 - `.clang-format` - LLVM-based style, 4-space indent, 100 column limit
 - `.editorconfig` - Consistent indentation (4 spaces for C++, tabs for assembly/Makefile)
 
+### Static Analysis
+
+Run static analysis locally:
+```bash
+# Run analysis
+make analyze
+
+# Run with logging
+make analyze-verbose
+```
+
+Tools:
+- **clang-tidy** - LLVM-based C++ linter
+- **cppcheck** - C/C++ static analysis tool
+
 ### Git Workflow
 
 - **Main branch**: `dev` (development)
@@ -261,6 +280,8 @@ Configuration:
 
 **Query Functions**: `print_get_cursor()`, `print_get_color()`, `print_set_cursor()`, `print_set_color()`
 
+**Type Safety**: Uses `vga_pos_t`, `vga_col_t`, `vga_row_t` wrappers to prevent parameter swapping bugs.
+
 ### Serial Driver (`serial.h`/`serial.cpp`)
 
 **Hardware**: UART 16550 compatible
@@ -274,9 +295,10 @@ Configuration:
 - Recovery via `serial_reinit()` after timeout
 
 **SMP Threading Model**:
+- All `serial_write_*` functions acquire `serial_lock` internally
+- Concurrent calls from multiple CPUs are serialized
 - State checks use `rmb()` for visibility
-- NOT atomic for concurrent writes (may interleave characters)
-- Use external spinlock for full SMP safety
+- Use `serial_lock()` / `serial_unlock()` for multi-operation atomicity
 
 ### Boot Process
 
@@ -313,6 +335,8 @@ spinlock_release(&my_lock);
 
 **VGA Lock**: Global `vga_lock()` / `vga_unlock()` for protecting VGA operations.
 
+**Serial Lock**: Global `serial_lock()` / `serial_unlock()` for multi-operation atomicity.
+
 ### Atomic Operations (`atomic.h`)
 
 **32-bit**: `atomic_inc32()`, `atomic_dec32()`, `atomic_add32()`, `atomic_load32()`, `atomic_store32()`
@@ -322,6 +346,40 @@ spinlock_release(&my_lock);
 **CAS**: `atomic_compare_exchange32()`, `atomic_compare_exchange64()`
 
 **Memory Ordering**: Default `__ATOMIC_SEQ_CST` (sequential consistency), relaxed variants available for counters.
+
+### Memory Barriers (`barriers.h`)
+
+**Compiler Barriers** (0 cycles, prevents compiler reordering):
+- `mb()` - Full barrier
+- `rmb()` - Read barrier
+- `wmb()` - Write barrier
+- `barrier()` - Alias for `mb()` (use in critical sections)
+
+**Hardware Barriers** (emits LFENCE/SFENCE):
+- `hw_mb()` - Full hardware barrier
+- `hw_rmb()` - Read hardware barrier
+- `hw_wmb()` - Write hardware barrier
+
+**Acquire/Release**:
+- `smp_load_acquire(ptr)` - Load with acquire semantics
+- `smp_store_release(ptr, val)` - Store with release semantics
+
+**Spin Loop Optimization**:
+- `cpu_pause()` - PAUSE instruction for efficient spinning
+
+## CI/CD
+
+GitHub Actions runs automated checks on every push and pull request:
+
+| Job | Description | Required |
+|-----|-------------|----------|
+| `build` | Compiles the kernel | ✅ Yes |
+| `test` | Runs tests in QEMU | ✅ Yes |
+| `static-analysis` | Runs clang-tidy and cppcheck | ⚠️ Advisory |
+| `code-style` | Verifies code formatting | ✅ Yes |
+| `summary` | Aggregates all results | - |
+
+See `docs/CICD_GUIDE.md` for details.
 
 ## Troubleshooting
 
@@ -350,3 +408,9 @@ make run-serial && cat serial_output.log
 | `kernel.iso` | `dist/x86_64/` | Bootable ISO for QEMU |
 | `serial_output.log` | Project root | Serial console capture |
 | `build/` | Project root | Object files |
+
+## Documentation
+
+- `docs/CICD_GUIDE.md` - CI/CD and static analysis guide
+- `docs/DOCUMENTATION_STYLE_GUIDE.md` - Documentation standards
+- `kernels/x86_64/src/arch/x86_64/include/BARRIERS_GUIDE.md` - Memory barrier usage guide
