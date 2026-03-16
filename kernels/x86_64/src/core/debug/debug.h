@@ -124,13 +124,24 @@ extern "C" {
  * @brief DEBUG_PRINTF_STR - Print single string value with label
  * Usage: DEBUG_PRINTF_STR("name", myStr); -> "[DEBUG] name = hello"
  *
+ * HIGH-004 FIX:
+ *   Previous version did not validate pointer, causing triple fault
+ *   if used with NULL: DEBUG_PRINTF_STR("ptr", NULL) -> crash
+ *
+ *   Now validates pointer and prints "(null)" if NULL:
+ *   DEBUG_PRINTF_STR("ptr", NULL) -> "[DEBUG] ptr = (null)"
+ *
  * @note Safe single-argument alternative to removed variadic DEBUG_PRINTF
- * @note Does not validate pointer - ensure string is valid
+ * @note NULL pointer validation prevents crashes during debugging
  */
 #define DEBUG_PRINTF_STR(label, val)                                                               \
     do {                                                                                           \
         serial_write_str("[DEBUG] " label " = ");                                                  \
-        serial_write_str(val);                                                                     \
+        if ((val) != nullptr) {                                                                    \
+            serial_write_str(val);                                                                 \
+        } else {                                                                                   \
+            serial_write_str("(null)");                                                            \
+        }                                                                                          \
         serial_write_str("\r\n");                                                                  \
     } while (0)
 

@@ -15,12 +15,26 @@ x86_64 has **strong hardware memory ordering**, so compiler barriers are typical
 | `mb()` | None (compiler only) | Full barrier - prevents all reordering | 0 |
 | `rmb()` | None (compiler only) | Read barrier - for reading shared data | 0 |
 | `wmb()` | None (compiler only) | Write barrier - for writing shared data | 0 |
-| `barrier()` | None (compiler only) | Alias for `mb()` | 0 |
+| `barrier()` | None (compiler only) | Alias for `mb()` - see barrier() vs mb() for usage | 0 |
+
+**barrier() vs mb() Clarification**
+
+Use `mb()`/`rmb()`/`wmb()` for:
+- ✅ SMP synchronization (shared variables between CPUs)
+- ✅ Driver state that may be accessed concurrently
+- ✅ Any memory that crosses CPU boundaries
+
+Use `barrier()` for:
+- ✅ Critical sections where lock already provides SMP safety
+- ✅ Local state that doesn't cross CPU boundaries
+- ✅ Optimization barriers in tight loops
+- ✅ When you explicitly want ONLY compiler reordering prevention
 
 **When to use:**
-- SMP synchronization with spinlocks
-- Reading/writing shared variables protected by locks
-- Most driver state updates
+- SMP synchronization with spinlocks → Use `mb()`/`rmb()`/`wmb()`
+- Reading/writing shared variables protected by locks → Use `mb()`/`rmb()`/`wmb()`
+- Most driver state updates → Use `mb()`/`rmb()`/`wmb()`
+- Local optimization in locked sections → Use `barrier()`
 
 ### Hardware Barriers (Special Cases Only)
 

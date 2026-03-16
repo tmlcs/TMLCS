@@ -118,7 +118,7 @@ void test_query_functions() {
     serial_write_str("\r\n");
     serial_write_str("print_get_color: OK\r\n");
 
-    // Test print_is_initialized() [HIGH-007]
+    // Test print_is_initialized()
     if (print_is_initialized()) {
         serial_write_str("print_is_initialized: OK (VGA ready)\r\n");
     } else {

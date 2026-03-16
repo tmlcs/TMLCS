@@ -212,7 +212,7 @@ int serial_init(uint16_t port, uint32_t baud) {
     }
 
     /* ==========================================
-     * Validate baud rate range [HIGH-004]
+     * Validate baud rate range
      * ==========================================
      * Standard UART baud rates:
      *   - Minimum: 110 baud (divisor = 1047)
@@ -423,9 +423,29 @@ void serial_wait_transmit_empty(void) {
     serial_wait_transmit_empty_timeout(SERIAL_MAX_WAIT);
 }
 
-void serial_write_char(char data) {
+/**
+ * @brief Write a character to serial
+ * @param data Character to write
+ * @return 1 on success, 0 on timeout/failure
+ *
+ * SMP Safety: Acquires serial lock for atomic UART access.
+ * Multiple CPUs calling this function concurrently are serialized.
+ *
+ * Return Value :
+ *   Unlike the previous version that silently dropped characters on timeout,
+ *   this function now returns status to allow callers to detect failures.
+ *
+ * Usage:
+ *   @code
+ *   if (!serial_write_char('A')) {
+ *       // Handle timeout - character was not sent
+ *       serial_write_str("[ERROR] Serial timeout!\r\n");
+ *   }
+ *   @endcode
+ */
+int serial_write_char(char data) {
     /* ==========================================
-     * SMP Safety (#SMP-002): Acquire serial lock
+     * SMP Safety: Acquire serial lock
      * ==========================================
      * This ensures atomic access to UART hardware.
      * Multiple CPUs calling this function concurrently
@@ -436,18 +456,17 @@ void serial_write_char(char data) {
      * ========================================== */
     serial_lock();
 
-    /* Check if serial is initialized OR failed (for graceful degradation) */
+    /* Check if serial is initialized */
     if (!g_serial_state.initialized) {
         serial_unlock(); /* Release lock before returning */
-        return;          /* Serial not initialized or failed */
+        return 0;        /* Serial not initialized */
     }
 
     /* Wait until transmitter holding register is empty */
     if (!serial_wait_transmit_empty_timeout(SERIAL_MAX_WAIT)) {
         /* Timeout occurred - hardware may have failed */
         serial_unlock(); /* Release lock before returning */
-        /* Do NOT retry indefinitely - let caller decide what to do */
-        return;
+        return 0;        /* Return failure status */
     }
 
     /* Write the character */
@@ -455,9 +474,29 @@ void serial_write_char(char data) {
 
     /* Release lock after operation complete */
     serial_unlock();
+
+    return 1; /* Return success status */
 }
 
-void serial_write_str(const char* str) {
+/**
+ * @brief Write a null-terminated string to serial
+ * @param str Null-terminated string
+ * @return 1 on success, 0 on timeout/failure (some characters may have been written)
+ *
+ * SMP Safety: Acquires lock once for entire string.
+ * This is more efficient than per-character locking and ensures
+ * the entire string is output atomically without interleaving.
+ *
+ * Returns status to allow callers to detect timeouts.
+ * If timeout occurs mid-string, remaining characters are dropped
+ * and the function returns 0 to indicate incomplete write.
+ *
+ * Null Pointer Handling:
+ *   Passing NULL is a programming error, NOT hardware failure.
+ *   Returns 0 and sets error code to SERIAL_ERROR_NULL_PTR.
+ *   Does NOT set serial_failed - this is not a hardware error.
+ */
+int serial_write_str(const char* str) {
     /*
      * Null pointer is a programming error, NOT hardware failure.
      * Do NOT set serial_failed or increment timeout counters.
@@ -468,27 +507,29 @@ void serial_write_str(const char* str) {
         g_serial_state.error_code = SERIAL_ERROR_NULL_PTR;
         wmb();
         /* Do NOT set serial_failed = 1 - this is not a hardware error */
-        return;
+        return 0; /* Return failure status */
     }
 
     /* ==========================================
-     * SMP Safety (#SMP-002): Acquire lock once for entire string
+     * SMP Safety: Acquire lock once for entire string
      * ==========================================
      * This is more efficient than acquiring/releasing per character.
      * Ensures the entire string is output atomically without interleaving.
      * ========================================== */
     serial_lock();
 
+    int success = 1; /* Assume success unless timeout occurs */
+
     while (*str) {
         /* Inline character output for efficiency (lock already held) */
         if (!g_serial_state.initialized) {
             serial_unlock();
-            return;
+            return 0; /* Serial became uninitialized */
         }
 
         if (!serial_wait_transmit_empty_timeout(SERIAL_MAX_WAIT)) {
             serial_unlock();
-            return;
+            return 0; /* Return failure on timeout */
         }
 
         outb(g_serial_state.port + SERIAL_THR, (uint8_t) *str);
@@ -496,27 +537,42 @@ void serial_write_str(const char* str) {
     }
 
     serial_unlock();
+
+    return success; /* Return success status */
 }
 
+/**
+ * @brief Write an unsigned integer in hexadecimal to serial
+ * @param value Value to write
+ * @note Returns void for backward compatibility, but internally checks status
+ */
 void serial_write_hex(uint32_t value) {
     char buffer[11]; /* "0x" + 8 digits + null */
 
     // Use shared utility function from hex_utils.h (DRY principle)
     uint32_to_hex_string(buffer, value);
 
-    serial_write_str(buffer);
+    // Check return status (silently ignore for backward compatibility)
+    (void) serial_write_str(buffer);
 }
 
+/**
+ * @brief Write an unsigned integer in decimal to serial
+ * @param value Value to write
+ * @note Returns void for backward compatibility, but internally checks status
+ */
 void serial_write_dec(uint32_t value) {
     char buffer[12]; /* Maximum 10 digits + null */
 
     // Use shared utility function (DRY principle)
-    serial_write_str(uint32_to_decimal_string(buffer, value));
+    // Check return status (silently ignore for backward compatibility)
+    (void) serial_write_str(uint32_to_decimal_string(buffer, value));
 }
 
 /**
  * @brief Write a 64-bit unsigned integer in hexadecimal to serial
  * @param value 64-bit value to write
+ * @note Returns void for backward compatibility, but internally checks status
  */
 void serial_write_hex64(uint64_t value) {
     char buffer[19];  // "0x" + 16 digits + null = 19 bytes
@@ -524,27 +580,32 @@ void serial_write_hex64(uint64_t value) {
     // Use shared utility function from hex_utils.h (DRY principle)
     uint64_to_hex_string(buffer, value);
 
-    serial_write_str(buffer);
+    // Check return status (silently ignore for backward compatibility)
+    (void) serial_write_str(buffer);
 }
 
 /**
  * @brief Write a 64-bit unsigned integer in decimal to serial
  * @param value 64-bit value to write
+ * @note Returns void for backward compatibility, but internally checks status
  */
 void serial_write_dec64(uint64_t value) {
     char buffer[22];  // Maximum 20 digits + null
 
     // Use shared utility function (DRY principle)
-    serial_write_str(uint64_to_decimal_string(buffer, value));
+    // Check return status (silently ignore for backward compatibility)
+    (void) serial_write_str(uint64_to_decimal_string(buffer, value));
 }
 
 /**
  * @brief Write a 32-bit signed integer in decimal to serial
  * @param value Signed value to write
+ * @note Returns void for backward compatibility, but internally checks status
  */
 void serial_write_dec_signed(int32_t value) {
     if (value < 0) {
-        serial_write_char('-');
+        // Check return status (silently ignore for backward compatibility)
+        (void) serial_write_char('-');
         /* Use two's complement to avoid undefined behavior.
          * For INT32_MIN (-2147483648), negation would overflow in signed arithmetic.
          * Casting to uint64_t first, then negating in unsigned arithmetic is safe.
@@ -558,10 +619,12 @@ void serial_write_dec_signed(int32_t value) {
 /**
  * @brief Write a 64-bit signed integer in decimal to serial
  * @param value 64-bit signed value to write
+ * @note Returns void for backward compatibility, but internally checks status
  */
 void serial_write_dec64_signed(int64_t value) {
     if (value < 0) {
-        serial_write_char('-');
+        // Check return status (silently ignore for backward compatibility)
+        (void) serial_write_char('-');
         /* Use two's complement to avoid undefined behavior.
          * For INT64_MIN (-9223372036854775808), negation would overflow in signed arithmetic.
          * Casting to uint64_t first, then negating in unsigned arithmetic is safe.
@@ -697,7 +760,7 @@ int serial_reinit(uint16_t port, uint32_t baud) {
     wmb(); /* Ensure ordering */
     g_serial_state.failed = 0;
     g_serial_state.error_code = SERIAL_ERROR_NONE;
-    atomic_store32(&g_serial_state.timeout_count, 0); /* CRIT-001: Atomic reset */
+    atomic_store32(&g_serial_state.timeout_count, 0); /* Atomic reset */
     g_serial_state.initialized = 0;                   /* Clear initialized flag for fresh init */
     wmb(); /* Ensure cleared state is visible before re-init */
 

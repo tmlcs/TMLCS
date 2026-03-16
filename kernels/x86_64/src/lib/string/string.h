@@ -13,7 +13,12 @@ extern "C" {
  * @param dest Destination pointer
  * @param src Source pointer
  * @param n Number of bytes to copy
- * @return Pointer to dest
+ * @return Pointer to dest, or NULL if dest is NULL
+ *
+ * NULL pointer handling standardized.
+ *   - If dest is NULL: returns NULL (no-op)
+ *   - If src is NULL: returns dest (no-op, avoids crash)
+ *   - This allows chaining: memmove(a,b,n) = memmove(c,d,m)
  */
 void* memmove(void* dest, const void* src, size_t n);
 
@@ -22,7 +27,12 @@ void* memmove(void* dest, const void* src, size_t n);
  * @param dest Destination pointer
  * @param src Source pointer
  * @param n Number of bytes to copy
- * @return Pointer to dest
+ * @return Pointer to dest, or NULL if dest is NULL
+ *
+ * NULL pointer handling standardized.
+ *   - If dest is NULL: returns NULL (no-op)
+ *   - If src is NULL: returns dest (no-op, avoids crash)
+ *   - This allows chaining: memcpy(a,b,n) = memcpy(c,d,m)
  */
 void* memcpy(void* dest, const void* src, size_t n);
 
@@ -31,7 +41,10 @@ void* memcpy(void* dest, const void* src, size_t n);
  * @param s Pointer to memory region
  * @param c Byte value to set
  * @param n Number of bytes to set
- * @return Pointer to s
+ * @return Pointer to s, or NULL if s is NULL
+ *
+ * NULL pointer handling standardized.
+ *   - If s is NULL: returns NULL (no-op)
  */
 void* memset(void* s, int c, size_t n);
 
@@ -40,7 +53,11 @@ void* memset(void* s, int c, size_t n);
  * @param s1 First memory region
  * @param s2 Second memory region
  * @param n Number of bytes to compare
- * @return 0 if equal, <0 if s1<s2, >0 if s1>s2
+ * @return 0 if equal or if either pointer is NULL, <0 if s1<s2, >0 if s1>s2
+ *
+ * NULL pointer handling standardized.
+ *   - If s1 or s2 is NULL: returns 0 (considered equal, no-op)
+ *   - This prevents crashes but caller should validate pointers
  */
 int memcmp(const void* s1, const void* s2, size_t n);
 
@@ -48,17 +65,16 @@ int memcmp(const void* s1, const void* s2, size_t n);
  * @brief Copy string with null terminator
  * @param dest Destination buffer (must be large enough)
  * @param src Source null-terminated string
- * @return Pointer to dest
+ * @return Pointer to dest, or NULL if dest is NULL
+ *
+ * NULL pointer handling standardized.
+ *   - If dest is NULL: returns NULL (no-op)
+ *   - If src is NULL: returns dest (no-op, avoids crash)
  *
  * @warning Destination buffer must be large enough to hold the source string
  *          including the null terminator. No bounds checking is performed.
  * @warning This function is UNSAFE for untrusted input.
  *          Use strlcpy() for safe bounded copying.
- *
- * @example
- *     char src[] = "Hello";
- *     char dest[6];  // 5 chars + null terminator
- *     strcpy(dest, src);  // OK
  */
 char* strcpy(char* dest, const char* src);
 
@@ -67,7 +83,11 @@ char* strcpy(char* dest, const char* src);
  * @param dest Destination buffer
  * @param src Source null-terminated string
  * @param destsize Size of destination buffer in bytes
- * @return Length of source string (not including null terminator)
+ * @return Length of source string, or 0 if dest or src is NULL
+ *
+ * NULL pointer handling standardized.
+ *   - If dest is NULL: returns 0 (no-op)
+ *   - If src is NULL: returns 0 (no-op)
  *
  * Safe bounded string copy that prevents buffer overflow.
  *
@@ -78,33 +98,19 @@ char* strcpy(char* dest, const char* src);
  *
  * @note If return value >= destsize, truncation occurred
  * @note If return value < destsize, copy was complete
- *
- * @example
- *     char src[] = "Hello, World!";
- *     char dest[6];
- *     size_t len = strlcpy(dest, src, sizeof(dest));
- *     // dest = "Hello\0", len = 13 (truncation detected: 13 >= 6)
- *
- * @example
- *     char src[] = "Hi";
- *     char dest[10];
- *     size_t len = strlcpy(dest, src, sizeof(dest));
- *     // dest = "Hi\0", len = 2 (no truncation: 2 < 10)
  */
 size_t strlcpy(char* dest, const char* src, size_t destsize);
 
 /**
  * @brief Calculate string length (excluding null terminator)
  * @param str Null-terminated string to measure
- * @return Number of characters before null terminator
+ * @return Length of string, or 0 if str is NULL
+ *
+ * NULL pointer handling documented.
+ *   - If str is NULL: returns 0 (safe handling)
  *
  * @note Returns 0 for empty string ("")
  * @note Does not include null terminator in count
- *
- * @example
- *     strlen("Hello")     // Returns: 5
- *     strlen("")          // Returns: 0
- *     strlen("ABC")       // Returns: 3
  */
 size_t strlen(const char* str);
 

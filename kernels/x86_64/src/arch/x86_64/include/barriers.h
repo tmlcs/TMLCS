@@ -29,6 +29,24 @@ extern "C" {
  * These barriers prevent compiler reordering but do not emit CPU instructions.
  * x86_64 has strong hardware memory ordering, so compiler barriers are
  * typically sufficient for most use cases.
+ *
+ * MED-004: Usage Guidelines
+ * -------------------------
+ * Use mb()/rmb()/wmb() for:
+ *   - SMP synchronization (shared variables between CPUs)
+ *   - Driver state that may be accessed concurrently
+ *   - Any memory that crosses CPU boundaries
+ *
+ * Use barrier() for:
+ *   - Critical sections where lock already provides SMP safety
+ *   - Local state that doesn't cross CPU boundaries
+ *   - Optimization barriers in tight loops
+ *   - When you explicitly want ONLY compiler reordering prevention
+ *
+ * Use hw_mb()/hw_rmb()/hw_wmb() for:
+ *   - MMIO (Memory-Mapped I/O) operations
+ *   - DMA buffer synchronization
+ *   - Write-combining (WC) memory regions
  * =============================================================================
  */
 
@@ -96,8 +114,29 @@ extern "C" {
 
 /**
  * @brief Compiler barrier only (alias for mb())
- * @note Same as mb() - provided for code clarity
- * @see mb()
+ * @note Same as mb() - provided for code clarity in specific contexts
+ *
+ * MED-004 FIX: Usage clarification
+ *   - Use mb()/rmb()/wmb() for SMP memory ordering (shared variables)
+ *   - Use barrier() ONLY for compiler reordering prevention in:
+ *     * Critical sections where lock already provides SMP safety
+ *     * Local state that doesn't cross CPU boundaries
+ *     * Optimization barriers in tight loops
+ *
+ * @example
+ *   // ✅ CORRECT: barrier() for local optimization
+ *   spinlock_acquire(&lock);  // Lock provides SMP safety
+ *   local_var = compute();    // No mb() needed - lock is barrier
+ *   barrier();                // Prevent compiler reordering only
+ *   use(local_var);
+ *   spinlock_release(&lock);
+ *
+ * @example
+ *   // ❌ WRONG: barrier() for SMP shared variable
+ *   shared_flag = 1;
+ *   barrier();  // WRONG - should be wmb() for SMP
+ *
+ * @see mb() for full SMP memory barrier
  */
 #define barrier() __asm__ volatile("" ::: "memory")
 

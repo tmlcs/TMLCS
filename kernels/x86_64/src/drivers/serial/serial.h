@@ -154,6 +154,7 @@ int serial_is_initialized(void);
 /**
  * @brief Write a character to serial
  * @param data Character to write
+ * @return 1 on success, 0 on timeout/failure
  *
  * @note SMP Safety (UPDATED - #SMP-002): This function is NOW fully SMP-safe.
  *       It acquires the global serial spinlock internally before accessing
@@ -172,16 +173,23 @@ int serial_is_initialized(void);
  *       while holding the lock. If initialization fails during the wait,
  *       the write is aborted safely.
  *
+ * @note Return Value: Unlike previous version, this function now returns
+ *       status to allow callers to detect and handle timeouts.
+ *
  * @see serial_lock(), serial_unlock() in spinlock.h
  * @see serial_write_str() for string output
  */
-void serial_write_char(char data);
+int serial_write_char(char data);
 
 /**
  * @brief Write a null-terminated string to serial
  * @param str Null-terminated string
+ * @return 1 on success, 0 on timeout/failure (some characters may have been written)
+ *
+ * @note If timeout occurs mid-string, remaining characters are dropped.
+ *       The return value will be 0 to indicate incomplete write.
  */
-void serial_write_str(const char* str);
+int serial_write_str(const char* str);
 
 /**
  * @brief Write an unsigned integer in hexadecimal to serial

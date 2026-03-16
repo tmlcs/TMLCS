@@ -528,6 +528,31 @@ void vga_put_char_early(char character, vga_pos_t pos, uint8_t color) {
     mb(); /* Ensure write is visible */
 }
 
+/**
+ * @brief Write string directly to VGA buffer without locking
+ * [INTERRUPT-SAFE] - Does not acquire spinlock
+ *
+ * @param str Null-terminated string to write
+ * @param pos Position struct with starting column (0-79) and row (0-24)
+ * @param color Color attribute byte
+ *
+ *   Unlike vga_put_string() which has MAX_STRING_LEN = 256,
+ *   this function previously had no length limit. A very long string
+ *   could wrap around the screen multiple times, overwriting its own
+ *   panic message and producing confusing output.
+ *
+ *   Now limits output to one full screen (2000 characters = 80x25).
+ *   This ensures panic messages remain readable and don't self-overwrite.
+ *
+ * @note This function is NOT SMP-safe - use only in panic/fatal paths
+ * @note No bounds checking beyond screen dimensions
+ * @note No cursor tracking - direct buffer writes
+ * @note Stops at newline or end of row
+ * @note Using vga_pos_t prevents accidentally swapping col/row
+ *
+ * @see early_panic() in kernel/main.cpp for usage example
+ * @see vga_make_pos(), vga_pos_origin()
+ */
 void vga_put_string_early(const char* str, vga_pos_t pos, uint8_t color) {
     if (str == nullptr) {
         return;
@@ -538,7 +563,14 @@ void vga_put_string_early(const char* str, vga_pos_t pos, uint8_t color) {
     size_t current_row = pos.row.value;
     size_t start_col = pos.col.value;
 
-    for (size_t i = 0; str[i] != '\0'; i++) {
+    /* Limit maximum characters to prevent screen wraparound.
+     * One full screen = 80 cols * 25 rows = 2000 characters.
+     * This ensures panic messages don't overwrite themselves.
+     */
+    constexpr size_t MAX_EARLY_STRING_LEN = VGA_ROWS * VGA_COLS;
+    size_t char_count = 0;
+
+    for (size_t i = 0; str[i] != '\0' && char_count < MAX_EARLY_STRING_LEN; i++) {
         /* Handle basic control characters */
         if (str[i] == '\n') {
             current_col = start_col; /* Return to start of line */
@@ -546,11 +578,13 @@ void vga_put_string_early(const char* str, vga_pos_t pos, uint8_t color) {
             if (current_row >= VGA_ROWS) {
                 current_row = VGA_ROWS - 1; /* Clamp to last row */
             }
+            char_count++;
             continue;
         }
 
         if (str[i] == '\r') {
             current_col = start_col; /* Return to start of line */
+            char_count++;
             continue;
         }
 
@@ -566,6 +600,7 @@ void vga_put_string_early(const char* str, vga_pos_t pos, uint8_t color) {
 
         vga_put_char_early(str[i], vga_make_pos(vga_col(current_col), vga_row(current_row)), color);
         current_col++;
+        char_count++;
     }
 
     mb(); /* Ensure all writes are visible */

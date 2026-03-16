@@ -8,6 +8,12 @@ GRUB := grub-mkrescue
 QEMU := qemu-system-x86_64
 
 # ==========================================
+# Project Root
+# ==========================================
+# Get the project root directory (two levels up from kernels/x86_64)
+PROJECT_ROOT := $(shell dirname $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST)))))
+
+# ==========================================
 # Directories and Outputs
 # ==========================================
 ISO_DIR := dist/x86_64
@@ -141,6 +147,19 @@ distclean: clean
 rebuild: clean build-x86_64
 
 # ==========================================
+# Static Analysis
+# ==========================================
+.PHONY: analyze
+analyze:
+	@echo "Running static analysis..."
+	@cd $(PROJECT_ROOT) && ./scripts/analyze.sh
+
+.PHONY: analyze-verbose
+analyze-verbose:
+	@echo "Running static analysis (verbose)..."
+	@cd $(PROJECT_ROOT) && ./scripts/analyze.sh 2>&1 | tee analyze.log
+
+# ==========================================
 # Tool Verification
 # ==========================================
 .PHONY: verify-tools
@@ -177,6 +196,10 @@ help:
 	@echo "  run-debug     - Run with debug output"
 	@echo "  run-serial    - Run with serial output to file"
 	@echo "  run-stdio     - Run with serial on stdio"
+	@echo ""
+	@echo "Analysis targets:"
+	@echo "  analyze       - Run static analysis (clang-tidy + cppcheck)"
+	@echo "  analyze-verbose - Run static analysis with output logging"
 	@echo ""
 	@echo "Utility targets:"
 	@echo "  verify-tools  - Check if all required tools are available"

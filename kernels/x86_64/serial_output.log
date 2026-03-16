@@ -11,10 +11,10 @@ DATA variable (should be 0x12345678): 0x0x12345678
 === Memory Mapping Test ===
 Page tables: 2GiB mapped (0x00000000-0x7FFFFFFF)
 Testing access to 80MB (0x05000000)...
-CR3 value: 0x0x000000000010B000
-Page table base: 0x0x000000000010B000
+CR3 value: 0x0x000000000010C000
+Page table base: 0x0x000000000010C000
 CR3 validation: OK
-L4[0] -> L3 at: 0x0x000000000010C000
+L4[0] -> L3 at: 0x0x000000000010D000
 L4->L3 mapping: OK
 Write pattern: 0x0xDEADBEEF
 Read back:   0x0xDEADBEEF
@@ -56,7 +56,7 @@ serial_write_dec_signed(INT32_MAX): 2147483647
 
 === Query Functions Test ===
 Current cursor: col=0, row=5
-print_get_cursor: OK
+print_get_cursor_pos: OK
 Setting cursor to (40, 12)...
 Cursor set successfully: col=40, row=12
 print_set_cursor: OK
@@ -188,7 +188,6 @@ GLOBEX_OS Spinlock Test Suite
 
 === Spinlock Interrupt State Test ===
 [PASS] Initial state: interrupts_enabled == false
-[PASS] Fast path: interrupts_enabled remains false
 [PASS] After release: interrupts_enabled reset to false
 [PASS] Lock functional after interrupt test
 [PASS] Release functional after interrupt test

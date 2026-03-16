@@ -1,6 +1,7 @@
 #ifndef CONSTANTS_H
 #define CONSTANTS_H
 
+#include <stddef.h> /* Explicit include for size_t */
 #include <stdint.h>
 
 #ifdef __cplusplus

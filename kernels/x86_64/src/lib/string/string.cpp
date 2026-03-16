@@ -35,16 +35,18 @@ static inline bool memory_regions_overlap(const void* dest, const void* src, siz
  * @param dest Destination pointer
  * @param src Source pointer
  * @param n Number of bytes to copy
- * @return Pointer to dest
+ * @return Pointer to dest, or NULL if dest is NULL
  *
- * @note Added NULL pointer validation
- *       Returns dest if dest is NULL (no-op)
- *       Returns dest if src is NULL (no-op, avoids crash)
+ * NULL pointer handling standardized.
+ *   - If dest is NULL: returns NULL (no-op, avoids triple fault)
+ *   - If src is NULL: returns dest (no-op, avoids crash)
+ *   - Behavior is consistent: always return first parameter (dest)
+ *   - This allows chaining: memmove(a,b,n) = memmove(c,d,m)
  */
 void* memmove(void* dest, const void* src, size_t n) {
     /* NULL pointer validation */
     if (dest == nullptr || src == nullptr) {
-        return dest; /* No-op for NULL pointers, avoids triple fault */
+        return dest; /* Return dest for consistency */
     }
 
     uint8_t* d = static_cast<uint8_t*>(dest);
@@ -79,13 +81,13 @@ void* memmove(void* dest, const void* src, size_t n) {
  * @param dest Destination pointer
  * @param src Source pointer
  * @param n Number of bytes to copy
- * @return Pointer to dest
+ * @return Pointer to dest, or NULL if dest is NULL
  *
- * @note Overlap detection: Two regions [dest, dest+n) and [src, src+n)
- *       overlap if: dest < src + n && src < dest + n
- *
- * @note Added NULL pointer validation
- *       Returns dest if dest or src is NULL (avoids triple fault)
+ * NULL pointer handling standardized.
+ *   - If dest is NULL: returns NULL (no-op, avoids triple fault)
+ *   - If src is NULL: returns dest (no-op, avoids crash)
+ *   - Behavior is consistent: always return first parameter (dest)
+ *   - This allows chaining: memcpy(a,b,n) = memcpy(c,d,m)
  *
  * @note DEBUG_ENABLE: Runtime overlap check with error report
  *       Release: No overhead, caller must ensure no overlap
@@ -93,7 +95,7 @@ void* memmove(void* dest, const void* src, size_t n) {
 void* memcpy(void* dest, const void* src, size_t n) {
     /* NULL pointer validation */
     if (dest == nullptr || src == nullptr) {
-        return dest; /* No-op for NULL pointers, avoids triple fault */
+        return dest; /* Return dest for consistency */
     }
 
     uint8_t* d = static_cast<uint8_t*>(dest);
@@ -138,15 +140,16 @@ void* memcpy(void* dest, const void* src, size_t n) {
  * @param s Pointer to memory region
  * @param c Byte value to set
  * @param n Number of bytes to set
- * @return Pointer to s
+ * @return Pointer to s, or NULL if s is NULL
  *
- * @note Added NULL pointer validation
- *       Returns s if s is NULL (no-op, avoids triple fault)
+ * NULL pointer handling standardized.
+ *   - If s is NULL: returns NULL (no-op, avoids triple fault)
+ *   - Behavior is consistent: always return first parameter (s)
  */
 void* memset(void* s, int c, size_t n) {
     /* NULL pointer validation */
     if (s == nullptr) {
-        return s; /* No-op for NULL pointer, avoids triple fault */
+        return s; /* Return s for consistency */
     }
 
     uint8_t* p = static_cast<uint8_t*>(s);
@@ -166,15 +169,16 @@ void* memset(void* s, int c, size_t n) {
  * @param s1 First memory region
  * @param s2 Second memory region
  * @param n Number of bytes to compare
- * @return 0 if equal, <0 if s1<s2, >0 if s1>s2
+ * @return 0 if equal or if either pointer is NULL, <0 if s1<s2, >0 if s1>s2
  *
- * @note Added NULL pointer validation
- *       If either pointer is NULL, returns 0 (equal, no-op)
+ * NULL pointer handling standardized.
+ *   - If s1 or s2 is NULL: returns 0 (considered equal, no-op)
+ *   - This prevents crashes but caller should validate pointers before calling
  */
 int memcmp(const void* s1, const void* s2, size_t n) {
     /* NULL pointer validation */
     if (s1 == nullptr || s2 == nullptr) {
-        return 0; /* Consider NULL pointers as equal, avoids triple fault */
+        return 0; /* Consider NULL pointers as equal, avoids crash */
     }
 
     const uint8_t* p1 = static_cast<const uint8_t*>(s1);
@@ -197,22 +201,21 @@ int memcmp(const void* s1, const void* s2, size_t n) {
  *
  * @param dest Destination buffer (must be large enough)
  * @param src Source null-terminated string
- * @return Pointer to dest
+ * @return Pointer to dest, or NULL if dest is NULL
+ *
+ * NULL pointer handling standardized.
+ *   - If dest is NULL: returns NULL (no-op, avoids triple fault)
+ *   - If src is NULL: returns dest (no-op, avoids crash)
+ *   - Behavior is consistent: always return first parameter (dest)
  *
  * @warning UNSAFE - No bounds checking. Use strlcpy() instead.
  * @warning Destination buffer must be large enough to hold the source string
  *          including the null terminator.
- *
- * @note Added NULL pointer validation
- *       Returns dest if dest or src is NULL (avoids triple fault)
- *
- * @note Copies characters including null terminator
- * @note Returns dest for chaining compatibility
  */
 char* strcpy(char* dest, const char* src) {
     /* NULL pointer validation */
     if (dest == nullptr || src == nullptr) {
-        return dest; /* No-op for NULL pointers, avoids triple fault */
+        return dest; /* Return dest for consistency */
     }
 
     char* original_dest = dest;
@@ -233,7 +236,12 @@ char* strcpy(char* dest, const char* src) {
  * @param dest Destination buffer
  * @param src Source null-terminated string
  * @param destsize Size of destination buffer in bytes
- * @return Length of source string (not including null terminator)
+ * @return Length of source string, or 0 if dest or src is NULL
+ *
+ * NULL pointer handling standardized.
+ *   - If dest is NULL: returns 0 (no-op)
+ *   - If src is NULL: returns 0 (no-op)
+ *   - If destsize is 0: returns strlen(src) (truncation detection)
  *
  * This function guarantees:
  *   1. Never writes more than destsize bytes (including null terminator)
@@ -243,24 +251,6 @@ char* strcpy(char* dest, const char* src) {
  * Truncation detection:
  *   - If return value >= destsize: truncation occurred
  *   - If return value < destsize: copy was complete
- *
- * @note Also validates NULL pointers for safety
- *
- * @example
- *     // Truncation case
- *     char src[] = "Hello, World!";
- *     char dest[6];
- *     size_t len = strlcpy(dest, src, sizeof(dest));
- *     // Result: dest = "Hello\0", len = 13
- *     // Truncation detected: len (13) >= destsize (6)
- *
- * @example
- *     // Complete copy case
- *     char src[] = "Hi";
- *     char dest[10];
- *     size_t len = strlcpy(dest, src, sizeof(dest));
- *     // Result: dest = "Hi\0", len = 2
- *     // No truncation: len (2) < destsize (10)
  */
 size_t strlcpy(char* dest, const char* src, size_t destsize) {
     /* NULL pointer validation */
@@ -294,15 +284,18 @@ size_t strlcpy(char* dest, const char* src, size_t destsize) {
  * Returns the length of a null-terminated string.
  *
  * @param str Null-terminated string to measure
- * @return Number of characters before null terminator
+ * @return Length of string, or 0 if str is NULL
+ *
+ * NULL pointer handling documented.
+ *   - If str is NULL: returns 0 (safe handling, avoids crash)
  *
  * @note Returns 0 for empty string ("")
  * @note Does not include null terminator in count
- * @note Safe: handles null pointer by returning 0
  */
 size_t strlen(const char* str) {
+    /* NULL pointer handling */
     if (str == nullptr) {
-        return 0;  // Safe handling of null pointer
+        return 0; /* Safe handling of null pointer */
     }
 
     size_t len = 0;

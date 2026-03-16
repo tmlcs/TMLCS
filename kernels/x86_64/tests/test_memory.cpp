@@ -20,7 +20,7 @@ void test_memory_mapping() {
     serial_write_str("Testing access to 80MB (0x05000000)...\r\n");
 
     // ==========================================
-    // Page Table Verification [HIGH-006]
+    // Page Table Verification
     // ==========================================
     // Read CR3 to verify page table base address
     uint64_t cr3_value;

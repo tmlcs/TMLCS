@@ -20,9 +20,21 @@ extern "C" {
  * @note Output does NOT include leading zeros (except for value=0)
  * ========================================== */
 
-/* Buffer size constants for decimal conversion */
-#define DECIMAL_UINT32_BUFFER_SIZE 12 /* 10 digits + null + guard */
-#define DECIMAL_UINT64_BUFFER_SIZE 22 /* 20 digits + null + guard */
+/* Buffer size constants for decimal conversion
+ *
+ * Layout explanation:
+ *   uint32: max 10 digits (4294967295) + 1 null terminator = 11 bytes minimum
+ *   uint64: max 20 digits + 1 null terminator = 21 bytes minimum
+ *
+ * Extra byte (+1) provides:
+ *   - Safety margin to prevent off-by-one errors
+ *   - Space for potential future extensions (e.g., sign character)
+ *   - Alignment padding
+ *
+ * NOT a "guard" byte in the security sense - it's usable space.
+ */
+#define DECIMAL_UINT32_BUFFER_SIZE 12 /* 10 digits + 1 null terminator (+1 safety margin) */
+#define DECIMAL_UINT64_BUFFER_SIZE 22 /* 20 digits + 1 null terminator (+1 safety margin) */
 #define DECIMAL_UINT32_MAX_DIGITS 10
 #define DECIMAL_UINT64_MAX_DIGITS 20
 
@@ -34,12 +46,13 @@ extern "C" {
  * @param buffer Output buffer (MUST be at least DECIMAL_UINT32_BUFFER_SIZE bytes)
  * @param value 32-bit unsigned value to convert
  * @return Pointer to first character of result (for chaining)
- *         Returns buffer pointing to "\\0" if bounds check fails
+ *         Returns buffer pointing to "\0" if bounds check fails
  *
  * @note Maximum uint32 value is 4294967295 (10 digits)
- * @note Buffer layout: [digits...][\0][guard]
- *       Function writes from buffer[10] down to buffer[0], then null at buffer[11]
- *       Positions used: 0-10 for digits, 11 for null terminator
+ * @note Buffer layout: [digits 0-9][null terminator at 10 or 11]
+ *       Function writes from end of buffer backwards to beginning
+ *       Maximum 10 digits uses positions 1-10 or 0-9 depending on value
+ *       Position 11 is always null terminator (or position 10 for 10-digit numbers)
  *
  * @security Bounds-checked to prevent buffer underflow.
  *           - Pre-counts digits before writing
@@ -56,7 +69,7 @@ inline char* uint32_to_decimal_string(char* buffer, uint32_t value) {
 
     /* Bounds check: count digits before writing to ensure we don't overflow
      * Maximum uint32 value is 4294967295 (10 digits).
-     * DECIMAL_UINT32_BUFFER_SIZE = 12 (10 digits + null + guard)
+     * DECIMAL_UINT32_BUFFER_SIZE = 12 (10 digits + 1 null terminator + 1 safety margin)
      */
     uint32_t temp = value;
     size_t digit_count = 0;
@@ -84,6 +97,7 @@ inline char* uint32_to_decimal_string(char* buffer, uint32_t value) {
     /* Start from position 11 (end of buffer), work backwards
      * Buffer indices: [0..10] for digits, [11] for null terminator
      * Maximum 10 digits uses positions 1-10 or 0-9 depending on value
+     * The extra byte at position 11 provides safety margin
      */
     size_t i = DECIMAL_UINT32_BUFFER_SIZE - 1; /* i = 11 */
     buffer[i] = '\0';
@@ -123,12 +137,13 @@ inline char* uint32_to_decimal_string(char* buffer, uint32_t value) {
  * @param buffer Output buffer (MUST be at least DECIMAL_UINT64_BUFFER_SIZE bytes)
  * @param value 64-bit unsigned value to convert
  * @return Pointer to first character of result (for chaining)
- *         Returns buffer pointing to "\\0" if bounds check fails
+ *         Returns buffer pointing to "\0" if bounds check fails
  *
  * @note Maximum uint64 value is 18446744073709551615 (20 digits)
- * @note Buffer layout: [digits...][\0][guard]
- *       Function writes from buffer[20] down to buffer[0], then null at buffer[21]
- *       Positions used: 0-20 for digits, 21 for null terminator
+ * @note Buffer layout: [digits 0-19][null terminator at 20 or 21]
+ *       Function writes from end of buffer backwards to beginning
+ *       Maximum 20 digits uses positions 1-20 or 0-19 depending on value
+ *       Position 21 is always null terminator (or position 20 for 20-digit numbers)
  *
  * @security Bounds-checked to prevent buffer underflow.
  *           - Pre-counts digits before writing
@@ -145,7 +160,7 @@ inline char* uint64_to_decimal_string(char* buffer, uint64_t value) {
 
     /* Bounds check: count digits before writing to ensure we don't overflow
      * Maximum uint64 value is 18446744073709551615 (20 digits).
-     * DECIMAL_UINT64_BUFFER_SIZE = 22 (20 digits + null + guard)
+     * DECIMAL_UINT64_BUFFER_SIZE = 22 (20 digits + 1 null terminator + 1 safety margin)
      */
     uint64_t temp = value;
     size_t digit_count = 0;
@@ -173,6 +188,7 @@ inline char* uint64_to_decimal_string(char* buffer, uint64_t value) {
     /* Start from position 21 (end of buffer), work backwards
      * Buffer indices: [0..20] for digits, [21] for null terminator
      * Maximum 20 digits uses positions 1-20 or 0-19 depending on value
+     * The extra byte at position 21 provides safety margin
      */
     size_t i = DECIMAL_UINT64_BUFFER_SIZE - 1; /* i = 21 */
     buffer[i] = '\0';

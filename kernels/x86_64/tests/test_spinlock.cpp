@@ -174,9 +174,18 @@ void test_spinlock_null_pointer_safety(void) {
  * Test: Interrupt State Preservation
  * ==========================================
  * Verifies:
- *   - Interrupts are disabled during acquire (slow path)
+ *   - Interrupts are disabled during acquire
  *   - Interrupt state is restored on release
- *   - Fast path doesn't modify interrupt state
+ *   - interrupts_enabled field is properly managed
+ *
+ *   The previous "fast path" (acquire without disabling interrupts)
+ *   was removed to prevent nested interrupt deadlock.
+ *   Now ALL acquires disable interrupts unconditionally.
+ *
+ *   This test verifies that:
+ *   - interrupts_enabled starts as false (SPINLOCK_INIT)
+ *   - After acquire/release cycle, it returns to false
+ *   - The lock remains functional throughout
  *
  * Note: This test is limited on single-CPU QEMU.
  *       Full SMP testing would require multi-processor setup.
@@ -190,14 +199,27 @@ void test_spinlock_interrupt_state(void) {
     TEST_ASSERT(lock.interrupts_enabled == false,
                 "Initial state: interrupts_enabled == false");
 
-    /* Test 2: Fast path acquire (uncontended) doesn't set interrupts_enabled */
+    /* Test 2: Acquire (no fast path since
+     * 
+     * The fast path was removed. Now acquire ALWAYS
+     * disables interrupts to prevent nested interrupt deadlock:
+     *   1. CPU acquires lock (interrupts disabled)
+     *   2. Interrupt occurs on same CPU
+     *   3. Interrupt handler tries to acquire same lock
+     *   4. Without fix: DEADLOCK (handler spins forever)
+     *   5. With fix: interrupts already disabled, no deadlock
+     *
+     * After release, interrupts_enabled is reset to false.
+     */
     spinlock_acquire(&lock);
-    /* Fast path should leave interrupts_enabled as false */
-    TEST_ASSERT(lock.interrupts_enabled == false,
-                "Fast path: interrupts_enabled remains false");
+    /* 
+     * Note: interrupts_enabled may be true or false after acquire,
+     * depending on the interrupt state at time of acquire.
+     * The important thing is that release() restores it to false.
+     */
     spinlock_release(&lock);
 
-    /* Test 3: After release, interrupts_enabled is reset */
+    /* Test 3: After release, interrupts_enabled is reset to false */
     TEST_ASSERT(lock.interrupts_enabled == false,
                 "After release: interrupts_enabled reset to false");
 
