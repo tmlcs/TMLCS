@@ -45,29 +45,56 @@ void idt_load(idt_pointer_t* idtp);
  * =============================================================================
  */
 
-/* Exception handlers (no error code) */
-extern "C" void isr0(void); /* Divide Error */
-extern "C" void isr1(void); /* Debug */
-extern "C" void isr2(void); /* NMI */
-extern "C" void isr3(void); /* Breakpoint */
-extern "C" void isr4(void); /* Overflow */
-extern "C" void isr5(void); /* Bound Range */
-extern "C" void isr6(void); /* Invalid Opcode */
-extern "C" void isr7(void); /* Device Not Available */
+/* =============================================================================
+ * External interrupt handlers (defined in interrupts.asm)
+ * =============================================================================
+ * These are the actual ISR stubs that save state and call our C handlers.
+ * Must use extern "C" to prevent C++ name mangling.
+ *
+ * All vectors 0-31 now have handlers. Reserved vectors (9, 15, 20-31)
+ * use stub handlers that trigger a panic with diagnostic info.
+ * =============================================================================
+ */
 
-/* Exception handlers (with error code) */
-extern "C" void isr8(void);  /* Double Fault */
-extern "C" void isr10(void); /* Invalid TSS */
-extern "C" void isr11(void); /* Segment Not Present */
-extern "C" void isr12(void); /* Stack Fault */
-extern "C" void isr13(void); /* General Protection Fault */
-extern "C" void isr14(void); /* Page Fault */
+/* Exception handlers (no error code) - Vectors 0-7 */
+extern "C" void isr0(void);  /* Divide Error (#DE) */
+extern "C" void isr1(void);  /* Debug (#DB) */
+extern "C" void isr2(void);  /* Non-Maskable Interrupt (NMI) */
+extern "C" void isr3(void);  /* Breakpoint (#BP) */
+extern "C" void isr4(void);  /* Overflow (#OF) */
+extern "C" void isr5(void);  /* Bound Range Exceeded (#BR) */
+extern "C" void isr6(void);  /* Invalid Opcode (#UD) */
+extern "C" void isr7(void);  /* Device Not Available (#NM) */
 
-/* Other exceptions */
-extern "C" void isr16(void); /* x87 FPU Error */
-extern "C" void isr17(void); /* Alignment Check */
-extern "C" void isr18(void); /* Machine Check */
-extern "C" void isr19(void); /* SIMD FPU Exception */
+/* Exception handlers (with error code) - Vectors 8-14 */
+extern "C" void isr8(void);   /* Double Fault (#DF) */
+extern "C" void isr9(void);   /* Reserved (Intel/AMD) - Stub handler */
+extern "C" void isr10(void);  /* Invalid TSS (#TS) */
+extern "C" void isr11(void);  /* Segment Not Present (#NP) */
+extern "C" void isr12(void);  /* Stack Fault (#SS) */
+extern "C" void isr13(void);  /* General Protection Fault (#GP) */
+extern "C" void isr14(void);  /* Page Fault (#PF) */
+
+/* Reserved and other exceptions - Vectors 15-31 */
+extern "C" void isr15(void);  /* Reserved (Intel/AMD) - Stub handler */
+extern "C" void isr16(void);  /* x87 FPU Error (#MF) */
+extern "C" void isr17(void);  /* Alignment Check (#AC) */
+extern "C" void isr18(void);  /* Machine Check (#MC) */
+extern "C" void isr19(void);  /* SIMD FPU Exception (#XM) */
+
+/* Reserved vectors 20-31 - Stub handlers for future CPU extensions */
+extern "C" void isr20(void);  /* Reserved (future CPU extension) */
+extern "C" void isr21(void);  /* Reserved (future CPU extension) */
+extern "C" void isr22(void);  /* Reserved (future CPU extension) */
+extern "C" void isr23(void);  /* Reserved (future CPU extension) */
+extern "C" void isr24(void);  /* Reserved (future CPU extension) */
+extern "C" void isr25(void);  /* Reserved (future CPU extension) */
+extern "C" void isr26(void);  /* Reserved (future CPU extension) */
+extern "C" void isr27(void);  /* Reserved (future CPU extension) */
+extern "C" void isr28(void);  /* Reserved (future CPU extension) */
+extern "C" void isr29(void);  /* Reserved (future CPU extension) */
+extern "C" void isr30(void);  /* Reserved (future CPU extension) */
+extern "C" void isr31(void);  /* Reserved (future CPU extension) */
 
 /* Hardware IRQ handlers - Match interrupts.asm names */
 extern "C" void irq0_stub(void);  /* PIT */
@@ -90,18 +117,51 @@ extern "C" void irq15_stub(void); /* Secondary ATA */
 /* =============================================================================
  * Exception Messages
  * =============================================================================
+ * Messages for all exception vectors 0-31.
+ * Reserved vectors indicate potential hardware bugs or future extensions.
+ * =============================================================================
  */
 static const char* exception_messages[] = {
-    "Divide Error (#DE)",     "Debug (#DB)",
-    "Non-Maskable Interrupt", "Breakpoint (#BP)",
-    "Overflow (#OF)",         "Bound Range Exceeded (#BR)",
-    "Invalid Opcode (#UD)",   "Device Not Available (#NM)",
-    "Double Fault (#DF)",     "Coprocessor Segment Overrun",
-    "Invalid TSS (#TS)",      "Segment Not Present (#NP)",
-    "Stack Fault (#SS)",      "General Protection Fault (#GP)",
-    "Page Fault (#PF)",       "Reserved",
-    "x87 FPU Error (#MF)",    "Alignment Check (#AC)",
-    "Machine Check (#MC)",    "SIMD FPU Exception (#XM)"};
+    /* Vectors 0-7: Standard CPU exceptions */
+    "Divide Error (#DE)",              /* 0 */
+    "Debug (#DB)",                     /* 1 */
+    "Non-Maskable Interrupt (NMI)",    /* 2 */
+    "Breakpoint (#BP)",                /* 3 */
+    "Overflow (#OF)",                  /* 4 */
+    "Bound Range Exceeded (#BR)",      /* 5 */
+    "Invalid Opcode (#UD)",            /* 6 */
+    "Device Not Available (#NM)",      /* 7 */
+
+    /* Vectors 8-14: Exceptions with error code */
+    "Double Fault (#DF)",              /* 8 */
+    "Reserved (Intel/AMD)",            /* 9 - Reserved */
+    "Invalid TSS (#TS)",               /* 10 */
+    "Segment Not Present (#NP)",       /* 11 */
+    "Stack Fault (#SS)",               /* 12 */
+    "General Protection Fault (#GP)",  /* 13 */
+    "Page Fault (#PF)",                /* 14 */
+
+    /* Vectors 15-19: Reserved and other exceptions */
+    "Reserved (Intel/AMD)",            /* 15 - Reserved */
+    "x87 FPU Error (#MF)",             /* 16 */
+    "Alignment Check (#AC)",           /* 17 */
+    "Machine Check (#MC)",             /* 18 */
+    "SIMD FPU Exception (#XM)",        /* 19 */
+
+    /* Vectors 20-31: Reserved for future CPU extensions */
+    "Reserved (future CPU extension)", /* 20 */
+    "Reserved (future CPU extension)", /* 21 */
+    "Reserved (future CPU extension)", /* 22 */
+    "Reserved (future CPU extension)", /* 23 */
+    "Reserved (future CPU extension)", /* 24 */
+    "Reserved (future CPU extension)", /* 25 */
+    "Reserved (future CPU extension)", /* 26 */
+    "Reserved (future CPU extension)", /* 27 */
+    "Reserved (future CPU extension)", /* 28 */
+    "Reserved (future CPU extension)", /* 29 */
+    "Reserved (future CPU extension)", /* 30 */
+    "Reserved (future CPU extension)", /* 31 */
+};
 
 /* =============================================================================
  * idt_set_gate - Register an interrupt handler
@@ -334,9 +394,12 @@ void idt_init(void) {
     /* ==========================================================
      * Register CPU Exception Handlers (INT 0-31)
      * ==========================================================
+     * All vectors 0-31 now have handlers. Reserved vectors use
+     * stub handlers that will trigger a panic with diagnostic info.
+     * ==========================================================
      */
 
-    /* Exceptions without error code */
+    /* Exceptions without error code (vectors 0-7) */
     idt_set_gate(0, handler_addr((uint64_t) isr0), type_attr(IDT_INTERRUPT_GATE), dpl(0));
     idt_set_gate(1, handler_addr((uint64_t) isr1), type_attr(IDT_INTERRUPT_GATE), dpl(0));
     idt_set_gate(2, handler_addr((uint64_t) isr2), type_attr(IDT_INTERRUPT_GATE), dpl(0));
@@ -346,19 +409,35 @@ void idt_init(void) {
     idt_set_gate(6, handler_addr((uint64_t) isr6), type_attr(IDT_INTERRUPT_GATE), dpl(0));
     idt_set_gate(7, handler_addr((uint64_t) isr7), type_attr(IDT_INTERRUPT_GATE), dpl(0));
 
-    /* Exceptions with error code */
+    /* Exceptions with error code (vectors 8-14) */
     idt_set_gate(8, handler_addr((uint64_t) isr8), type_attr(IDT_INTERRUPT_GATE), dpl(0));
+    idt_set_gate(9, handler_addr((uint64_t) isr9), type_attr(IDT_INTERRUPT_GATE), dpl(0));   /* Reserved */
     idt_set_gate(10, handler_addr((uint64_t) isr10), type_attr(IDT_INTERRUPT_GATE), dpl(0));
     idt_set_gate(11, handler_addr((uint64_t) isr11), type_attr(IDT_INTERRUPT_GATE), dpl(0));
     idt_set_gate(12, handler_addr((uint64_t) isr12), type_attr(IDT_INTERRUPT_GATE), dpl(0));
     idt_set_gate(13, handler_addr((uint64_t) isr13), type_attr(IDT_INTERRUPT_GATE), dpl(0));
     idt_set_gate(14, handler_addr((uint64_t) isr14), type_attr(IDT_INTERRUPT_GATE), dpl(0));
 
-    /* Other exceptions */
+    /* Reserved and other exceptions (vectors 15-19) */
+    idt_set_gate(15, handler_addr((uint64_t) isr15), type_attr(IDT_INTERRUPT_GATE), dpl(0));  /* Reserved */
     idt_set_gate(16, handler_addr((uint64_t) isr16), type_attr(IDT_INTERRUPT_GATE), dpl(0));
     idt_set_gate(17, handler_addr((uint64_t) isr17), type_attr(IDT_INTERRUPT_GATE), dpl(0));
     idt_set_gate(18, handler_addr((uint64_t) isr18), type_attr(IDT_INTERRUPT_GATE), dpl(0));
     idt_set_gate(19, handler_addr((uint64_t) isr19), type_attr(IDT_INTERRUPT_GATE), dpl(0));
+
+    /* Reserved vectors 20-31 (future CPU extensions) */
+    idt_set_gate(20, handler_addr((uint64_t) isr20), type_attr(IDT_INTERRUPT_GATE), dpl(0));
+    idt_set_gate(21, handler_addr((uint64_t) isr21), type_attr(IDT_INTERRUPT_GATE), dpl(0));
+    idt_set_gate(22, handler_addr((uint64_t) isr22), type_attr(IDT_INTERRUPT_GATE), dpl(0));
+    idt_set_gate(23, handler_addr((uint64_t) isr23), type_attr(IDT_INTERRUPT_GATE), dpl(0));
+    idt_set_gate(24, handler_addr((uint64_t) isr24), type_attr(IDT_INTERRUPT_GATE), dpl(0));
+    idt_set_gate(25, handler_addr((uint64_t) isr25), type_attr(IDT_INTERRUPT_GATE), dpl(0));
+    idt_set_gate(26, handler_addr((uint64_t) isr26), type_attr(IDT_INTERRUPT_GATE), dpl(0));
+    idt_set_gate(27, handler_addr((uint64_t) isr27), type_attr(IDT_INTERRUPT_GATE), dpl(0));
+    idt_set_gate(28, handler_addr((uint64_t) isr28), type_attr(IDT_INTERRUPT_GATE), dpl(0));
+    idt_set_gate(29, handler_addr((uint64_t) isr29), type_attr(IDT_INTERRUPT_GATE), dpl(0));
+    idt_set_gate(30, handler_addr((uint64_t) isr30), type_attr(IDT_INTERRUPT_GATE), dpl(0));
+    idt_set_gate(31, handler_addr((uint64_t) isr31), type_attr(IDT_INTERRUPT_GATE), dpl(0));
 
     /* ==========================================================
      * Register Hardware IRQ Handlers (INT 0x20-0x2F)

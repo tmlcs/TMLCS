@@ -181,21 +181,35 @@ extern "C" {
 #define EXCEPTION_UD 6   /**< Invalid Opcode */
 #define EXCEPTION_NM 7   /**< Device Not Available */
 #define EXCEPTION_DF 8   /**< Double Fault */
-#define EXCEPTION_CSF 9  /**< Coprocessor Segment Overrun */
+#define EXCEPTION_CSF 9  /**< Coprocessor Segment Overrun (Reserved) */
 #define EXCEPTION_TS 10  /**< Invalid TSS */
 #define EXCEPTION_NP 11  /**< Segment Not Present */
 #define EXCEPTION_SS 12  /**< Stack-Segment Fault */
 #define EXCEPTION_GP 13  /**< General Protection Fault */
 #define EXCEPTION_PF 14  /**< Page Fault */
+#define EXCEPTION_RES15 15 /**< Reserved (Intel/AMD) */
 #define EXCEPTION_MF 16  /**< x87 FPU Error */
 #define EXCEPTION_AC 17  /**< Alignment Check */
 #define EXCEPTION_MC 18  /**< Machine Check */
 #define EXCEPTION_XM 19  /**< SIMD Floating-Point */
+#define EXCEPTION_RES20 20 /**< Reserved (future CPU extension) */
+#define EXCEPTION_RES21 21 /**< Reserved (future CPU extension) */
+#define EXCEPTION_RES22 22 /**< Reserved (future CPU extension) */
+#define EXCEPTION_RES23 23 /**< Reserved (future CPU extension) */
+#define EXCEPTION_RES24 24 /**< Reserved (future CPU extension) */
+#define EXCEPTION_RES25 25 /**< Reserved (future CPU extension) */
+#define EXCEPTION_RES26 26 /**< Reserved (future CPU extension) */
+#define EXCEPTION_RES27 27 /**< Reserved (future CPU extension) */
+#define EXCEPTION_RES28 28 /**< Reserved (future CPU extension) */
+#define EXCEPTION_RES29 29 /**< Reserved (future CPU extension) */
+#define EXCEPTION_RES30 30 /**< Reserved (future CPU extension) */
+#define EXCEPTION_RES31 31 /**< Reserved (future CPU extension) */
 
 /**
- * @brief Total number of exception handlers
+ * @brief Total number of exception handlers (vectors 0-31)
+ * @note All vectors 0-31 now have handlers. Reserved vectors use stub handlers.
  */
-#define EXCEPTION_MESSAGE_COUNT 20
+#define EXCEPTION_MESSAGE_COUNT 32
 
 /* ==========================================
  * PIC Constants

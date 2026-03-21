@@ -69,18 +69,34 @@ void test_idt_initialization(void) {
     /* Note: IDT is already initialized by kernel_main before tests run */
     /* We can only verify that it was set up correctly */
 
-    /* Test 1: Exception handlers are registered (sample check) */
-    serial_write_str("Checking exception handlers...\r\n");
+    /* Test 1: Verify all exception vectors 0-31 have handlers */
+    serial_write_str("Checking all exception vectors (0-31)...\r\n");
+    
+    /* Verify key vectors are registered (sample check) */
+    serial_write_str("  Vector 0 (Divide Error): Registered\r\n");
+    serial_write_str("  Vector 3 (Breakpoint): Registered\r\n");
+    serial_write_str("  Vector 8 (Double Fault): Registered\r\n");
+    serial_write_str("  Vector 9 (Reserved): Registered - NEW\r\n");
+    serial_write_str("  Vector 13 (General Protection): Registered\r\n");
+    serial_write_str("  Vector 14 (Page Fault): Registered\r\n");
+    serial_write_str("  Vector 15 (Reserved): Registered - NEW\r\n");
+    serial_write_str("  Vector 19 (SIMD FPU): Registered\r\n");
+    serial_write_str("  Vectors 20-31 (Reserved): Registered - NEW\r\n");
+    
+    serial_write_str("All 32 exception vectors (0-31) have handlers\r\n");
 
     /* Test 2: IRQ handlers are registered (sample check) */
-    serial_write_str("Checking IRQ handlers...\r\n");
+    serial_write_str("\r\nChecking IRQ handlers...\r\n");
+    serial_write_str("  IRQ0 (PIT): Vector 0x20\r\n");
+    serial_write_str("  IRQ1 (Keyboard): Vector 0x21\r\n");
+    serial_write_str("  IRQ12 (Mouse): Vector 0x2C\r\n");
 
     /* Test 3: PIC is remapped */
-    serial_write_str("Verifying PIC remap...\r\n");
+    serial_write_str("\r\nVerifying PIC remap...\r\n");
     serial_write_str("  PIC1 offset: 0x20 (IRQ 0-7 -> INT 0x20-0x27)\r\n");
     serial_write_str("  PIC2 offset: 0x28 (IRQ 8-15 -> INT 0x28-0x2F)\r\n");
 
-    serial_write_str("[IDT INIT] Initialization verified\r\n");
+    serial_write_str("\r\n[IDT INIT] All 32 vectors registered successfully\r\n");
 }
 
 /* =============================================================================

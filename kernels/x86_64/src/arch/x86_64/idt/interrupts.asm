@@ -14,8 +14,9 @@ global idt_load
 
 ; Exception handlers (exported to C)
 global isr0, isr1, isr2, isr3, isr4, isr5, isr6, isr7
-global isr8, isr10, isr11, isr12, isr13, isr14
-global isr16, isr17, isr18, isr19
+global isr8, isr9, isr10, isr11, isr12, isr13, isr14
+global isr15, isr16, isr17, isr18, isr19
+global isr20, isr21, isr22, isr23, isr24, isr25, isr26, isr27, isr28, isr29, isr30, isr31
 
 ; IRQ handlers (exported to C) - Match irq.h names
 global irq0_stub, irq1_stub, irq2_stub, irq3_stub, irq4_stub, irq5_stub, irq6_stub, irq7_stub
@@ -154,33 +155,78 @@ isr%1:
 ; =============================================================================
 ; CPU Exception Handlers (INT 0-31)
 ; =============================================================================
+;
+; All vectors 0-31 now have handlers. Reserved vectors use stub handlers
+; that trigger a panic with appropriate error message.
+;
+; Exception vectors:
+;   0-19: CPU exceptions (some reserved)
+;   20-31: Reserved for future CPU extensions
+; =============================================================================
+
+; -----------------------------------------------------------------------------
+; CPU Exceptions (0-19) - Standard handlers
+; -----------------------------------------------------------------------------
 
 ; Exceptions without error code
-ISR_NOERR 0     ; Divide Error
-ISR_NOERR 1     ; Debug
-ISR_NOERR 2     ; NMI
-ISR_NOERR 3     ; Breakpoint
-ISR_NOERR 4     ; Overflow
-ISR_NOERR 5     ; Bound Range
-ISR_NOERR 6     ; Invalid Opcode
-ISR_NOERR 7     ; Device Not Available
+ISR_NOERR 0     ; Divide Error (#DE)
+ISR_NOERR 1     ; Debug (#DB)
+ISR_NOERR 2     ; Non-Maskable Interrupt (NMI)
+ISR_NOERR 3     ; Breakpoint (#BP)
+ISR_NOERR 4     ; Overflow (#OF)
+ISR_NOERR 5     ; Bound Range Exceeded (#BR)
+ISR_NOERR 6     ; Invalid Opcode (#UD)
+ISR_NOERR 7     ; Device Not Available (#NM)
 
 ; Exceptions with error code
-ISR_ERR 8       ; Double Fault
-; ISR 9 doesn't exist (reserved)
-ISR_ERR 10      ; Invalid TSS
-ISR_ERR 11      ; Segment Not Present
-ISR_ERR 12      ; Stack Fault
-ISR_ERR 13      ; General Protection Fault
-ISR_ERR 14      ; Page Fault
+ISR_ERR 8       ; Double Fault (#DF)
 
-; ISR 15 doesn't exist (reserved)
+; -----------------------------------------------------------------------------
+; Reserved Vector Handlers (9, 15, 20-31)
+; -----------------------------------------------------------------------------
+; These vectors are reserved by Intel/AMD. If triggered, they indicate:
+;   - Hardware bug
+;   - Software corruption
+;   - Future CPU extensions
+; All reserved vectors use stub handlers that panic with diagnostic info.
+; -----------------------------------------------------------------------------
+
+ISR_NOERR 9     ; Reserved (Intel/AMD) - Stub handler
+
+ISR_ERR 10      ; Invalid TSS (#TS)
+ISR_ERR 11      ; Segment Not Present (#NP)
+ISR_ERR 12      ; Stack Fault (#SS)
+ISR_ERR 13      ; General Protection Fault (#GP)
+ISR_ERR 14      ; Page Fault (#PF)
+
+ISR_NOERR 15    ; Reserved (Intel/AMD) - Stub handler
 
 ; Other exceptions (no error code)
-ISR_NOERR 16    ; x87 FPU Error
-ISR_ERR 17      ; Alignment Check
-ISR_NOERR 18    ; Machine Check
-ISR_NOERR 19    ; SIMD FPU Exception
+ISR_NOERR 16    ; x87 FPU Error (#MF)
+ISR_ERR 17      ; Alignment Check (#AC)
+ISR_NOERR 18    ; Machine Check (#MC)
+ISR_NOERR 19    ; SIMD FPU Exception (#XM)
+
+; -----------------------------------------------------------------------------
+; Reserved Vectors 20-31 - Stub handlers for future CPU extensions
+; -----------------------------------------------------------------------------
+; Intel SDM Volume 3A, Section 6.9:
+; "Vectors 20 through 31 are reserved for future expansion."
+; These handlers prevent triple fault if a reserved vector is triggered.
+; -----------------------------------------------------------------------------
+
+ISR_NOERR 20    ; Reserved (future CPU extension)
+ISR_NOERR 21    ; Reserved (future CPU extension)
+ISR_NOERR 22    ; Reserved (future CPU extension)
+ISR_NOERR 23    ; Reserved (future CPU extension)
+ISR_NOERR 24    ; Reserved (future CPU extension)
+ISR_NOERR 25    ; Reserved (future CPU extension)
+ISR_NOERR 26    ; Reserved (future CPU extension)
+ISR_NOERR 27    ; Reserved (future CPU extension)
+ISR_NOERR 28    ; Reserved (future CPU extension)
+ISR_NOERR 29    ; Reserved (future CPU extension)
+ISR_NOERR 30    ; Reserved (future CPU extension)
+ISR_NOERR 31    ; Reserved (future CPU extension)
 
 ; =============================================================================
 ; IRQ Macro - Hardware Interrupt Request stub

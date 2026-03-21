@@ -16,10 +16,82 @@ extern "C" {
  * exceptions. Each entry is a gate descriptor that points to an
  * interrupt handler function.
  *
- * Interrupts implemented:
- *   - CPU Exceptions (INT 0-31): Divide error, debug, NMI, breakpoint, etc.
- *   - Hardware IRQs (INT 32-47): PIC remapped to 0x20-0x2F
- *   - Software interrupts (INT 48+): Available for syscalls
+ * =============================================================================
+ * INTERRUPT VECTOR TABLE (0-31)
+ * =============================================================================
+ *
+ * Vectors 0-7: CPU Exceptions (no error code)
+ * ┌─────────┬──────────────────────────────────┬─────────────────────────────┐
+ * │ Vector  │ Name                             │ Description                 │
+ * ├─────────┼──────────────────────────────────┼─────────────────────────────┤
+ * │   0     │ Divide Error (#DE)               │ DIV/IDIV instruction error  │
+ * │   1     │ Debug (#DB)                      │ Debug exception             │
+ * │   2     │ Non-Maskable Interrupt (NMI)     │ Hardware NMI                │
+ * │   3     │ Breakpoint (#BP)                 │ INT 3 instruction           │
+ * │   4     │ Overflow (#OF)                   │ INTO instruction            │
+ * │   5     │ Bound Range (#BR)                │ BOUND instruction           │
+ * │   6     │ Invalid Opcode (#UD)             │ Undefined instruction       │
+ * │   7     │ Device Not Available (#NM)       │ No x87 FPU available        │
+ * └─────────┴──────────────────────────────────┴─────────────────────────────┘
+ *
+ * Vectors 8-14: CPU Exceptions (with error code)
+ * ┌─────────┬──────────────────────────────────┬─────────────────────────────┐
+ * │ Vector  │ Name                             │ Description                 │
+ * ├─────────┼──────────────────────────────────┼─────────────────────────────┤
+ * │   8     │ Double Fault (#DF)               │ Unhandled exception         │
+ * │   9     │ Reserved (Intel/AMD)             │ Stub handler                │
+ * │  10     │ Invalid TSS (#TS)                │ Invalid task state segment  │
+ * │  11     │ Segment Not Present (#NP)        │ Segment not present         │
+ * │  12     │ Stack Fault (#SS)                │ Stack segment fault         │
+ * │  13     │ General Protection (#GP)         │ Protection violation        │
+ * │  14     │ Page Fault (#PF)                 │ Page not present/permission │
+ * └─────────┴──────────────────────────────────┴─────────────────────────────┘
+ *
+ * Vectors 15-19: Reserved and Other Exceptions
+ * ┌─────────┬──────────────────────────────────┬─────────────────────────────┐
+ * │ Vector  │ Name                             │ Description                 │
+ * ├─────────┼──────────────────────────────────┼─────────────────────────────┤
+ * │  15     │ Reserved (Intel/AMD)             │ Stub handler                │
+ * │  16     │ x87 FPU Error (#MF)              │ Floating-point error        │
+ * │  17     │ Alignment Check (#AC)            │ Misaligned access           │
+ * │  18     │ Machine Check (#MC)              │ Hardware error              │
+ * │  19     │ SIMD FPU (#XM)                   │ SSE/AVX floating-point      │
+ * └─────────┴──────────────────────────────────┴─────────────────────────────┘
+ *
+ * Vectors 20-31: Reserved for Future CPU Extensions
+ * ┌─────────┬──────────────────────────────────┬─────────────────────────────┐
+ * │ Vector  │ Name                             │ Description                 │
+ * ├─────────┼──────────────────────────────────┼─────────────────────────────┤
+ * │  20-31  │ Reserved (future extension)      │ Stub handlers for each      │
+ * └─────────┴──────────────────────────────────┴─────────────────────────────┘
+ *
+ * Reference: Intel SDM Volume 3A, Section 6.9
+ * "Vectors 20 through 31 are reserved for future expansion."
+ *
+ * =============================================================================
+ * HARDWARE IRQs (32-47, PIC remapped to 0x20-0x2F)
+ * =============================================================================
+ *
+ * ┌─────────┬──────────┬──────────────────────────────────────────────────────┐
+ * │ Vector  │ IRQ      │ Device                                               │
+ * ├─────────┼──────────┼──────────────────────────────────────────────────────┤
+ * │  0x20   │ IRQ0     │ Programmable Interval Timer (PIT)                    │
+ * │  0x21   │ IRQ1     │ Keyboard                                             │
+ * │  0x22   │ IRQ2     │ Cascade (Slave PIC)                                  │
+ * │  0x23   │ IRQ3     │ Serial Port 2 (COM2)                                 │
+ * │  0x24   │ IRQ4     │ Serial Port 1 (COM1)                                 │
+ * │  0x25   │ IRQ5     │ Parallel Port 2 / Sound Card                         │
+ * │  0x26   │ IRQ6     │ Floppy Disk Controller                               │
+ * │  0x27   │ IRQ7     │ Parallel Port 1 / Sound Card                         │
+ * │  0x28   │ IRQ8     │ Real-Time Clock (RTC)                                │
+ * │  0x29   │ IRQ9     │ ACPI / Available                                     │
+ * │  0x2A   │ IRQ10    │ Available / USB                                      │
+ * │  0x2B   │ IRQ11    │ Available / USB                                      │
+ * │  0x2C   │ IRQ12    │ PS/2 Mouse                                           │
+ * │  0x2D   │ IRQ13    │ x87 FPU Coprocessor                                  │
+ * │  0x2E   │ IRQ14    │ Primary ATA/IDE                                      │
+ * │  0x2F   │ IRQ15    │ Secondary ATA/IDE                                    │
+ * └─────────┴──────────┴──────────────────────────────────────────────────────┘
  *
  * All IDT/PIC constants are now defined in constants.h:
  *   - IDT_ENTRIES, IDT_VECTOR_*, IDT_OFFSET_*

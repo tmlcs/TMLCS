@@ -13,6 +13,7 @@
 #include "../../tests/test_bss.h"
 #include "../../tests/test_color.h"
 #include "../../tests/test_debug.h"
+#include "../../tests/test_gdt_idt.h"
 #include "../../tests/test_hardware.h"
 #include "../../tests/test_memory.h"
 #include "../../tests/test_print.h"
@@ -216,6 +217,8 @@ extern "C" [[noreturn]] void kernel_main() {
     test_memory_mapping();
     test_color_validation();
     test_debug_macros();
+    test_gdt_initialization();        // Test GDT initialization
+    test_idt_initialization();        // Test IDT initialization (all vectors 0-31)
     test_print_functions();
     test_decimal_boundary_values();  // Buffer overflow tests
     test_query_functions();
@@ -264,6 +267,8 @@ extern "C" [[noreturn]] void kernel_main() {
     serial_write_str("Test: Memory mapping - OK\r\n");
     serial_write_str("Test: Color validation - OK\r\n");
     serial_write_str("Test: Debug macros - OK\r\n");
+    serial_write_str("Test: GDT initialization - OK\r\n");
+    serial_write_str("Test: IDT initialization (vectors 0-31) - OK\r\n");
     serial_write_str("Test: Print functions (64-bit, signed) - OK\r\n");
     serial_write_str("Test: Query functions (cursor, color) - OK\r\n");
     serial_write_str("Test: Serial baud rates - OK\r\n");
