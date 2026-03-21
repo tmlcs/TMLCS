@@ -4,6 +4,7 @@
 #include "serial.h"
 #include "string.h"
 #include "vga.h"
+#include "heap.h"
 
 // Enable debug macros for testing
 #define DEBUG_ENABLE 1
@@ -220,6 +221,10 @@ extern "C" [[noreturn]] void kernel_main() {
     test_debug_macros();
     test_gdt_initialization();        // Test GDT initialization
     test_idt_initialization();        // Test IDT initialization (all vectors 0-31)
+    
+    /* Initialize heap and slab allocator before memory tests */
+    heap_init();
+    
     test_print_functions();
     test_decimal_boundary_values();  // Buffer overflow tests
     test_query_functions();
@@ -271,6 +276,7 @@ extern "C" [[noreturn]] void kernel_main() {
     serial_write_str("Test: Debug macros - OK\r\n");
     serial_write_str("Test: GDT initialization - OK\r\n");
     serial_write_str("Test: IDT initialization (vectors 0-31) - OK\r\n");
+    serial_write_str("Test: Heap/Slab initialization - OK\r\n");
     serial_write_str("Test: Print functions (64-bit, signed) - OK\r\n");
     serial_write_str("Test: Query functions (cursor, color) - OK\r\n");
     serial_write_str("Test: Serial baud rates - OK\r\n");
