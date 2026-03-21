@@ -11,10 +11,10 @@ DATA variable (should be 0x12345678): 0x0x12345678
 === Memory Mapping Test ===
 Page tables: 2GiB mapped (0x00000000-0x7FFFFFFF)
 Testing access to 80MB (0x05000000)...
-CR3 value: 0x0x000000000010C000
-Page table base: 0x0x000000000010C000
+CR3 value: 0x0x000000000016E000
+Page table base: 0x0x000000000016E000
 CR3 validation: OK
-L4[0] -> L3 at: 0x0x000000000010D000
+L4[0] -> L3 at: 0x0x000000000016F000
 L4->L3 mapping: OK
 Write pattern: 0x0xDEADBEEF
 Read back:   0x0xDEADBEEF

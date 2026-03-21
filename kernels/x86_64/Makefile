@@ -39,13 +39,19 @@ CFLAGS := -ffreestanding -fno-exceptions -fno-rtti \
           -I src/core \
           -I src/core/panic \
           -I src/core/debug \
+          -I src/core/stdint \
           -I src/drivers/console \
           -I src/drivers/vga \
           -I src/drivers/serial \
+          -I src/drivers/pit \
+          -I src/drivers/interrupts \
           -I src/lib/string \
           -I src/lib/spinlock \
           -I src/lib/utils \
-          -I src/arch/x86_64/include
+          -I src/arch/x86_64/include \
+          -I src/arch/x86_64/idt \
+          -I src/arch/x86_64/gdt \
+          -I src/memory
 
 # ==========================================
 # Assembly Flags
@@ -59,9 +65,17 @@ ASFLAGS := -f elf64 -g
 KERNEL_SRCS := $(shell find src/kernel -name '*.cpp')
 KERNEL_OBJS := $(patsubst src/kernel/%.cpp,$(BUILD_DIR)/kernel/%.o,$(KERNEL_SRCS))
 
-# Boot assembly
-BOOT_SRCS := $(shell find src/arch/x86_64 -name '*.asm')
+# Boot assembly (only from boot directory)
+BOOT_SRCS := $(shell find src/arch/x86_64/boot -name '*.asm')
 BOOT_OBJS := $(patsubst src/arch/x86_64/%.asm,$(BUILD_DIR)/arch/x86_64/%.o,$(BOOT_SRCS))
+
+# IDT assembly (put in idt/asm subdirectory to avoid conflicts)
+IDT_ASM_SRCS := $(shell find src/arch/x86_64/idt -name '*.asm')
+IDT_ASM_OBJS := $(patsubst src/arch/x86_64/idt/%.asm,$(BUILD_DIR)/arch/x86_64/idt/asm/%.o,$(IDT_ASM_SRCS))
+
+# GDT assembly (put in gdt/asm subdirectory to avoid conflicts)
+GDT_ASM_SRCS := $(shell find src/arch/x86_64/gdt -name '*.asm')
+GDT_ASM_OBJS := $(patsubst src/arch/x86_64/gdt/%.asm,$(BUILD_DIR)/arch/x86_64/gdt/asm/%.o,$(GDT_ASM_SRCS))
 
 # Drivers
 DRIVER_SRCS := $(shell find src/drivers -name '*.cpp')
@@ -75,12 +89,20 @@ LIB_OBJS := $(patsubst src/lib/%.cpp,$(BUILD_DIR)/lib/%.o,$(LIB_SRCS))
 CORE_SRCS := $(shell find src/core -name '*.cpp')
 CORE_OBJS := $(patsubst src/core/%.cpp,$(BUILD_DIR)/core/%.o,$(CORE_SRCS))
 
+# Memory
+MEMORY_SRCS := $(shell find src/memory -name '*.cpp')
+MEMORY_OBJS := $(patsubst src/memory/%.cpp,$(BUILD_DIR)/memory/%.o,$(MEMORY_SRCS))
+
+# Arch-specific C++ (GDT, IDT, etc.)
+ARCH_SRCS := $(shell find src/arch/x86_64 -name '*.cpp')
+ARCH_OBJS := $(patsubst src/arch/x86_64/%.cpp,$(BUILD_DIR)/arch/x86_64/%.o,$(ARCH_SRCS))
+
 # Tests
 TEST_SRCS := $(shell find tests -name '*.cpp')
 TEST_OBJS := $(patsubst tests/%.cpp,$(BUILD_DIR)/tests/%.o,$(TEST_SRCS))
 
 # All object files
-ALL_OBJS := $(KERNEL_OBJS) $(BOOT_OBJS) $(DRIVER_OBJS) $(LIB_OBJS) $(CORE_OBJS) $(TEST_OBJS)
+ALL_OBJS := $(KERNEL_OBJS) $(BOOT_OBJS) $(IDT_ASM_OBJS) $(GDT_ASM_OBJS) $(DRIVER_OBJS) $(LIB_OBJS) $(CORE_OBJS) $(MEMORY_OBJS) $(ARCH_OBJS) $(TEST_OBJS)
 
 # ==========================================
 # Compilation Rules - Generic
@@ -95,8 +117,18 @@ $(BUILD_DIR)/tests/%.o: tests/%.cpp
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Assembly files
+# Assembly files (generic rule)
 $(BUILD_DIR)/%.o: src/%.asm
+	@mkdir -p $(dir $@)
+	$(AS) $(ASFLAGS) $< -o $@
+
+# IDT assembly files (special rule for asm subdirectory)
+$(BUILD_DIR)/arch/x86_64/idt/asm/%.o: src/arch/x86_64/idt/%.asm
+	@mkdir -p $(dir $@)
+	$(AS) $(ASFLAGS) $< -o $@
+
+# GDT assembly files (special rule for asm subdirectory)
+$(BUILD_DIR)/arch/x86_64/gdt/asm/%.o: src/arch/x86_64/gdt/%.asm
 	@mkdir -p $(dir $@)
 	$(AS) $(ASFLAGS) $< -o $@
 

@@ -1,0 +1,407 @@
+[BOOT] Serial initialized successfully
+[BOOT] Baud rate: 115200
+[BOOT] Port: COM1 (0x3F8)
+[BOOT] VGA initialized successfully
+[BOOT] Initializing GDT...
+[BOOT] GDT initialized successfully
+[BOOT] Initializing IDT...
+[BOOT] IDT initialized successfully
+[INFO][INF] log.cpp:316: Logging system initialized
+[INFO][INF] main.cpp:247: GLOBEX_OS kernel starting
+[DEBUG][DBG] main.cpp:248: Debug logging enabled
+[INFO][INF] main.cpp:249: GDT/IDT initialized
+
+=== BSS Initialization Test ===
+BSS variable (should be 0x00000000): 0x0x00000000
+DATA variable (should be 0x12345678): 0x0x12345678
+[BSS TEST] PASSED: BSS initialized to zero
+
+=== Memory Mapping Test ===
+Page tables: 2GiB mapped (0x00000000-0x7FFFFFFF)
+Testing access to 80MB (0x05000000)...
+CR3 value: 0x0x0000000000116000
+Page table base: 0x0x0000000000116000
+CR3 validation: OK
+L4[0] -> L3 at: 0x0x0000000000117000
+L4->L3 mapping: OK
+Write pattern: 0x0xDEADBEEF
+Read back:   0x0xDEADBEEF
+[MEM TEST] PASSED: Memory access at 80MB works
+
+=== Color Validation Test ===
+Testing valid colors (0-15)...
+Testing invalid colors (>15)...
+Color validation: PASSED
+[COLOR TEST] PASSED: Color validation works
+
+=== Debug Macros Test ===
+Testing DEBUG_PRINTLN...
+[DEBUG MACRO] DEBUG_PRINTLN: OK
+[DEBUG] test_debug_value = 0xCAFEBABE
+[DEBUG MACRO] DEBUG_VAR: OK
+[DEBUG MACRO] DEBUG_ASSERT (pass): OK
+[DEBUG] Testing DEBUG_LOG macro
+[DEBUG MACRO] DEBUG_LOG: OK
+[DEBUG MACROS] All tests passed
+
+=== GDT Initialization Test ===
+[PASS] GDT table pointer is valid
+[PASS] Null descriptor: limit_low = 0
+[PASS] Null descriptor: base_low = 0
+[PASS] Null descriptor: access = 0
+[PASS] Kernel code: access byte correct
+[PASS] Kernel code: 64-bit mode flag set
+[PASS] Kernel data: access byte correct
+[PASS] GDT pointer is valid
+[PASS] GDT limit is correct
+[PASS] GDT base address is set
+[PASS] TSS pointer is valid
+[GDT INIT] All tests passed
+
+=== IDT Initialization Test ===
+Checking exception handlers...
+Checking IRQ handlers...
+Verifying PIC remap...
+  PIC1 offset: 0x20 (IRQ 0-7 -> INT 0x20-0x27)
+  PIC2 offset: 0x28 (IRQ 8-15 -> INT 0x28-0x2F)
+[IDT INIT] Initialization verified
+
+=== Interrupt Control Test ===
+Initial interrupt state: DISABLED
+[PASS] interrupts_disable() works
+After disable: DISABLED
+[PASS] interrupts_enable() works
+After enable: ENABLED
+Final state: DISABLED (safe for kernel)
+[INTERRUPT CONTROL] All tests passed
+
+=== Print Functions Test ===
+print_hex64(0x123456789ABCDEF0): 0x123456789ABCDEF0
+print_dec_signed(12345): 12345
+print_dec_signed(-9876): -9876
+print_dec64_signed(-123456789012345): -123456789012345
+[PRINT FUNCTIONS] All tests passed
+
+=== Decimal Boundary Test ===
+serial_write_dec(UINT32_MAX): 4294967295
+serial_write_dec64(UINT64_MAX): 18446744073709551615
+serial_write_dec(0): 0
+serial_write_dec(5): 5
+serial_write_dec(1000000000): 1000000000
+serial_write_dec64(10000000000000000000): 10000000000000000000
+serial_write_dec_signed(INT32_MIN): -2147483648
+serial_write_dec_signed(INT32_MAX): 2147483647
+[DECIMAL BOUNDARY] All tests passed
+
+=== Query Functions Test ===
+Current cursor: col=0, row=11
+print_get_cursor_pos: OK
+Setting cursor to (40, 12)...
+Cursor set successfully: col=40, row=12
+print_set_cursor: OK
+print_set_cursor clamp col: OK
+print_set_cursor clamp row: OK
+print_set_cursor max boundary: OK
+print_set_cursor zero: OK
+Current color: fg=10, bg=0
+print_get_color: OK
+print_is_initialized: OK (VGA ready)
+[QUERY FUNCTIONS] All tests passed
+
+=== Serial Baud Rate Test ===
+Baud 115200: OK
+Baud 9600: OK
+Baud 110: OK
+Baud 57600: OK
+Baud 0 (invalid): correctly rejected
+Baud 50 (invalid): correctly rejected
+Baud 230400 (invalid): correctly rejected
+[SERIAL BAUD RATE] All tests passed
+
+=== Serial Null Pointer Test ===
+Serial initial state: OK (not failed)
+Testing serial_write_str(nullptr)...
+serial_failed NOT set for null pointer passed
+Error code: SERIAL_ERROR_NULL_PTR (correct)
+Testing serial still works after nullptr...
+Serial still functional: OK
+[SERIAL NULL POINTER] All tests passed
+
+=== String Functions Test ===
+memcpy non-overlapping: OK
+memmove overlapping: OK
+strcpy basic: OK
+strcpy empty string: OK
+strlen normal: OK (len=5)
+strlen empty: OK (len=0)
+strlen nullptr: OK (safely returns 0)
+[STRING FUNCTIONS] All tests passed
+
+=== String NULL Pointer Safety Test ===
+memcpy NULL handling: OK - returns first parameter
+memmove NULL handling: OK - returns first parameter
+strcpy NULL handling: OK - returns first parameter
+memset NULL handling: OK - returns input pointer
+memcmp NULL handling: OK - returns 0 (equal)
+[STRING NULL SAFETY] All tests passed
+
+=== String Boundary Tests ===
+memcpy exact size: OK
+memcpy zero bytes: OK
+strlcpy exact fit: OK
+strlcpy truncation at boundary: OK
+strlcpy size=1: OK
+strlcpy size=0: OK
+memset size=0: OK
+memset exact size: OK
+memcmp zero length: OK (returns 0)
+memcmp exact match: OK
+memcmp last byte diff: OK
+strcpy exact fit: OK
+[STRING BOUNDARIES] All tests passed
+
+=== Buffer Overflow Prevention Tests ===
+strlcpy truncation detection: OK
+strlcpy null termination: OK
+memset no overflow: OK
+memcpy exact boundary: OK
+memmove overlap safe: OK
+[BUFFER OVERFLOW PREVENTION] All tests passed
+
+=== strlcpy Safe Copy Test ===
+strlcpy complete copy: OK
+strlcpy truncation: OK (len=13, truncated to 5 chars)
+strlcpy exact fit: OK
+strlcpy empty string: OK
+strlcpy destsize=1: OK (null only)
+strlcpy destsize=0: OK (no write)
+strlcpy NULL handling: OK
+[STRLCPY SAFE COPY] All tests passed
+
+=== strlcpy vs strcpy Overflow Demo ===
+strlcpy result: This is a
+  Source length: 27, Buffer size: 10
+strlcpy prevented overflow: OK
+[STRLCPY VS STRCPY] Demo complete
+
+=== Memcpy Overlap Detection Test ===
+memcpy non-overlap: OK
+memmove overlap (dest in src): OK - handled
+memmove overlap (src in dest): Result = 'HHello'
+memcpy zero-length: OK
+memcpy adjacent: OK
+[MEMCPY OVERLAP] All tests passed
+
+=== Serial Signed Numbers Test ===
+serial_write_dec_signed(42): 42
+serial_write_dec_signed(-1234): -1234
+serial_write_dec_signed(0): 0
+serial_write_dec64_signed(-9876543210): -9876543210
+serial_write_dec64_signed(INT64_MIN): -9223372036854775808
+[SERIAL SIGNED] All tests passed
+
+============================================
+GLOBEX_OS Spinlock Test Suite
+============================================
+
+=== Spinlock Initialization Test ===
+[PASS] SPINLOCK_INIT: locked == 0
+[PASS] SPINLOCK_INIT: interrupts_enabled == false
+[PASS] spinlock_init(): locked == 0
+[PASS] spinlock_init(): interrupts_enabled == false
+[PASS] spinlock_init() re-init: locked == 0
+[SPINLOCK INIT] All initialization tests passed
+
+=== Spinlock Acquire/Release Test ===
+[PASS] Initial state: unlocked
+[PASS] After acquire: locked == 1
+[PASS] After release: locked == 0
+[PASS] Cycle %d: acquire sets locked == 1
+[PASS] Cycle %d: release sets locked == 0
+[PASS] Cycle %d: acquire sets locked == 1
+[PASS] Cycle %d: release sets locked == 0
+[PASS] Cycle %d: acquire sets locked == 1
+[PASS] Cycle %d: release sets locked == 0
+[PASS] Cycle %d: acquire sets locked == 1
+[PASS] Cycle %d: release sets locked == 0
+[PASS] Cycle %d: acquire sets locked == 1
+[PASS] Cycle %d: release sets locked == 0
+[SPINLOCK ACQUIRE/RELEASE] All acquire/release tests passed
+
+=== Spinlock Try Acquire Test ===
+[PASS] try_acquire(unlocked) returns true
+[PASS] try_acquire(unlocked) sets locked == 1
+[PASS] try_acquire(locked) returns false
+[PASS] try_acquire(locked) preserves locked == 1
+[PASS] After release: locked == 0
+[PASS] try_acquire after release returns true
+[PASS] try_acquire after release sets locked == 1
+[SPINLOCK TRY_ACQUIRE] All try_acquire tests passed
+
+=== Spinlock NULL Pointer Safety Test ===
+[PASS] spinlock_init(nullptr) handled safely
+[PASS] spinlock_acquire(nullptr) handled safely
+[PASS] spinlock_release(nullptr) handled safely
+[PASS] spinlock_try_acquire(nullptr) returns false
+[PASS] Valid lock works after NULL calls
+[PASS] Valid release works after NULL calls
+[SPINLOCK NULL SAFETY] All NULL pointer tests passed
+
+=== Spinlock Interrupt State Test ===
+[PASS] Initial state: interrupts_enabled == false
+[PASS] After release: interrupts_enabled reset to false
+[PASS] Lock functional after interrupt test
+[PASS] Release functional after interrupt test
+[SPINLOCK INTERRUPT STATE] All interrupt state tests passed
+
+============================================
+[SPINLOCK TEST] ALL TESTS PASSED
+============================================
+
+============================================
+GLOBEX_OS Spinlock STRESS Test Suite
+============================================
+Note: Single-CPU mode (QEMU default)
+SMP testing requires multi-processor setup
+============================================
+
+=== Rapid Acquire/Release Stress Test ===
+Iterations: 
+[PASS] Completed all iterations
+[PASS] Final state: unlocked
+[PASS] Final state: interrupts_enabled == false
+[RAPID ACQUIRE/RELEASE] PASSED -  iterations completed
+
+=== Data Integrity Stress Test ===
+Iterations: 
+[PASS] Counter matches expected value
+Final counter:  (expected: )
+[DATA INTEGRITY] PASSED - No lost updates
+
+=== Try-Acquire Under Load Test ===
+Iterations: 
+[PASS] try_acquire succeeded correct number of times
+[PASS] try_acquire failed correct number of times
+[TRY-ACQUIRE UNDER LOAD] PASSED
+Success count: , Fail count: 
+
+=== Multiple Locks Stress Test ===
+Locks: 4, Iterations: 
+[PASS] Counter 1 correct
+[PASS] Counter 2 correct
+[PASS] Counter 3 correct
+[PASS] Counter 4 correct
+[PASS] Lock 1 unlocked
+[PASS] Lock 2 unlocked
+[PASS] Lock 3 unlocked
+[PASS] Lock 4 unlocked
+[MULTIPLE LOCKS] PASSED - 4 independent locks verified
+
+=== Critical Section Work Test ===
+Iterations: 
+[PASS] Sum correct
+[PASS] Count correct
+[PASS] Min correct
+[PASS] Max correct
+[CRITICAL SECTION WORK] PASSED
+Sum: , Count: , Min: , Max: 
+
+=== Extended Stress Test ===
+Iterations:  (long-running)
+Checkpoint: /
+Checkpoint: /
+Checkpoint: /
+Checkpoint: /
+Checkpoint: /
+Checkpoint: /
+[PASS] Counter matches iterations
+[PASS] Final state: unlocked
+[PASS] Final state: interrupts_enabled == false
+[EXTENDED STRESS] PASSED -  iterations completed successfully
+
+=== Lock Pattern Variations Test ===
+[PASS] Pattern 1: back-to-back OK
+[PASS] Pattern 2: alternating OK
+[PASS] Final state: unlocked
+[PASS] Final counter correct
+[PATTERN VARIATIONS] PASSED
+
+============================================
+[SPINLOCK STRESS] ALL TESTS PASSED
+============================================
+
+=== SMP Spinlock Stress Test Suite ===
+SMP Detected: 8 CPUs available
+Current CPU: 0
+
+Test Configuration:
+  Iterations: 1000
+
+[SMP] Multi-processor environment
+[SMP] 8 CPUs detected
+[SMP] Testing via time-slicing
+
+--- Running SMP Tests ---
+[DATA INTEGRITY] Verifying counter...
+Expected: 1000
+Actual:   1000
+[PASS] DATA INTEGRITY
+No lost updates detected!
+[FAIRNESS] Lock acquisition test...
+Acquisitions: 1000 (expected: 1000)
+[PASS] FAIRNESS
+[NESTED LOCKS] Verifying no deadlock...
+Expected: 100
+Actual: 100
+[PASS] NESTED LOCKS (No Deadlock)
+[MEMORY ORDERING] Testing barriers...
+Data: 0x0xDEADBEEF, Flag: 1
+[PASS] MEMORY ORDERING
+[CONTENTION] Testing under simulated load...
+Operations completed: 2000
+[PASS] CONTENTION
+
+============================================
+[SMP TESTING] Test suite complete
+============================================
+
+[SMP tests completed on CPU 0]
+[NOTE] Multi-CPU: Time-slicing concurrency tested
+
+=== Hardware Information Test ===
+CPU Max Leaf: 0x0000000D
+Vendor: AuthenticAMD
+Family: 15, Model: 11, Stepping: 1
+Long Mode (64-bit): Supported
+[HARDWARE INFO] CPU detection complete
+
+=== GLOBEX_OS Kernel Started ===
+GLOBEX_OS v0.015_x64
+Page tables: 2GiB mapped
+GDT: Initialized (6 entries)
+IDT: Initialized (256 entries)
+Test: BSS initialization - OK
+Test: Memory mapping - OK
+Test: Color validation - OK
+Test: Debug macros - OK
+Test: GDT initialization - OK
+Test: IDT initialization - OK
+Test: Interrupt control - OK
+Test: Print functions (64-bit, signed) - OK
+Test: Query functions (cursor, color) - OK
+Test: Serial baud rates - OK
+Test: String functions - OK
+Test: String NULL safety - OK
+Test: String boundaries - OK
+Test: Buffer overflow prevention - OK
+Test: strlcpy safe copy - OK
+Test: Serial signed numbers - OK
+Test: Spinlock (init, acquire/release, SMP) - OK
+Test: Spinlock stress (high contention) - OK
+Test: Spinlock SMP (multi-CPU concurrency) - OK
+Test: Hardware info (CPUID) - OK
+[INFO][INF] main.cpp:346: All tests passed successfully
+[INFO][INF] main.cpp:347: System ready - entering idle loop
+[DEBUG][DBG] main.cpp:348: Log level: 0 (DEBUG=0, INFO=1, WARN=2, ERROR=3, PANIC=4)
+[WARN][WRN] main.cpp:357: System halting - this is a WARN level message
+System halted - press reset to restart
