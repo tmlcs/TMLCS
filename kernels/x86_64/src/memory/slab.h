@@ -163,6 +163,13 @@ void slab_shutdown(void);
  */
 
 void* kmem_alloc(size_t size);
+
+/**
+ * @brief Free memory allocated by kmem_alloc() or slab_alloc_*()
+ * @param ptr Pointer to memory to free
+ * @param size Size parameter kept for backward compatibility (ignored)
+ * @deprecated Use kmem_free_auto() instead which doesn't require size
+ */
 void kmem_free(void* ptr, size_t size);
 
 /* =============================================================================

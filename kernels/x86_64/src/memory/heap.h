@@ -167,6 +167,7 @@ void* krealloc(void* ptr, size_t new_size);
  * @note Safe to call with NULL (no operation)
  * @note Do NOT free the same pointer twice
  * @note Do NOT free stack or static memory
+ * @deprecated Use kmem_free_auto() instead which works for all allocation types
  *
  * @example
  *   void* ptr = kmalloc(1024);
@@ -174,7 +175,47 @@ void* krealloc(void* ptr, size_t new_size);
  *   kfree(ptr);  // Memory returned to heap
  *   ptr = NULL;  // Good practice
  */
+[[deprecated("Use kmem_free_auto() instead which handles all allocation types")]]
 void kfree(void* ptr);
+
+/**
+ * @brief Free allocated memory (unified API)
+ * @param ptr Pointer to memory to free (or NULL)
+ *
+ * Unified free function that automatically detects the allocation type:
+ *   - Slab allocations (<= 2048 bytes): Freed to slab cache
+ *   - Bitmap allocations (> 2048 bytes): Freed to bitmap allocator
+ *
+ * This is the recommended free() function for all kernel memory.
+ *
+ * Behavior:
+ *   - If ptr is NULL: No operation (safe)
+ *   - If ptr is invalid: May crash or be ignored
+ *   - If ptr already freed: Undefined behavior (double-free)
+ *
+ * @note Safe to call with NULL (no operation)
+ * @note Do NOT free the same pointer twice
+ * @note Do NOT free stack or static memory
+ *
+ * @example
+ *   // Small allocation (slab)
+ *   void* small = kmem_alloc(64);
+ *   kmem_free_auto(small);  // Automatically uses slab free
+ *
+ *   // Large allocation (bitmap)
+ *   void* large = kmalloc(4096);
+ *   kmem_free_auto(large);  // Automatically uses bitmap free
+ */
+void kmem_free_auto(void* ptr);
+
+/**
+ * @brief Check if a pointer belongs to slab memory pool
+ * @param ptr Pointer to check
+ * @return 1 if slab allocation, 0 if bitmap or invalid
+ * @note Used internally by kmem_free_auto()
+ * @note Also available for testing/debugging
+ */
+int is_slab_address(void* ptr);
 
 /* =============================================================================
  * Query Functions

@@ -63,12 +63,12 @@ void test_kmalloc_basic(void) {
     test_pass("Write to allocated memory succeeded");
     
     /* Test 4: Free the memory */
-    kfree(ptr);
-    test_pass("kfree() completed without crash");
+    kmem_free_auto(ptr);
+    test_pass("kmem_free_auto() completed without crash");
     
     /* Test 5: Freeing NULL is safe */
-    kfree(NULL);
-    test_pass("kfree(NULL) is safe (no crash)");
+    kmem_free_auto(NULL);
+    test_pass("kmem_free_auto(NULL) is safe (no crash)");
 }
 
 /* =============================================================================
@@ -122,7 +122,7 @@ void test_kmalloc_multiple(void) {
     /* Free all allocations */
     for (int i = 0; i < NUM_ALLOCS; i++) {
         if (ptrs[i] != NULL) {
-            kfree(ptrs[i]);
+            kmem_free_auto(ptrs[i]);
         }
     }
     test_pass("All blocks freed");
@@ -163,7 +163,7 @@ void test_kcalloc_zeroed(void) {
         test_fail("Memory was NOT zeroed");
     }
     
-    kfree(arr);
+    kmem_free_auto(arr);
     test_pass("Memory freed");
 }
 
@@ -192,7 +192,7 @@ void test_krealloc(void) {
     char* new_ptr = (char*)krealloc(ptr, 200);
     if (new_ptr == NULL) {
         test_fail("krealloc to grow failed");
-        kfree(ptr);
+        kmem_free_auto(ptr);
         return;
     }
     
@@ -217,7 +217,7 @@ void test_krealloc(void) {
     new_ptr = (char*)krealloc(ptr, 50);
     if (new_ptr == NULL) {
         test_fail("krealloc to shrink failed");
-        kfree(ptr);
+        kmem_free_auto(ptr);
         return;
     }
     
@@ -236,14 +236,14 @@ void test_krealloc(void) {
         test_fail("Data NOT preserved after shrink");
     }
     
-    kfree(new_ptr);
+    kmem_free_auto(new_ptr);
     test_pass("Reallocated memory freed");
     
     /* Test 4: krealloc with NULL */
     ptr = (char*)krealloc(NULL, 100);
     if (ptr != NULL) {
         test_pass("krealloc(NULL, size) works like kmalloc");
-        kfree(ptr);
+        kmem_free_auto(ptr);
     } else {
         test_fail("krealloc(NULL, size) failed");
     }
@@ -255,7 +255,7 @@ void test_krealloc(void) {
         test_pass("krealloc(ptr, 0) returns NULL and frees");
     } else {
         test_fail("krealloc(ptr, 0) should return NULL");
-        kfree(new_ptr);
+        kmem_free_auto(new_ptr);
     }
 }
 
@@ -273,12 +273,12 @@ void test_kmalloc_null_handling(void) {
         test_pass("kmalloc(0) returns NULL");
     } else {
         test_fail("kmalloc(0) should return NULL");
-        kfree(ptr);
+        kmem_free_auto(ptr);
     }
     
-    /* Test 2: kfree(NULL) is safe */
-    kfree(NULL);
-    test_pass("kfree(NULL) is safe");
+    /* Test 2: kmem_free_auto(NULL) is safe */
+    kmem_free_auto(NULL);
+    test_pass("kmem_free_auto(NULL) is safe");
     
     /* Test 3: kcalloc with 0 elements */
     ptr = kcalloc(0, 100);
@@ -286,7 +286,7 @@ void test_kmalloc_null_handling(void) {
         test_pass("kcalloc(0, size) returns NULL");
     } else {
         test_fail("kcalloc(0, size) should return NULL");
-        kfree(ptr);
+        kmem_free_auto(ptr);
     }
     
     /* Test 4: kcalloc with 0 size */
@@ -295,7 +295,7 @@ void test_kmalloc_null_handling(void) {
         test_pass("kcalloc(nmemb, 0) returns NULL");
     } else {
         test_fail("kcalloc(nmemb, 0) should return NULL");
-        kfree(ptr);
+        kmem_free_auto(ptr);
     }
 }
 
@@ -311,7 +311,7 @@ void test_kmalloc_boundaries(void) {
     void* ptr = kmalloc(1);
     if (ptr != NULL) {
         test_pass("kmalloc(1) succeeded");
-        kfree(ptr);
+        kmem_free_auto(ptr);
     } else {
         test_fail("kmalloc(1) failed");
     }
@@ -320,7 +320,7 @@ void test_kmalloc_boundaries(void) {
     ptr = kmalloc(PAGE_SIZE);
     if (ptr != NULL) {
         test_pass("kmalloc(PAGE_SIZE) succeeded");
-        kfree(ptr);
+        kmem_free_auto(ptr);
     } else {
         test_fail("kmalloc(PAGE_SIZE) failed");
     }
@@ -329,7 +329,7 @@ void test_kmalloc_boundaries(void) {
     ptr = kmalloc(PAGE_SIZE + 1);
     if (ptr != NULL) {
         test_pass("kmalloc(PAGE_SIZE+1) succeeded");
-        kfree(ptr);
+        kmem_free_auto(ptr);
     } else {
         test_fail("kmalloc(PAGE_SIZE+1) failed");
     }
@@ -347,7 +347,7 @@ void test_kmalloc_boundaries(void) {
             test_fail("Actual size < requested size");
         }
         
-        kfree(ptr);
+        kmem_free_auto(ptr);
     } else {
         test_fail("kmalloc(4 pages) failed");
     }
@@ -381,7 +381,7 @@ void test_memory_integrity(void) {
         test_fail("Memory corruption detected");
     }
 
-    kfree(ptr);
+    kmem_free_auto(ptr);
 }
 
 /* =============================================================================
@@ -410,7 +410,7 @@ void test_fragmentation(void) {
     /* Free every other block */
     for (int i = 0; i < 20; i += 2) {
         if (ptrs[i] != NULL) {
-            kfree(ptrs[i]);
+            kmem_free_auto(ptrs[i]);
             ptrs[i] = NULL;
         }
     }
@@ -421,7 +421,7 @@ void test_fragmentation(void) {
     void* new_ptr = kmalloc(512);
     if (new_ptr != NULL) {
         test_pass("Allocation in fragmented memory succeeded");
-        kfree(new_ptr);
+        kmem_free_auto(new_ptr);
     } else {
         test_fail("Allocation in fragmented memory failed");
     }
@@ -429,7 +429,7 @@ void test_fragmentation(void) {
     /* Free remaining blocks */
     for (int i = 0; i < 20; i++) {
         if (ptrs[i] != NULL) {
-            kfree(ptrs[i]);
+            kmem_free_auto(ptrs[i]);
         }
     }
     
@@ -448,8 +448,8 @@ void test_large_allocations(void) {
     void* ptr = kmalloc(64 * 1024);
     if (ptr != NULL) {
         test_pass("kmalloc(64KB) succeeded");
-        kfree(ptr);
-        test_pass("kfree(64KB) succeeded");
+        kmem_free_auto(ptr);
+        test_pass("kmem_free_auto(64KB) succeeded");
     } else {
         test_fail("kmalloc(64KB) failed (may be out of memory)");
     }
@@ -458,8 +458,8 @@ void test_large_allocations(void) {
     ptr = kmalloc(256 * 1024);
     if (ptr != NULL) {
         test_pass("kmalloc(256KB) succeeded");
-        kfree(ptr);
-        test_pass("kfree(256KB) succeeded");
+        kmem_free_auto(ptr);
+        test_pass("kmem_free_auto(256KB) succeeded");
     } else {
         test_fail("kmalloc(256KB) failed (may be out of memory)");
     }

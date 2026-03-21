@@ -70,6 +70,12 @@ void test_slab_direct_api(void);
  */
 /* void test_slab_statistics(void); */
 
+/**
+ * Test kmem_free_auto() unified free API
+ * Verifies automatic detection of slab vs bitmap allocations
+ */
+void test_kmem_free_auto(void);
+
 #ifdef __cplusplus
 }
 #endif

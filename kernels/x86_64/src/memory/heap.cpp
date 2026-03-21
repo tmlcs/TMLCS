@@ -144,44 +144,44 @@ void* krealloc(void* ptr, size_t new_size) {
     if (!g_heap_initialized) {
         return NULL;
     }
-    
+
     /* Case 1: ptr is NULL - allocate new */
     if (ptr == NULL) {
         return kmalloc(new_size);
     }
-    
+
     /* Case 2: new_size is 0 - free and return NULL */
     if (new_size == 0) {
-        kfree(ptr);
+        kmem_free_auto(ptr);  /* Use unified API */
         return NULL;
     }
-    
+
     if (new_size > HEAP_MAX_ALLOC) {
         return NULL;
     }
-    
+
     /* Get old size */
     size_t old_size = kmalloc_size(ptr);
-    
+
     /* Case 3: new size fits in old allocation */
     if (new_size <= old_size) {
         return ptr;  /* No change needed */
     }
-    
+
     /* Case 4: Need to grow allocation */
     /* Allocate new memory */
     void* new_ptr = kmalloc(new_size);
-    
+
     if (new_ptr == NULL) {
         return NULL;  /* Out of memory */
     }
-    
+
     /* Copy old data to new allocation */
     memcpy(new_ptr, ptr, old_size);
-    
-    /* Free old allocation */
-    kfree(ptr);
-    
+
+    /* Free old allocation using unified API */
+    kmem_free_auto(ptr);
+
     return new_ptr;
 }
 
@@ -190,8 +190,8 @@ void kfree(void* ptr) {
         return;
     }
 
-    /* Note: For slab allocations (size <= 2048), users should use kmem_free()
-       kfree() is for large allocations only (bitmap-based) */
+    /* Note: For slab allocations (size <= 2048), use kmem_free_auto() */
+    /* kfree() is for large allocations only (bitmap-based) */
 
     /* Validate pointer is in managed range */
     uintptr_t phys = (uintptr_t)ptr;
@@ -223,6 +223,96 @@ void kfree(void* ptr) {
 
     /* Release lock */
     spinlock_release(&g_heap_lock);
+}
+
+/* =============================================================================
+ * Unified Free API - kmem_free_auto()
+ * =============================================================================
+ * Automatically detects slab vs bitmap allocation and frees correctly.
+ * This is the recommended free() function for all kernel memory.
+ * =============================================================================
+ */
+
+/* Reference to slab memory pool (defined in slab.cpp) */
+#define SLAB_MEMORY_SIZE (256 * 1024)
+extern uint8_t g_slab_memory[SLAB_MEMORY_SIZE];
+
+/**
+ * Check if a pointer belongs to the slab memory pool
+ */
+int is_slab_address(void* ptr) {
+    if (ptr == nullptr) {
+        return 0;
+    }
+    
+    uintptr_t addr = (uintptr_t)ptr;
+    uintptr_t pool_start = (uintptr_t)g_slab_memory;
+    uintptr_t pool_end = pool_start + SLAB_MEMORY_SIZE;
+    
+    return (addr >= pool_start && addr < pool_end) ? 1 : 0;
+}
+
+/**
+ * Free memory with automatic size detection
+ * 
+ * This is the recommended free() function for all kernel memory.
+ * It automatically detects whether the pointer was allocated by:
+ *   - Slab allocator (small objects <= 2048 bytes)
+ *   - Bitmap allocator (large objects > 2048 bytes)
+ * 
+ * And frees it using the appropriate method.
+ * 
+ * @note Safe to call with NULL (no operation)
+ * @note Do NOT free the same pointer twice
+ * @note Do NOT free stack or static memory
+ */
+void kmem_free_auto(void* ptr) {
+    /* NULL is safe (no operation) */
+    if (ptr == nullptr) {
+        return;
+    }
+    
+    /* Check if this is a slab allocation */
+    if (is_slab_address(ptr)) {
+        /* Slab allocation - use slab free with size=0 (ignored) */
+        kmem_free(ptr, 0);
+    } else {
+        /* Not slab - must be bitmap allocation, free directly */
+        /* Inline the bitmap free logic to avoid calling deprecated kfree() */
+        if (!g_heap_initialized) {
+            return;
+        }
+
+        /* Validate pointer is in managed range */
+        uintptr_t phys = (uintptr_t)ptr;
+        if (phys < PHYSICAL_MEMORY_START || phys >= PHYSICAL_MEMORY_END) {
+            return;  /* Invalid pointer */
+        }
+
+        /* Convert to page number */
+        size_t start_page = addr_to_page(ptr);
+
+        if (start_page == (size_t)-1) {
+            return;  /* Invalid address */
+        }
+
+        /* Acquire lock */
+        spinlock_acquire(&g_heap_lock);
+
+        /* Calculate number of pages */
+        size_t pages = 0;
+        while (bitmap_is_page_allocated(start_page + pages) == 1) {
+            pages++;
+        }
+
+        /* Free all pages */
+        if (pages > 0) {
+            bitmap_free_contiguous(start_page, pages);
+        }
+
+        /* Release lock */
+        spinlock_release(&g_heap_lock);
+    }
 }
 
 /* =============================================================================

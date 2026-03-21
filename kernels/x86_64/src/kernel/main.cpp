@@ -20,6 +20,7 @@
 #include "../../tests/test_query.h"
 #include "../../tests/test_serial.h"
 #include "../../tests/test_serial_signed.h"
+#include "../../tests/test_slab.h"
 #include "../../tests/test_spinlock.h"
 #include "../../tests/test_string.h"
 #include "../../tests/test_strlcpy.h"
@@ -231,6 +232,7 @@ extern "C" [[noreturn]] void kernel_main() {
     test_memcpy_overlap_detection();    // Overlap detection in DEBUG mode
     test_serial_signed_numbers();
     test_spinlock();  // Spinlock tests (initialization, acquire/release, SMP safety)
+    test_kmem_free_auto();  // Unified memory free API test [FIX-MEM-001]
     test_hardware_info();
 
     // ==========================================
@@ -277,6 +279,7 @@ extern "C" [[noreturn]] void kernel_main() {
     serial_write_str("Test: strlcpy safe copy - OK\r\n");
     serial_write_str("Test: Serial signed numbers - OK\r\n");
     serial_write_str("Test: Spinlock (init, acquire/release, SMP) - OK\r\n");
+    serial_write_str("Test: kmem_free_auto() unified API - OK\r\n");
     serial_write_str("Test: Hardware info (CPUID) - OK\r\n");
     serial_write_str("System halted - press reset to restart\r\n");
 
