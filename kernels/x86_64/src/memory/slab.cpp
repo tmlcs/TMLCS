@@ -239,6 +239,15 @@ static void clear_tracked_frees(void) {
  */
 
 /**
+ * Simple delay to allow serial output to complete
+ */
+static void io_delay(void) {
+    for (volatile int i = 0; i < 1000; i++) {
+        __asm__ volatile("nop");
+    }
+}
+
+/**
  * Initialize a single cache from the memory pool
  * @param idx Cache index (0-6)
  * @param size Object size for this cache
@@ -247,7 +256,14 @@ static void clear_tracked_frees(void) {
 static int init_cache(int idx, size_t size) {
     /* Allocate cache structure using simple pointer into pool */
     slab_cache_t* cache = (slab_cache_t*)(g_slab_memory + g_slab_memory_used);
+    
+    /* Test write to verify memory is accessible */
+    volatile uint8_t* test = (volatile uint8_t*)cache;
+    *test = 0x55;
+    io_delay();
+    
     g_slab_memory_used += sizeof(slab_cache_t);
+    io_delay();
     
     if (g_slab_memory_used > sizeof(g_slab_memory)) {
         serial_write_str("[SLAB] Out of pool memory\r\n");
@@ -263,8 +279,10 @@ static int init_cache(int idx, size_t size) {
     cache->num_slabs = 0;
     cache->num_allocations = 0;
     cache->num_frees = 0;
+    io_delay();
     
     g_caches[idx] = cache;
+    io_delay();
     
     return 1;
 }
@@ -283,13 +301,6 @@ int slab_init(void) {
     g_slab_total_frees = 0;
     g_slab_total_slabs = 0;
     g_slab_memory_used = 0;
-
-#if SLAB_DEBUG
-    serial_write_str("[SLAB] DEBUG mode enabled\r\n");
-    g_slab_corruptions_detected = 0;
-    g_slab_double_frees = 0;
-    clear_tracked_frees();
-#endif
 
     /* Initialize all caches */
     serial_write_str("[SLAB] Initializing 7 caches (32-2048 bytes)...\r\n");
