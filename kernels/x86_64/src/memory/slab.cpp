@@ -8,6 +8,11 @@
 #include "barriers.h"
 
 /* =============================================================================
+ * Low-level I/O Port Access
+ * =============================================================================
+ */
+
+/* =============================================================================
  * SLAB_DEBUG Configuration
  * =============================================================================
  * INVESTIGATION RESULT (2026-03-19):
@@ -284,17 +289,17 @@ static int init_cache(int idx, size_t size) {
     cache->objects_per_slab = (SLAB_SIZE - 64) / size;
 
     /* Use 0 instead of nullptr - nullptr hangs in freestanding! */
-    /* CRITICAL: Serial writes provide timing delay for stability */
+    /* CRITICAL: serial_write_str(".") provides timing delay for stability */
     cache->partial = 0;
-    serial_write_str(".");  /* Timing delay */
+    serial_write_str(".");
     mb();
     
     cache->full = 0;
-    serial_write_str(".");  /* Timing delay */
+    serial_write_str(".");
     mb();
     
     cache->empty = 0;
-    serial_write_str(".");  /* Timing delay */
+    serial_write_str(".");
     mb();
 
     cache->num_slabs = 0;
