@@ -59,9 +59,9 @@ void test_slab_direct_api(void);
 /**
  * Test stress allocation
  * Many allocations and frees
- * DISABLED: Causes serial corruption
+ * ENABLED: 2026-03-21 - Fixed with serial_write_str timing delays
  */
-/* void test_slab_stress(void); */
+void test_slab_stress(void);
 
 /**
  * Test statistics
