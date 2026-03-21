@@ -282,12 +282,21 @@ static int init_cache(int idx, size_t size) {
     /* Initialize cache struct */
     cache->object_size = size;
     cache->objects_per_slab = (SLAB_SIZE - 64) / size;
-    
+
     /* Use 0 instead of nullptr - nullptr hangs in freestanding! */
+    /* CRITICAL: Serial writes provide timing delay for stability */
     cache->partial = 0;
-    cache->full = 0;
-    cache->empty = 0;
+    serial_write_str(".");  /* Timing delay */
+    mb();
     
+    cache->full = 0;
+    serial_write_str(".");  /* Timing delay */
+    mb();
+    
+    cache->empty = 0;
+    serial_write_str(".");  /* Timing delay */
+    mb();
+
     cache->num_slabs = 0;
     cache->num_allocations = 0;
     cache->num_frees = 0;
