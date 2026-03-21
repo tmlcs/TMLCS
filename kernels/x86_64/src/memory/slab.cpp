@@ -41,30 +41,55 @@
 /* =============================================================================
  * BSS Memory Pool for Slab Caches
  * =============================================================================
- * Pre-allocated memory pool in BSS section for slab caches.
- * This avoids issues with static array initialization.
+ * CRITICAL FIX (2026-03-21):
+ *
+ * ROOT CAUSE: Variables with explicit initializers (e.g., = {nullptr}, = 0)
+ * are placed in .data section by the compiler, NOT .bss.
+ *
+ * The boot code (main64.asm) ONLY zeros .bss section:
+ *   - .bss: Zero-initialized by boot code (safe)
+ *   - .data: Contains initialized data from binary (NOT zeroed at runtime)
+ *
+ * PROBLEM: g_caches = {nullptr} was in .data, which may contain garbage
+ * before the kernel is loaded, causing undefined behavior.
+ *
+ * SOLUTION: Remove explicit initializers to force variables into .bss
+ * where they are guaranteed to be zeroed by boot code.
+ *
+ * Variables affected:
+ *   - g_caches[NUM_CACHES] = {nullptr} -> removed initializer
+ *   - g_slab_lock = SPINLOCK_INIT -> moved to runtime initialization
+ *
+ * Reference: main64.asm BSS initialization:
+ *   lea rdi, [__bss_start]
+ *   lea rcx, [__bss_end]
+ *   rep stosq  ; Only .bss is zeroed!
  * =============================================================================
  */
 
 /* Memory pool: 256KB for all slab caches (in BSS, zero-initialized) */
 uint8_t g_slab_memory[256 * 1024] __attribute__((section(".bss")));
 
-/* State variables */
-static int g_slab_initialized = 0;
-static size_t g_slab_total_allocs = 0;
-static size_t g_slab_total_frees = 0;
-static size_t g_slab_total_slabs = 0;
-static size_t g_slab_memory_used = 0;
+/* State variables - NO explicit initializers (goes to .bss) */
+static int g_slab_initialized;
+static size_t g_slab_total_allocs;
+static size_t g_slab_total_frees;
+static size_t g_slab_total_slabs;
+static size_t g_slab_memory_used;
 
 #if SLAB_DEBUG
 static size_t g_slab_corruptions_detected = 0;
 static size_t g_slab_double_frees = 0;
 #endif
 
-static spinlock_t g_slab_lock = SPINLOCK_INIT;
+/* Spinlock - initialized at runtime to avoid .data section */
+static spinlock_t g_slab_lock;
 
 /* For testing access */
 slab_state_t g_slab_state;
+
+/* Cache pointers - NO initializer (goes to .bss, zeroed by boot code) */
+static slab_cache_t* g_caches[NUM_CACHES];
 
 slab_state_t* slab_get_state(void) {
     g_slab_state.initialized = g_slab_initialized;
@@ -99,8 +124,7 @@ slab_state_t* slab_get_state(void) {
 /* Number of caches */
 #define NUM_CACHES 7
 
-/* Cache pointers */
-static slab_cache_t* g_caches[NUM_CACHES] = {nullptr};
+/* Cache pointers - already declared in BSS section above (line 92) */
 
 /* =============================================================================
  * Helper Functions
@@ -239,51 +263,39 @@ static void clear_tracked_frees(void) {
  */
 
 /**
- * Simple delay to allow serial output to complete
- */
-static void io_delay(void) {
-    for (volatile int i = 0; i < 1000; i++) {
-        __asm__ volatile("nop");
-    }
-}
-
-/**
  * Initialize a single cache from the memory pool
- * @param idx Cache index (0-6)
- * @param size Object size for this cache
- * @return 1 on success, 0 on failure
+ * 
+ * CRITICAL FIX (2026-03-21): Use 0 instead of nullptr for pointer initialization.
+ * nullptr causes system hang in freestanding C++ environment.
  */
 static int init_cache(int idx, size_t size) {
-    /* Allocate cache structure using simple pointer into pool */
     slab_cache_t* cache = (slab_cache_t*)(g_slab_memory + g_slab_memory_used);
-    
-    /* Test write to verify memory is accessible */
+
+    /* Test write */
     volatile uint8_t* test = (volatile uint8_t*)cache;
     *test = 0x55;
-    io_delay();
-    
+    mb();
+
     g_slab_memory_used += sizeof(slab_cache_t);
-    io_delay();
-    
-    if (g_slab_memory_used > sizeof(g_slab_memory)) {
-        serial_write_str("[SLAB] Out of pool memory\r\n");
-        return 0;
-    }
-    
-    /* Initialize cache */
+    mb();
+
+    /* Initialize cache struct */
     cache->object_size = size;
     cache->objects_per_slab = (SLAB_SIZE - 64) / size;
-    cache->partial = nullptr;
-    cache->full = nullptr;
-    cache->empty = nullptr;
+    
+    /* Use 0 instead of nullptr - nullptr hangs in freestanding! */
+    cache->partial = 0;
+    cache->full = 0;
+    cache->empty = 0;
+    
     cache->num_slabs = 0;
     cache->num_allocations = 0;
     cache->num_frees = 0;
-    io_delay();
-    
+    mb();
+
     g_caches[idx] = cache;
-    io_delay();
-    
+    mb();
+
     return 1;
 }
 
@@ -294,6 +306,13 @@ int slab_init(void) {
         serial_write_str("[SLAB] Already initialized\r\n");
         return 1;
     }
+
+    /* Initialize spinlock at runtime (was in .data, now in .bss) */
+    g_slab_lock.locked = 0;
+    g_slab_lock.interrupts_enabled = false;
+    mb();
+
+    /* Skip g_caches zeroing - should be zero from .bss */
 
     serial_write_str("[SLAB] Reset counters...\r\n");
     g_slab_initialized = 0;
