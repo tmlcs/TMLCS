@@ -248,5 +248,20 @@ GLOBEX_OS Spinlock Test Suite
 [SPINLOCK TEST] ALL TESTS PASSED
 ============================================
 
---- kmem_free_auto() - Unified Free API ---
-  [PASS] kmem_free_auto(NULL) is safe
+============================================
+GLOBEX_OS Slab Allocator Test Suite
+============================================
+Slab allocator ready
+
+--- Basic Slab Allocation ---
+  [PASS] Slab allocator initialized
+........  [PASS] kmem_alloc(32) returned non-NULL
+  [PASS] Write to allocated memory succeeded
+....  [PASS] kmem_free() completed without crash
+  [PASS] kmem_free(NULL) is safe
+
+--- Cache Sizes (Minimal) ---
+..  [PASS] 32-byte allocation works correctly
+............  [FAIL] 64-byte allocation should return NULL....
+--- Memory Leak Fix (FEAT-MEM-003) ---
+......  [PASS] kmem_free() returned memory to slab..  [PASS] Memory reuse works....  [PASS] Second free succeeded

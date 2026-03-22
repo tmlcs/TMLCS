@@ -241,6 +241,7 @@ extern "C" [[noreturn]] void kernel_main() {
     test_memcpy_overlap_detection();    // Overlap detection in DEBUG mode
     test_serial_signed_numbers();
     test_spinlock();  // Spinlock tests (initialization, acquire/release, SMP safety)
+    test_slab_allocator();  // Slab allocator tests (FEAT-MEM-003: memory leak fix)
     test_kmem_free_auto();  // Unified memory free API test [FIX-MEM-001]
     test_hardware_info();
 

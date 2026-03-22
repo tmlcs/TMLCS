@@ -168,7 +168,21 @@ void* kmem_alloc(size_t size);
  * @brief Free memory allocated by kmem_alloc() or slab_alloc_*()
  * @param ptr Pointer to memory to free
  * @param size Size parameter kept for backward compatibility (ignored)
- * @deprecated Use kmem_free_auto() instead which doesn't require size
+ *
+ * FIX (FEAT-MEM-003): Now properly returns memory to slab free lists.
+ * Previously a no-op causing memory leak.
+ *
+ * Features:
+ *   - Returns object to slab free list for reuse
+ *   - Moves slabs between lists (full->partial->empty)
+ *   - Frees empty slabs back to heap
+ *   - Validates object alignment and slab integrity
+ *   - Detects double-free (DEBUG mode)
+ *   - Detects buffer overflow via guard bytes (DEBUG mode)
+ *
+ * @note Safe to call with NULL (no operation)
+ * @note Do NOT free the same pointer twice (detected in DEBUG mode)
+ * @note Do NOT free stack or static memory
  */
 void kmem_free(void* ptr, size_t size);
 

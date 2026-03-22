@@ -64,6 +64,12 @@ void test_slab_direct_api(void);
 void test_slab_stress(void);
 
 /**
+ * Test memory leak fix (FEAT-MEM-003)
+ * Verifies kmem_free() properly reclaims memory
+ */
+void test_slab_memory_leak_fix(void);
+
+/**
  * Test statistics
  * Verifies slab statistics are accurate
  * DISABLED: Causes serial corruption

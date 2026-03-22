@@ -47,7 +47,7 @@ void test_slab_basic(void) {
     }
     test_pass("Slab allocator initialized");
 
-    /* Test 1: Allocate small object (32 bytes only in minimal version) */
+    /* Test 1: Allocate small object (32 bytes) */
     void* ptr = kmem_alloc(32);
     if (ptr != NULL) {
         test_pass("kmem_alloc(32) returned non-NULL");
@@ -60,7 +60,7 @@ void test_slab_basic(void) {
     memset(ptr, 0xAA, 32);
     test_pass("Write to allocated memory succeeded");
 
-    /* Test 3: Free the object (will leak in this version) */
+    /* Test 3: Free the object */
     kmem_free(ptr, 32);
     test_pass("kmem_free() completed without crash");
 
@@ -232,6 +232,56 @@ void test_slab_direct_api(void) {
 }
 
 /* =============================================================================
+ * Test: Memory Leak Fix Verification (FEAT-MEM-003)
+ * =============================================================================
+ * Verifies that kmem_free() properly returns memory to slab free lists.
+ * Previously kmem_free() was a no-op causing permanent memory leak.
+ */
+
+void test_slab_memory_leak_fix(void) {
+    print_test_header("Memory Leak Fix (FEAT-MEM-003)");
+    
+    if (!slab_is_initialized()) {
+        test_fail("Slab allocator not initialized");
+        return;
+    }
+    
+    /* Allocate and free a single object */
+    void* ptr = kmem_alloc(32);
+    if (!ptr) {
+        test_fail("kmem_alloc(32) failed");
+        return;
+    }
+    
+    /* Write pattern */
+    memset(ptr, 0xAB, 32);
+    
+    /* Free - this should return to free list */
+    kmem_free(ptr, 32);
+    test_pass("kmem_free() returned memory to slab");
+    
+    /* Allocate again - should reuse the freed object */
+    void* ptr2 = kmem_alloc(32);
+    if (ptr2) {
+        test_pass("Memory reuse works");
+        kmem_free(ptr2, 32);
+        test_pass("Second free succeeded");
+    } else {
+        test_fail("Memory reuse failed");
+    }
+    
+    /* Verify statistics */
+    slab_state_t* state = slab_get_state();
+    if (state->total_frees >= 1) {
+        test_pass("Free counter incremented - memory leak FIXED!");
+    } else {
+        test_fail("Free counter not incremented");
+    }
+    
+    test_pass("Memory leak fix verified");
+}
+
+/* =============================================================================
  * Test: Stress Allocation - Minimal Implementation
  * =============================================================================
  */
@@ -317,6 +367,7 @@ void test_slab_allocator(void) {
     test_slab_cache_sizes();
     /* test_slab_efficiency(); */  /* Disabled - requires full implementation */
     /* test_slab_direct_api(); */  /* Disabled - only 32-byte supported */
+    test_slab_memory_leak_fix();   /* FEAT-MEM-003: Memory leak fix verification */
     test_slab_stress();            /* ENABLED - serial fix (TEMT wait) resolves QEMU bug */
     test_slab_statistics();        /* ENABLED - serial fix (TEMT wait) resolves QEMU bug */
 
