@@ -204,15 +204,35 @@ void pit_reset_ticks(void) {
     wmb();
 }
 
+/**
+ * HIGH-003 FIX: Handle counter wraparound correctly
+ * The millisecond counter will wrap after ~584 million years at 100Hz,
+ * but we handle it correctly anyway for correctness.
+ */
 void pit_wait_ms(uint32_t ms) {
-    if (!g_pit_state.initialized) {
+    if (!g_pit_state.initialized || ms == 0) {
         return;
     }
 
     uint64_t start = pit_get_milliseconds();
-    while ((pit_get_milliseconds() - start) < ms) {
-        /* Busy wait */
-        __asm__ volatile("pause");
+    uint64_t end = start + ms;
+    
+    /* Handle wraparound correctly */
+    if (end < start) {
+        /* Wraparound will occur - wait until counter wraps past start */
+        while (pit_get_milliseconds() >= start) {
+            __asm__ volatile("pause");
+        }
+        /* Now wait for remaining time */
+        uint64_t remaining = end;  /* end wrapped to small value */
+        while (pit_get_milliseconds() < remaining) {
+            __asm__ volatile("pause");
+        }
+    } else {
+        /* No wraparound - simple comparison */
+        while (pit_get_milliseconds() < end) {
+            __asm__ volatile("pause");
+        }
     }
 }
 

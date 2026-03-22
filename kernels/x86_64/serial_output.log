@@ -11,10 +11,10 @@ DATA variable (should be 0x12345678): 0x0x12345678
 === Memory Mapping Test ===
 Page tables: 2GiB mapped (0x00000000-0x7FFFFFFF)
 Testing access to 80MB (0x05000000)...
-CR3 value: 0x0x0000000000230000
-Page table base: 0x0x0000000000230000
+CR3 value: 0x0x0000000000231000
+Page table base: 0x0x0000000000231000
 CR3 validation: OK
-L4[0] -> L3 at: 0x0x0000000000231000
+L4[0] -> L3 at: 0x0x0000000000232000
 L4->L3 mapping: OK
 Write pattern: 0x0xDEADBEEF
 Read back:   0x0xDEADBEEF
@@ -71,7 +71,7 @@ Verifying PIC remap...
 [HEAP] Initializing slab allocator...
 [SLAB] slab_init() started
 [SLAB] Allocated 4096 bytes from early heap
-[SLAB] Pool address: 0x0x000000000011E1C0
+[SLAB] Pool address: 0x0x000000000011F1C0
 [SLAB] Reset counters...
 [SLAB] Initializing 7 caches (32-2048 bytes)...
 ...[SLAB] Cache 32 bytes OK

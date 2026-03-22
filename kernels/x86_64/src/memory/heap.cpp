@@ -16,6 +16,9 @@ static int g_heap_initialized = 0;
 /* Spinlock for thread-safe allocation */
 static spinlock_t g_heap_lock = SPINLOCK_INIT;
 
+/* HIGH-001 FIX: Track slab availability separately */
+static int g_slab_available = 0;
+
 /* =============================================================================
  * Helper Functions
  * =============================================================================
@@ -49,15 +52,18 @@ int heap_init(void) {
     bitmap_init();
 
     if (!bitmap_is_initialized()) {
+        serial_write_str("[HEAP] FATAL: bitmap_init() failed\r\n");
         return 0;  /* Failed to initialize bitmap */
     }
 
-    /* Initialize slab allocator (for small objects) */
+    /* HIGH-001 FIX: Initialize slab and track availability */
     serial_write_str("[HEAP] Initializing slab allocator...\r\n");
     if (!slab_init()) {
-        serial_write_str("[HEAP] Warning: slab_init() failed, continuing without slab\r\n");
+        serial_write_str("[HEAP] WARNING: slab_init() failed, small allocs will use bitmap\r\n");
+        g_slab_available = 0;  /* Mark slab as unavailable */
     } else {
         serial_write_str("[HEAP] Slab allocator initialized\r\n");
+        g_slab_available = 1;  /* Mark slab as available */
     }
 
     g_heap_initialized = 1;
@@ -85,8 +91,8 @@ void* kmalloc(size_t size) {
         return NULL;
     }
 
-    /* Use slab allocator for small objects (<= 2KB) */
-    if (size <= SLAB_MAX_SIZE && slab_is_initialized()) {
+    /* HIGH-001 FIX: Use slab only if available */
+    if (size <= SLAB_MAX_SIZE && g_slab_available && slab_is_initialized()) {
         void* ptr = kmem_alloc(size);
         if (ptr != NULL) {
             return ptr;

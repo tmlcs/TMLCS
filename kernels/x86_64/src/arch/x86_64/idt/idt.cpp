@@ -167,8 +167,24 @@ static const char* exception_messages[] = {
  * idt_set_gate - Register an interrupt handler
  * =============================================================================
  * Using type-safe wrappers prevents accidentally swapping handler/type_attr/dpl.
+ * 
+ * HIGH-004 FIX: Validates handler address is in valid kernel range.
+ * Invalid handlers would cause triple fault when interrupt fires.
  */
+
+/* HIGH-004 FIX: Valid handler address range */
+#define VALID_HANDLER_MIN 0x100000ULL       /* Kernel load address (1MB) */
+#define VALID_HANDLER_MAX 0x80000000ULL     /* 2GiB mapped limit */
+
 void idt_set_gate(uint8_t vector, handler_addr_t handler, type_attr_t type_attr, dpl_t dpl) {
+    /* HIGH-004 FIX: Validate handler address */
+    if (handler.value < VALID_HANDLER_MIN || handler.value >= VALID_HANDLER_MAX) {
+        serial_write_str("[IDT] HIGH-004: Invalid handler address: 0x");
+        serial_write_hex64(handler.value);
+        serial_write_str("\r\n");
+        return;  /* Don't register invalid handler */
+    }
+    
     idt_table[vector].offset_low = handler.value & IDT_OFFSET_LOW_MASK;
     idt_table[vector].selector = GDT_SELECTOR_KERNEL_CODE; /* Kernel code segment */
     idt_table[vector].ist = 0;         /* IST = 0 (use current stack) */

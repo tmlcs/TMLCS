@@ -70,14 +70,26 @@ void* early_alloc_align(size_t size, size_t alignment) {
         alignment = EARLY_ALLOC_ALIGNMENT;
     }
 
+    /* HIGH-007 FIX: Check for size overflow first */
+    if (size > g_early_size) {
+        serial_write_str("[EARLY_ALLOC] HIGH-007: Request too large: ");
+        serial_write_dec(size);
+        serial_write_str(" > ");
+        serial_write_dec(g_early_size);
+        serial_write_str("\r\n");
+        return 0;
+    }
+
     /* Calculate aligned offset */
     uintptr_t current = (uintptr_t)(g_early_pool + g_early_used);
     uintptr_t aligned = (current + alignment - 1) & ~(alignment - 1);
     size_t padding = aligned - current;
 
-    /* Check if we have enough space */
-    size_t total_needed = padding + size;
-    if (g_early_used + total_needed > g_early_size) {
+    /* HIGH-007 FIX: Safe overflow check for addition
+     * a + b > c  =>  a > c - b  (when c >= b)
+     */
+    if (padding > g_early_size - g_early_used ||
+        size > g_early_size - g_early_used - padding) {
         /* Out of memory */
         serial_write_str("[EARLY_ALLOC] Out of memory! Requested: ");
         serial_write_dec(size);
@@ -86,6 +98,7 @@ void* early_alloc_align(size_t size, size_t alignment) {
     }
 
     /* Allocate */
+    size_t total_needed = padding + size;
     g_early_used += total_needed;
     wmb();
 
