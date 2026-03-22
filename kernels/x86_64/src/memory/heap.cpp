@@ -233,9 +233,9 @@ void kfree(void* ptr) {
  * =============================================================================
  */
 
-/* Reference to slab memory pool (defined in slab.cpp) */
-#define SLAB_MEMORY_SIZE (256 * 1024)
-extern uint8_t g_slab_memory[SLAB_MEMORY_SIZE];
+/* Reference to slab pool (defined in slab.cpp, allocated from early_alloc) */
+extern uint8_t* g_slab_pool;
+extern size_t g_slab_pool_size;
 
 /**
  * Check if a pointer belongs to the slab memory pool
@@ -244,11 +244,17 @@ int is_slab_address(void* ptr) {
     if (ptr == nullptr) {
         return 0;
     }
-    
+
     uintptr_t addr = (uintptr_t)ptr;
-    uintptr_t pool_start = (uintptr_t)g_slab_memory;
-    uintptr_t pool_end = pool_start + SLAB_MEMORY_SIZE;
     
+    /* Check if pool is initialized */
+    if (g_slab_pool == 0) {
+        return 0;
+    }
+    
+    uintptr_t pool_start = (uintptr_t)g_slab_pool;
+    uintptr_t pool_end = pool_start + g_slab_pool_size;
+
     return (addr >= pool_start && addr < pool_end) ? 1 : 0;
 }
 

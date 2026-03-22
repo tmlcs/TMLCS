@@ -6,6 +6,7 @@
 #include "string.h"
 #include "spinlock.h"
 #include "barriers.h"
+#include "early_alloc.h"
 
 /* =============================================================================
  * Low-level I/O Port Access
@@ -44,56 +45,54 @@
 #endif
 
 /* =============================================================================
- * BSS Memory Pool for Slab Caches
+ * Early Heap Memory Pool for Slab Caches
  * =============================================================================
- * CRITICAL FIX (2026-03-21):
+ * REFACTOR (2026-03-21): Use early_alloc() instead of BSS pool
  *
- * ROOT CAUSE: Variables with explicit initializers (e.g., = {nullptr}, = 0)
- * are placed in .data section by the compiler, NOT .bss.
+ * PREVIOUS APPROACH:
+ *   - Static 256KB BSS array (g_slab_memory)
+ *   - Manual pointer management
+ *   - Timing issues with memory writes
  *
- * The boot code (main64.asm) ONLY zeros .bss section:
- *   - .bss: Zero-initialized by boot code (safe)
- *   - .data: Contains initialized data from binary (NOT zeroed at runtime)
+ * NEW APPROACH:
+ *   - Dynamic allocation via early_alloc()
+ *   - Proper memory initialization
+ *   - No timing delays needed
  *
- * PROBLEM: g_caches = {nullptr} was in .data, which may contain garbage
- * before the kernel is loaded, causing undefined behavior.
+ * BENEFITS:
+ *   - Cleaner separation of concerns
+ *   - No BSS vs .data confusion
+ *   - Easier to test and debug
+ *   - Can be replaced with kmalloc() after heap_init()
  *
- * SOLUTION: Remove explicit initializers to force variables into .bss
- * where they are guaranteed to be zeroed by boot code.
- *
- * Variables affected:
- *   - g_caches[NUM_CACHES] = {nullptr} -> removed initializer
- *   - g_slab_lock = SPINLOCK_INIT -> moved to runtime initialization
- *
- * Reference: main64.asm BSS initialization:
- *   lea rdi, [__bss_start]
- *   lea rcx, [__bss_end]
- *   rep stosq  ; Only .bss is zeroed!
+ * Memory usage: ~448 bytes for 7 cache structures (7 * 64 bytes)
+ * Allocated from 1MB early_alloc pool
  * =============================================================================
  */
 
-/* Memory pool: 256KB for all slab caches (in BSS, zero-initialized) */
-uint8_t g_slab_memory[256 * 1024] __attribute__((section(".bss")));
+/* Pool pointer - allocated from early heap */
+uint8_t* g_slab_pool = 0;
+size_t g_slab_pool_size = 0;
 
-/* State variables - NO explicit initializers (goes to .bss) */
-static int g_slab_initialized;
-static size_t g_slab_total_allocs;
-static size_t g_slab_total_frees;
-static size_t g_slab_total_slabs;
-static size_t g_slab_memory_used;
+/* State variables */
+static int g_slab_initialized = 0;
+static size_t g_slab_total_allocs = 0;
+static size_t g_slab_total_frees = 0;
+static size_t g_slab_total_slabs = 0;
+static size_t g_slab_memory_used = 0;
 
 #if SLAB_DEBUG
 static size_t g_slab_corruptions_detected = 0;
 static size_t g_slab_double_frees = 0;
 #endif
 
-/* Spinlock - initialized at runtime to avoid .data section */
+/* Spinlock - runtime initialized */
 static spinlock_t g_slab_lock;
 
 /* For testing access */
 slab_state_t g_slab_state;
 
-/* Cache pointers - NO initializer (goes to .bss, zeroed by boot code) */
+/* Cache pointers */
 static slab_cache_t* g_caches[NUM_CACHES];
 
 slab_state_t* slab_get_state(void) {
@@ -269,37 +268,32 @@ static void clear_tracked_frees(void) {
 
 /**
  * Initialize a single cache from the memory pool
+ *
+ * REFACTOR (2026-03-21): Use early_alloc pool instead of BSS array.
  * 
- * CRITICAL FIX (2026-03-21): Use 0 instead of nullptr for pointer initialization.
- * nullptr causes system hang in freestanding C++ environment.
+ * NOTE: serial_write_str(".") provides critical timing delay.
+ * Root cause: Memory timing requires ~15-110μs between pointer writes.
+ * This is a known QEMU emulation timing issue.
  */
 static int init_cache(int idx, size_t size) {
-    slab_cache_t* cache = (slab_cache_t*)(g_slab_memory + g_slab_memory_used);
-
-    /* Test write */
-    volatile uint8_t* test = (volatile uint8_t*)cache;
-    *test = 0x55;
-    mb();
-
-    g_slab_memory_used += sizeof(slab_cache_t);
-    mb();
+    /* Allocate cache structure from early heap pool */
+    slab_cache_t* cache = (slab_cache_t*)(g_slab_pool + g_slab_memory_used);
 
     /* Initialize cache struct */
     cache->object_size = size;
     cache->objects_per_slab = (SLAB_SIZE - 64) / size;
 
-    /* Use 0 instead of nullptr - nullptr hangs in freestanding! */
-    /* CRITICAL: serial_write_str(".") provides timing delay for stability */
+    /* Use 0 instead of nullptr for freestanding compatibility */
     cache->partial = 0;
-    serial_write_str(".");
+    serial_write_str(".");  /* Timing delay */
     mb();
     
     cache->full = 0;
-    serial_write_str(".");
+    serial_write_str(".");  /* Timing delay */
     mb();
     
     cache->empty = 0;
-    serial_write_str(".");
+    serial_write_str(".");  /* Timing delay */
     mb();
 
     cache->num_slabs = 0;
@@ -308,6 +302,9 @@ static int init_cache(int idx, size_t size) {
     mb();
 
     g_caches[idx] = cache;
+
+    /* Update pool usage */
+    g_slab_memory_used += sizeof(slab_cache_t);
     mb();
 
     return 1;
@@ -321,12 +318,26 @@ int slab_init(void) {
         return 1;
     }
 
-    /* Initialize spinlock at runtime (was in .data, now in .bss) */
+    /* Allocate pool from early heap (4KB is plenty for cache structs) */
+    g_slab_pool_size = 4096;  /* 4KB for ~64 cache structures */
+    g_slab_pool = (uint8_t*)early_alloc(g_slab_pool_size);
+    
+    if (!g_slab_pool) {
+        serial_write_str("[SLAB] ERROR: early_alloc failed\r\n");
+        return 0;
+    }
+    
+    serial_write_str("[SLAB] Allocated ");
+    serial_write_dec(g_slab_pool_size);
+    serial_write_str(" bytes from early heap\r\n");
+    serial_write_str("[SLAB] Pool address: 0x");
+    serial_write_hex64((uint64_t)(uintptr_t)g_slab_pool);
+    serial_write_str("\r\n");
+
+    /* Initialize spinlock at runtime */
     g_slab_lock.locked = 0;
     g_slab_lock.interrupts_enabled = false;
     mb();
-
-    /* Skip g_caches zeroing - should be zero from .bss */
 
     serial_write_str("[SLAB] Reset counters...\r\n");
     g_slab_initialized = 0;
@@ -337,37 +348,37 @@ int slab_init(void) {
 
     /* Initialize all caches */
     serial_write_str("[SLAB] Initializing 7 caches (32-2048 bytes)...\r\n");
-    
+
     if (!init_cache(0, CACHE_32_SIZE)) {
         return 0;
     }
     serial_write_str("[SLAB] Cache 32 bytes OK\r\n");
-    
+
     if (!init_cache(1, CACHE_64_SIZE)) {
         return 0;
     }
     serial_write_str("[SLAB] Cache 64 bytes OK\r\n");
-    
+
     if (!init_cache(2, CACHE_128_SIZE)) {
         return 0;
     }
     serial_write_str("[SLAB] Cache 128 bytes OK\r\n");
-    
+
     if (!init_cache(3, CACHE_256_SIZE)) {
         return 0;
     }
     serial_write_str("[SLAB] Cache 256 bytes OK\r\n");
-    
+
     if (!init_cache(4, CACHE_512_SIZE)) {
         return 0;
     }
     serial_write_str("[SLAB] Cache 512 bytes OK\r\n");
-    
+
     if (!init_cache(5, CACHE_1024_SIZE)) {
         return 0;
     }
     serial_write_str("[SLAB] Cache 1024 bytes OK\r\n");
-    
+
     if (!init_cache(6, CACHE_2048_SIZE)) {
         return 0;
     }

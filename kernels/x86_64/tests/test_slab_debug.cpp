@@ -64,8 +64,9 @@ static void debug_hex_dump(const char* label, const void* addr, size_t len) {
     }
 }
 
-/* External reference to slab memory pool */
-extern uint8_t g_slab_memory[];
+/* External reference to slab pool (allocated from early_alloc) */
+extern uint8_t* g_slab_pool;
+extern size_t g_slab_pool_size;
 
 /* =============================================================================
  * Test 1: Verify Slab Pool Memory Region
@@ -93,8 +94,12 @@ static void test_slab_pool_integrity(void) {
     serial_write_dec(state->total_slabs);
     serial_write_str("\r\n");
     
-    /* Dump first 256 bytes of slab memory pool */
-    debug_hex_dump("Slab Pool (first 256B)", g_slab_memory, 256);
+    /* Dump first 256 bytes of slab pool */
+    if (g_slab_pool) {
+        debug_hex_dump("Slab Pool (first 256B)", g_slab_pool, 256);
+    } else {
+        serial_write_str("Slab pool not allocated yet\r\n");
+    }
     
     serial_write_str("[OK] Pool integrity check complete\r\n");
 }

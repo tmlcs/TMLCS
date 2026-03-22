@@ -204,6 +204,10 @@ size_t slab_get_total_memory(void);
 slab_state_t* slab_get_state(void);
 extern slab_state_t g_slab_state;
 
+/* Slab pool (allocated from early_alloc) */
+extern uint8_t* g_slab_pool;
+extern size_t g_slab_pool_size;
+
 #ifdef __cplusplus
 }
 #endif

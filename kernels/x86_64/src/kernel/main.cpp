@@ -5,6 +5,7 @@
 #include "string.h"
 #include "vga.h"
 #include "heap.h"
+#include "early_alloc.h"
 
 // Enable debug macros for testing
 #define DEBUG_ENABLE 1
@@ -221,6 +222,9 @@ extern "C" [[noreturn]] void kernel_main() {
     test_debug_macros();
     test_gdt_initialization();        // Test GDT initialization
     test_idt_initialization();        // Test IDT initialization (all vectors 0-31)
+    
+    /* Initialize early allocator before heap and slab */
+    early_alloc_init_default();
     
     /* Initialize heap and slab allocator before memory tests */
     heap_init();

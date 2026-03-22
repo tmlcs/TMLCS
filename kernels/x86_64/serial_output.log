@@ -11,10 +11,10 @@ DATA variable (should be 0x12345678): 0x0x12345678
 === Memory Mapping Test ===
 Page tables: 2GiB mapped (0x00000000-0x7FFFFFFF)
 Testing access to 80MB (0x05000000)...
-CR3 value: 0x0x000000000016E000
-Page table base: 0x0x000000000016E000
+CR3 value: 0x0x000000000022F000
+Page table base: 0x0x000000000022F000
 CR3 validation: OK
-L4[0] -> L3 at: 0x0x000000000016F000
+L4[0] -> L3 at: 0x0x0000000000230000
 L4->L3 mapping: OK
 Write pattern: 0x0xDEADBEEF
 Read back:   0x0xDEADBEEF
@@ -35,6 +35,57 @@ Testing DEBUG_PRINTLN...
 [DEBUG] Testing DEBUG_LOG macro
 [DEBUG MACRO] DEBUG_LOG: OK
 [DEBUG MACROS] All tests passed
+
+=== GDT Initialization Test ===
+[PASS] GDT table pointer is valid
+[PASS] Null descriptor: limit_low = 0
+[PASS] Null descriptor: base_low = 0
+[PASS] Null descriptor: access = 0
+[FAIL] Kernel code: access byte correct
+[FAIL] Kernel code: 64-bit mode flag set
+[ABORT] Test aborted due to prior failure
+
+=== IDT Initialization Test ===
+Checking all exception vectors (0-31)...
+  Vector 0 (Divide Error): Registered
+  Vector 3 (Breakpoint): Registered
+  Vector 8 (Double Fault): Registered
+  Vector 9 (Reserved): Registered - NEW
+  Vector 13 (General Protection): Registered
+  Vector 14 (Page Fault): Registered
+  Vector 15 (Reserved): Registered - NEW
+  Vector 19 (SIMD FPU): Registered
+  Vectors 20-31 (Reserved): Registered - NEW
+All 32 exception vectors (0-31) have handlers
+
+Checking IRQ handlers...
+  IRQ0 (PIT): Vector 0x20
+  IRQ1 (Keyboard): Vector 0x21
+  IRQ12 (Mouse): Vector 0x2C
+
+Verifying PIC remap...
+  PIC1 offset: 0x20 (IRQ 0-7 -> INT 0x20-0x27)
+  PIC2 offset: 0x28 (IRQ 8-15 -> INT 0x28-0x2F)
+
+[IDT INIT] All 32 vectors registered successfully
+[HEAP] Initializing slab allocator...
+[SLAB] slab_init() started
+[SLAB] Allocated 4096 bytes from early heap
+[SLAB] Pool address: 0x0x000000000011D1C0
+[SLAB] Reset counters...
+[SLAB] Initializing 7 caches (32-2048 bytes)...
+...[SLAB] Cache 32 bytes OK
+...[SLAB] Cache 64 bytes OK
+...[SLAB] Cache 128 bytes OK
+...[SLAB] Cache 256 bytes OK
+...[SLAB] Cache 512 bytes OK
+...[SLAB] Cache 1024 bytes OK
+...[SLAB] Cache 2048 bytes OK
+[SLAB] All caches initialized
+[SLAB] Pool memory used: 336 bytes
+[SLAB] Set initialized=1...
+[SLAB] slab_init() DONE
+[HEAP] Slab allocator initialized
 
 === Print Functions Test ===
 print_hex64(0x123456789ABCDEF0): 0x123456789ABCDEF0
@@ -197,27 +248,5 @@ GLOBEX_OS Spinlock Test Suite
 [SPINLOCK TEST] ALL TESTS PASSED
 ============================================
 
-=== Hardware Information Test ===
-CPU Max Leaf: 0x0000000D
-Vendor: AuthenticAMD
-Family: 15, Model: 11, Stepping: 1
-Long Mode (64-bit): Supported
-[HARDWARE INFO] CPU detection complete
-
-=== GLOBEX_OS Kernel Started ===
-GLOBEX_OS v0.015_x64
-Page tables: 2GiB mapped
-Test: BSS initialization - OK
-Test: Memory mapping - OK
-Test: Color validation - OK
-Test: Debug macros - OK
-Test: Print functions (64-bit, signed) - OK
-Test: Query functions (cursor, color) - OK
-Test: Serial baud rates - OK
-Test: String functions - OK
-Test: String NULL safety - OK
-Test: strlcpy safe copy - OK
-Test: Serial signed numbers - OK
-Test: Spinlock (init, acquire/release, SMP) - OK
-Test: Hardware info (CPUID) - OK
-System halted - press reset to restart
+--- kmem_free_auto() - Unified Free API ---
+  [PASS] kmem_free_auto(NULL) is safe

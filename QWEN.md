@@ -24,33 +24,40 @@ kernels/x86_64/
 │   │   │   └── main64.asm   # Long mode entry
 │   │   ├── gdt/            # Global Descriptor Table
 │   │   ├── idt/            # Interrupt Descriptor Table
-│   │   ├── include/        # Architecture-specific headers
-│   │   │   ├── atomic.h     # Atomic operations (LOCK-prefixed instructions)
-│   │   │   └── barriers.h   # Memory barriers (compiler + hardware)
-│   │   └── paging/         # Page table management
+│   │   └── include/        # Architecture-specific headers
+│   │       ├── atomic.h     # Atomic operations (LOCK-prefixed instructions)
+│   │       └── barriers.h   # Memory barriers
 │   ├── core/
 │   │   ├── constants.h      # VGA, Multiboot, memory constants
 │   │   ├── debug/
 │   │   │   └── debug.h      # Debug macros (DEBUG_PRINT, DEBUG_ASSERT, etc.)
-│   │   └── panic/
-│   │       └── panic.h      # Kernel panic functions
+│   │   ├── panic/
+│   │   │   └── panic.h      # Kernel panic functions
+│   │   └── stdint/
+│   │       └── stdint.h     # Standard integer types
 │   ├── drivers/
 │   │   ├── console/
 │   │   │   └── print.h      # VGA text mode output API (high-level)
+│   │   ├── interrupt/
+│   │   │   └── interrupts.h # Interrupt handling
+│   │   ├── pit/
+│   │   │   └── pit.h        # Programmable Interval Timer
 │   │   ├── serial/
 │   │   │   └── serial.h     # UART 16550 serial port API
 │   │   └── vga/
 │   │       └── vga.h        # VGA hardware driver (low-level, SMP-safe)
 │   ├── kernel/
 │   │   └── main.cpp         # kernel_main() - OS initialization & tests
-│   └── lib/
-│       ├── spinlock/
-│       │   └── spinlock.h   # Spinlock implementation (SMP-safe)
-│       ├── string/
-│       │   └── string.h     # String utilities (memcpy, memset, etc.)
-│       └── utils/
-│           ├── decimal_utils.h
-│           └── hex_utils.h
+│   ├── lib/
+│   │   ├── spinlock/
+│   │   │   └── spinlock.h   # Spinlock implementation (SMP-safe)
+│   │   ├── string/
+│   │   │   └── string.h     # String utilities (memcpy, memset, etc.)
+│   │   └── utils/
+│   │       ├── decimal_utils.h
+│   │       └── hex_utils.h
+│   └── memory/
+│       └── memory.h         # Memory management
 ├── targets/
 │   └── x86_64/
 │       ├── linker.ld        # Linker script (kernel at 1MB, 2GiB identity mapped)
@@ -59,14 +66,21 @@ kernels/x86_64/
 │   ├── test_bss.*           # BSS initialization verification
 │   ├── test_color.*         # Color validation tests
 │   ├── test_debug.*         # Debug macro tests
+│   ├── test_gdt_idt.*       # GDT/IDT tests
 │   ├── test_hardware.*      # CPUID hardware detection
 │   ├── test_memory.*        # Memory mapping tests
+│   ├── test_memory_manager.*# Memory manager tests
 │   ├── test_print.*         # Print function tests (64-bit, signed)
 │   ├── test_query.*         # Cursor/color query tests
 │   ├── test_serial.*        # Serial baud rate tests
 │   ├── test_serial_signed.* # Signed number output tests
+│   ├── test_slab.*          # Slab allocator tests
+│   ├── test_slab_debug.*    # Slab debugging tests
 │   ├── test_spinlock.*      # Spinlock SMP safety tests
+│   ├── test_spinlock_smp.*  # SMP spinlock stress tests
+│   ├── test_spinlock_stress.*# Spinlock stress tests
 │   ├── test_string.*        # String function tests
+│   ├── test_string_boundaries.*# String boundary tests
 │   └── test_strlcpy.*       # Safe string copy tests
 ├── Makefile                 # Build system (g++, nasm, ld, grub-mkrescue)
 └── dist/                    # Build outputs (ISO, kernel.bin)
@@ -94,7 +108,7 @@ Required tools (verify with `make verify-tools`):
 - `ld` - GNU linker
 - `grub-mkrescue` - GRUB ISO creator
 - `qemu-system-x86_64` - QEMU emulator
-- `clang-format` - Code formatting (for `scripts/format.sh`)
+- `clang-format` - Code formatting
 - `clang-tidy` - Static analysis (optional)
 - `cppcheck` - Static analysis (optional)
 
@@ -164,6 +178,7 @@ CFLAGS := -ffreestanding -fno-exceptions -fno-rtti \
    - Doxygen-style comments for public API
    - Inline comments for complex logic
    - Security notes for critical code paths
+   - **All comments and documentation must be in English** (see `docs/DOCUMENTATION_STYLE_GUIDE.md`)
 
 ### Debugging
 
@@ -243,16 +258,14 @@ Configuration:
 
 Run static analysis locally:
 ```bash
-# Run analysis
-make analyze
+# Install tools
+sudo apt-get install clang-tidy cppcheck
 
-# Run with logging
-make analyze-verbose
+# Run analysis
+./scripts/analyze.sh
 ```
 
-Tools:
-- **clang-tidy** - LLVM-based C++ linter
-- **cppcheck** - C/C++ static analysis tool
+See `docs/CICD_GUIDE.md` for detailed static analysis documentation.
 
 ### Git Workflow
 
@@ -280,8 +293,6 @@ Tools:
 
 **Query Functions**: `print_get_cursor()`, `print_get_color()`, `print_set_cursor()`, `print_set_color()`
 
-**Type Safety**: Uses `vga_pos_t`, `vga_col_t`, `vga_row_t` wrappers to prevent parameter swapping bugs.
-
 ### Serial Driver (`serial.h`/`serial.cpp`)
 
 **Hardware**: UART 16550 compatible
@@ -295,10 +306,9 @@ Tools:
 - Recovery via `serial_reinit()` after timeout
 
 **SMP Threading Model**:
-- All `serial_write_*` functions acquire `serial_lock` internally
-- Concurrent calls from multiple CPUs are serialized
 - State checks use `rmb()` for visibility
-- Use `serial_lock()` / `serial_unlock()` for multi-operation atomicity
+- NOT atomic for concurrent writes (may interleave characters)
+- Use external spinlock for full SMP safety
 
 ### Boot Process
 
@@ -335,8 +345,6 @@ spinlock_release(&my_lock);
 
 **VGA Lock**: Global `vga_lock()` / `vga_unlock()` for protecting VGA operations.
 
-**Serial Lock**: Global `serial_lock()` / `serial_unlock()` for multi-operation atomicity.
-
 ### Atomic Operations (`atomic.h`)
 
 **32-bit**: `atomic_inc32()`, `atomic_dec32()`, `atomic_add32()`, `atomic_load32()`, `atomic_store32()`
@@ -347,27 +355,7 @@ spinlock_release(&my_lock);
 
 **Memory Ordering**: Default `__ATOMIC_SEQ_CST` (sequential consistency), relaxed variants available for counters.
 
-### Memory Barriers (`barriers.h`)
-
-**Compiler Barriers** (0 cycles, prevents compiler reordering):
-- `mb()` - Full barrier
-- `rmb()` - Read barrier
-- `wmb()` - Write barrier
-- `barrier()` - Alias for `mb()` (use in critical sections)
-
-**Hardware Barriers** (emits LFENCE/SFENCE):
-- `hw_mb()` - Full hardware barrier
-- `hw_rmb()` - Read hardware barrier
-- `hw_wmb()` - Write hardware barrier
-
-**Acquire/Release**:
-- `smp_load_acquire(ptr)` - Load with acquire semantics
-- `smp_store_release(ptr, val)` - Store with release semantics
-
-**Spin Loop Optimization**:
-- `cpu_pause()` - PAUSE instruction for efficient spinning
-
-## CI/CD
+## CI/CD Pipeline
 
 GitHub Actions runs automated checks on every push and pull request:
 
@@ -379,7 +367,7 @@ GitHub Actions runs automated checks on every push and pull request:
 | `code-style` | Verifies code formatting | ✅ Yes |
 | `summary` | Aggregates all results | - |
 
-See `docs/CICD_GUIDE.md` for details.
+See `docs/CICD_GUIDE.md` for detailed CI/CD documentation.
 
 ## Troubleshooting
 
@@ -412,5 +400,11 @@ make run-serial && cat serial_output.log
 ## Documentation
 
 - `docs/CICD_GUIDE.md` - CI/CD and static analysis guide
-- `docs/DOCUMENTATION_STYLE_GUIDE.md` - Documentation standards
-- `kernels/x86_64/src/arch/x86_64/include/BARRIERS_GUIDE.md` - Memory barrier usage guide
+- `docs/DOCUMENTATION_STYLE_GUIDE.md` - Documentation standards (English-only policy)
+- `.github/workflows/ci-cd.yml` - GitHub Actions workflow definition
+
+## References
+
+- [Multiboot2 Specification](https://www.gnu.org/software/grub/manual/multiboot2/multiboot.html)
+- [Intel SDM](https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html)
+- [OSDev Wiki](https://wiki.osdev.org/)
