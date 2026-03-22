@@ -4,6 +4,7 @@
 #include "print.h"
 #include "barriers.h"
 #include "constants.h"
+#include "atomic.h"
 
 /* =============================================================================
  * IRQ System State
@@ -13,6 +14,10 @@ static int g_irq_initialized = 0;
 static irq_handler_t g_irq_handlers[IRQ_COUNT];
 static uint32_t g_irq_counts[IRQ_COUNT];
 static uint16_t g_irq_mask = 0;  /* Bitmask of enabled IRQs */
+
+/* CRIT-002 FIX: IRQ stack depth tracking to prevent stack overflow */
+static volatile uint32_t g_irq_stack_depth = 0;
+static constexpr uint32_t MAX_IRQ_DEPTH = 8;  /* Maximum nested IRQ depth */
 
 /* =============================================================================
  * Low-Level I/O Functions
@@ -294,6 +299,25 @@ void irq_disable_all(void) {
  */
 
 void irq_dispatch(uint8_t irq) {
+    /* CRIT-002 FIX: Check for excessive nesting to prevent stack overflow */
+    uint32_t current_depth = atomic_inc32(&g_irq_stack_depth);
+    
+    if (current_depth > MAX_IRQ_DEPTH) {
+        /* Stack depth exceeded - log error and skip handler */
+        serial_write_str("[IRQ] CRIT-002: Stack depth exceeded (");
+        serial_write_dec(current_depth);
+        serial_write_str(" > ");
+        serial_write_dec(MAX_IRQ_DEPTH);
+        serial_write_str(") on IRQ ");
+        serial_write_dec(irq);
+        serial_write_str("\r\n");
+        
+        /* Still send EOI to prevent IRQ lockout */
+        irq_send_eoi(irq);
+        atomic_dec32(&g_irq_stack_depth);
+        return;
+    }
+    
     /* Increment counter */
     g_irq_counts[irq]++;
 
@@ -305,6 +329,9 @@ void irq_dispatch(uint8_t irq) {
 
     /* Send EOI */
     irq_send_eoi(irq);
+    
+    /* Decrement stack depth */
+    atomic_dec32(&g_irq_stack_depth);
 }
 
 void irq_send_eoi(uint8_t irq) {

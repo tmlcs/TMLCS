@@ -71,35 +71,39 @@ uint8_t test_fg, test_bg;
 // Uses vga_put_string_early() for direct MMIO writes.
 // ==========================================
 static void early_panic(const char* msg) {
-    // Try VGA buffer directly (no driver initialization)
+    // CRIT-001 FIX: Validate VGA memory accessibility before writing
     volatile uint16_t* vga = reinterpret_cast<volatile uint16_t*>(VGA_BUFFER_ADDRESS);
-
-    // Test if VGA memory is writable
-    uint16_t saved = vga[0];
-    vga[0] = (VGA_COLOR_WHITE_ON_RED << 8) | ' ';  // Space with white on red
-
-    if (vga[0] == ((VGA_COLOR_WHITE_ON_RED << 8) | ' ')) {
-        // VGA is available - display error
-        vga[0] = saved;  // Restore
-
-        // Use vga_put_string_early for interrupt-safe output
-        // This function does NOT acquire locks, preventing deadlock
-        vga_put_string_early("ERROR: ", vga_make_pos(vga_col(0), vga_row(0)),
-                             VGA_COLOR_WHITE_ON_RED);
-        vga_put_string_early(msg, vga_make_pos(vga_col(7), vga_row(0)), VGA_COLOR_WHITE_ON_RED);
-
-        // Fill rest of first row with spaces for clarity
-        for (size_t pos = 7 + strlen(msg); pos < VGA_COLS; pos++) {
-            vga[pos] = (VGA_COLOR_WHITE_ON_RED << 8) | ' ';
-        }
-
+    
+    // Test if VGA memory is accessible by reading first
+    // This prevents triple-fault if memory region is unmapped
+    uint16_t test_read = vga[0];
+    
+    // Write test pattern
+    vga[0] = (VGA_COLOR_WHITE_ON_RED << 8) | ' ';
+    __asm__ volatile("" ::: "memory");  // Prevent optimization
+    
+    // Verify write succeeded
+    if (vga[0] != ((VGA_COLOR_WHITE_ON_RED << 8) | ' ')) {
+        // VGA not accessible - just halt
         for (;;) {
             __asm__ volatile("hlt");
         }
     }
+    
+    // VGA is accessible - restore and display error
+    vga[0] = test_read;  // Restore original value
 
-    // VGA not available - just halt (no output possible)
-    // This is the absolute worst case - system is dead silent
+    // Use vga_put_string_early for interrupt-safe output
+    // This function does NOT acquire locks, preventing deadlock
+    vga_put_string_early("ERROR: ", vga_make_pos(vga_col(0), vga_row(0)),
+                         VGA_COLOR_WHITE_ON_RED);
+    vga_put_string_early(msg, vga_make_pos(vga_col(7), vga_row(0)), VGA_COLOR_WHITE_ON_RED);
+
+    // Fill rest of first row with spaces for clarity
+    for (size_t pos = 7 + strlen(msg); pos < VGA_COLS; pos++) {
+        vga[pos] = (VGA_COLOR_WHITE_ON_RED << 8) | ' ';
+    }
+
     for (;;) {
         __asm__ volatile("hlt");
     }

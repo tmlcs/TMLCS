@@ -193,22 +193,58 @@ int bitmap_free(size_t page) {
     return 0;
 }
 
+/**
+ * CRIT-003 FIX: Atomically free contiguous pages to prevent TOCTOU race
+ * 
+ * PROBLEM: Original implementation had a time-of-check-time-of-use race.
+ * Between checking if pages are allocated and clearing bits, another CPU
+ * could free the same pages, causing double-free corruption.
+ * 
+ * SOLUTION: Use atomic test-and-clear for each page. If any page is
+ * already free, rollback all previously-freed pages and return error.
+ */
 int bitmap_free_contiguous(size_t page, size_t count) {
     /* FIX-MEM-004: Validate inputs */
     if (!g_bitmap_initialized || page >= TOTAL_PAGES || count == 0) {
         return -1;
     }
 
-    /* Validate all pages are allocated */
+    /* CRIT-003 FIX: Atomically free each page with rollback on failure */
+    size_t freed = 0;
+    
     for (size_t i = 0; i < count; i++) {
-        if (page + i >= TOTAL_PAGES || test_bit(page + i) == 0) {
-            return -1;  /* Invalid or already free */
+        size_t current_page = page + i;
+        
+        /* Check bounds */
+        if (current_page >= TOTAL_PAGES) {
+            /* Rollback already-freed pages */
+            for (size_t j = 0; j < freed; j++) {
+                set_bit(page + j);
+            }
+            return -1;
         }
-    }
-
-    /* Free all pages */
-    for (size_t i = 0; i < count; i++) {
-        clear_bit(page + i);
+        
+        /* Atomically test-and-clear the bit */
+        size_t word_idx, bit_idx;
+        get_bit_indices(current_page, &word_idx, &bit_idx);
+        
+        uint64_t mask = 1ULL << bit_idx;
+        uint64_t old_val = __atomic_fetch_and(
+            &g_page_bitmap.words[word_idx],
+            ~mask,
+            __ATOMIC_SEQ_CST
+        );
+        
+        /* Check if bit was already clear (double-free) */
+        if (!(old_val & mask)) {
+            /* Page was already free - rollback all freed pages */
+            for (size_t j = 0; j <= freed; j++) {
+                set_bit(page + j);
+            }
+            return -1;  /* Double-free detected */
+        }
+        
+        freed++;
     }
 
     return 0;
