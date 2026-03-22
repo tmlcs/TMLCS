@@ -76,13 +76,19 @@ extern "C" {
 /* =============================================================================
  * PIT Driver State
  * =============================================================================
+ * FIX-PIT-001: All fields should be accessed as volatile in SMP environments.
+ * State is updated in IRQ0 handler and read from other contexts.
+ * 
+ * @note Use memory barriers (rmb()/mb()) when reading multiple fields
+ * @note ticks and milliseconds are updated in interrupt context
+ * =============================================================================
  */
 typedef struct {
-    int initialized;            /* 1 if PIT initialized */
-    uint32_t frequency_hz;      /* Current frequency in Hz */
-    uint32_t divisor;           /* Current divisor value */
-    uint64_t ticks;             /* Total ticks since init */
-    uint64_t milliseconds;      /* Total milliseconds since init */
+    volatile int initialized;            /* 1 if PIT initialized */
+    volatile uint32_t frequency_hz;      /* Current frequency in Hz */
+    volatile uint32_t divisor;           /* Current divisor value */
+    volatile uint64_t ticks;             /* Total ticks since init */
+    volatile uint64_t milliseconds;      /* Total milliseconds since init */
 } pit_state_t;
 
 /* =============================================================================
@@ -239,11 +245,15 @@ void pit_print_stats(void);
 
 /**
  * @brief Get PIT driver state
- * @return Pointer to internal state structure
- * 
+ * @return Pointer to internal state structure (volatile)
+ *
+ * FIX-PIT-001: Returns volatile pointer for SMP safety.
+ * State is updated in IRQ handler and read from other contexts.
+ *
  * @note For testing/debugging only
+ * @note Use memory barriers when reading multiple fields
  */
-pit_state_t* pit_get_state(void);
+volatile pit_state_t* pit_get_state(void);
 
 #ifdef __cplusplus
 }

@@ -262,6 +262,9 @@ Slab allocator ready
 
 --- Cache Sizes (Minimal) ---
 ..  [PASS] 32-byte allocation works correctly
-............  [FAIL] 64-byte allocation should return NULL....
+............  [FAIL] 64-byte allocation should return NULL
+....
 --- Memory Leak Fix (FEAT-MEM-003) ---
-......  [PASS] kmem_free() returned memory to slab..  [PASS] Memory reuse works....  [PASS] Second free succeeded
+......  [PASS] kmem_free() returned memory to slab
+..  [PASS] Memory reuse works
+....  [PASS] Second free succeeded

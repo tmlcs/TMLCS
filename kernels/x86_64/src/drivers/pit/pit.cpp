@@ -7,8 +7,11 @@
 /* =============================================================================
  * PIT Driver State
  * =============================================================================
+ * FIX-PIT-001: Added volatile to prevent compiler optimization in SMP.
+ * State is updated in IRQ handler and read from other contexts.
+ * =============================================================================
  */
-static pit_state_t g_pit_state;
+static volatile pit_state_t g_pit_state;
 
 /* Custom callback (optional) */
 static pit_callback_t g_pit_callback = nullptr;
@@ -292,10 +295,10 @@ void pit_print_stats(void) {
     serial_write_str("Seconds: ");
     serial_write_dec(pit_get_seconds());
     serial_write_str("\r\n");
-    
+
     serial_write_str("======================\r\n");
 }
 
-pit_state_t* pit_get_state(void) {
+volatile pit_state_t* pit_get_state(void) {
     return &g_pit_state;
 }
