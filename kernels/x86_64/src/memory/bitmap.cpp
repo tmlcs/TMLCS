@@ -112,30 +112,30 @@ size_t bitmap_alloc(void) {
     if (!g_bitmap_initialized) {
         return (size_t)-1;
     }
-    
+
     /* Scan bitmap for first free page */
     for (size_t word_idx = 0; word_idx < BITMAP_WORDS; word_idx++) {
         uint64_t word = g_page_bitmap.words[word_idx];
-        
+
         /* If word is all 1s, no free pages here */
         if (word == 0xFFFFFFFFFFFFFFFFULL) {
             continue;
         }
-        
-        /* Find first zero bit in word */
-        for (size_t bit_idx = 0; bit_idx < 64; bit_idx++) {
-            if (!(word & (1ULL << bit_idx))) {
-                /* Found free page */
-                size_t page = word_idx * 64 + bit_idx;
-                
-                /* Mark as used */
-                set_bit(page);
-                
-                return page;
-            }
-        }
+
+        /* PERF-MEM-001: Use __builtin_ctzll for O(1) bit finding
+         * Find first zero bit: invert word and count trailing zeros
+         * __builtin_ctzll returns number of trailing zeros
+         * For inverted word, this gives us the first zero bit position
+         */
+        unsigned int bit_idx = __builtin_ctzll(~word);
+        size_t page = word_idx * 64 + bit_idx;
+
+        /* Mark as used */
+        set_bit(page);
+
+        return page;
     }
-    
+
     /* No free pages found */
     return (size_t)-1;
 }

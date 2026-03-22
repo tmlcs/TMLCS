@@ -127,6 +127,9 @@ int bitmap_is_initialized(void);
  * Finds the first free page in the bitmap and marks it as used.
  * Uses first-fit strategy for simplicity.
  *
+ * PERF-MEM-001: Uses __builtin_ctzll() for O(1) bit finding.
+ * Performance: O(n) where n = number of 64-bit words (not bits)
+ *
  * @note Returns page NUMBER, not address
  * @note Use page_to_addr() to convert to physical address
  *
