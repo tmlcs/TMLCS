@@ -530,18 +530,27 @@ void test_bitmap_allocator(void) {
     serial_write_str("  Free pages: ");
     serial_write_dec(free_pages);
     serial_write_str("\r\n");
-    
+
     if (free_pages > 0) {
         test_pass("bitmap_count_free_pages() returned value > 0");
     }
-    
+
     size_t largest = bitmap_largest_free_region();
     serial_write_str("  Largest free region: ");
     serial_write_dec(largest);
     serial_write_str(" pages\r\n");
-    
+
     if (largest > 0) {
         test_pass("bitmap_largest_free_region() returned value > 0");
+    }
+    
+    /* Test 4: FIX-MEM-004 - Validate count=0 rejection */
+    serial_write_str("  Testing bitmap_free_contiguous(count=0)...\r\n");
+    int result = bitmap_free_contiguous(0, 0);
+    if (result == -1) {
+        test_pass("bitmap_free_contiguous(count=0) correctly rejected");
+    } else {
+        test_fail("bitmap_free_contiguous(count=0) should return -1");
     }
 }
 

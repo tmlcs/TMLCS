@@ -177,13 +177,16 @@ int bitmap_free(size_t page);
 /**
  * @brief Free multiple contiguous physical pages
  * @param page Starting page number
- * @param count Number of pages to free
+ * @param count Number of pages to free (must be > 0)
  * @return 0 on success, -1 on error
  *
  * Marks all pages in the range [page, page+count) as free.
  *
+ * FIX-MEM-004: Now validates count > 0 to prevent invalid frees.
+ *
  * @note All pages must have been allocated together
  * @note Does NOT zero the page content
+ * @note Returns -1 if count == 0 (invalid parameter)
  *
  * @example
  *   bitmap_free_contiguous(start_page, 4);  // Free 4 pages

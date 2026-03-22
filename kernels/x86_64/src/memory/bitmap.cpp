@@ -194,22 +194,23 @@ int bitmap_free(size_t page) {
 }
 
 int bitmap_free_contiguous(size_t page, size_t count) {
-    if (!g_bitmap_initialized || page >= TOTAL_PAGES) {
+    /* FIX-MEM-004: Validate inputs */
+    if (!g_bitmap_initialized || page >= TOTAL_PAGES || count == 0) {
         return -1;
     }
-    
+
     /* Validate all pages are allocated */
     for (size_t i = 0; i < count; i++) {
         if (page + i >= TOTAL_PAGES || test_bit(page + i) == 0) {
             return -1;  /* Invalid or already free */
         }
     }
-    
+
     /* Free all pages */
     for (size_t i = 0; i < count; i++) {
         clear_bit(page + i);
     }
-    
+
     return 0;
 }
 
