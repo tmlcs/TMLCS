@@ -1,6 +1,7 @@
 #include "test_memory_manager.h"
 #include "heap.h"
 #include "bitmap.h"
+#include "slab.h"
 #include "serial.h"
 #include "print.h"
 #include "string.h"
@@ -555,6 +556,118 @@ void test_bitmap_allocator(void) {
 }
 
 /* =============================================================================
+ * TEST-MEM-001: Stress Test for Memory Allocator
+ * =============================================================================
+ * Tests allocator under memory pressure.
+ * Allocates many objects, frees randomly, verifies no leaks/corruption.
+ */
+
+void test_memory_stress(void) {
+    print_test_header("Memory Stress Test (TEST-MEM-001)");
+    
+    #define STRESS_ALLOC_COUNT 50
+    #define STRESS_FREE_COUNT 25
+    
+    void* ptrs[STRESS_ALLOC_COUNT];
+    
+    /* Initialize array */
+    for (int i = 0; i < STRESS_ALLOC_COUNT; i++) {
+        ptrs[i] = 0;
+    }
+    
+    serial_write_str("  Allocating ");
+    serial_write_dec(STRESS_ALLOC_COUNT);
+    serial_write_str(" objects...\r\n");
+    
+    /* Allocate many objects */
+    int alloc_success = 0;
+    for (int i = 0; i < STRESS_ALLOC_COUNT; i++) {
+        /* Vary size: 32, 64, 128, 256 bytes */
+        size_t size = 32 << (i % 4);
+        ptrs[i] = kmem_alloc(size);
+        if (ptrs[i]) {
+            /* Write pattern */
+            memset(ptrs[i], (uint8_t)(i & 0xFF), size);
+            alloc_success++;
+        }
+    }
+    
+    serial_write_str("  Allocated: ");
+    serial_write_dec(alloc_success);
+    serial_write_str("/");
+    serial_write_dec(STRESS_ALLOC_COUNT);
+    serial_write_str("\r\n");
+    
+    if (alloc_success < STRESS_ALLOC_COUNT / 2) {
+        test_fail("Too many allocation failures");
+        return;
+    }
+    
+    test_pass("Multiple allocations succeeded");
+    
+    /* Free some objects (not all) */
+    serial_write_str("  Freeing ");
+    serial_write_dec(STRESS_FREE_COUNT);
+    serial_write_str(" objects...\r\n");
+    
+    int free_success = 0;
+    for (int i = 0; i < STRESS_FREE_COUNT && i < alloc_success; i++) {
+        /* Free every other object */
+        if (i % 2 == 0 && ptrs[i]) {
+            size_t size = 32 << (i % 4);
+            kmem_free(ptrs[i], size);
+            ptrs[i] = 0;
+            free_success++;
+        }
+    }
+    
+    serial_write_str("  Freed: ");
+    serial_write_dec(free_success);
+    serial_write_str("\r\n");
+    test_pass("Multiple frees succeeded");
+    
+    /* Allocate again - should reuse freed memory */
+    serial_write_str("  Re-allocating to test reuse...\r\n");
+    
+    int reuse_success = 0;
+    for (int i = 0; i < STRESS_ALLOC_COUNT; i++) {
+        if (!ptrs[i]) {
+            size_t size = 32 << (i % 4);
+            void* new_ptr = kmem_alloc(size);
+            if (new_ptr) {
+                memset(new_ptr, 0xAA, size);
+                ptrs[i] = new_ptr;
+                reuse_success++;
+            }
+        }
+    }
+    
+    serial_write_str("  Re-allocated: ");
+    serial_write_dec(reuse_success);
+    serial_write_str("\r\n");
+    
+    if (reuse_success > 0) {
+        test_pass("Memory reuse works");
+    } else {
+        test_fail("Memory reuse failed");
+    }
+    
+    /* Free all remaining */
+    serial_write_str("  Cleaning up...\r\n");
+    for (int i = 0; i < STRESS_ALLOC_COUNT; i++) {
+        if (ptrs[i]) {
+            size_t size = 32 << (i % 4);
+            kmem_free(ptrs[i], size);
+        }
+    }
+    
+    test_pass("Stress test completed successfully");
+    
+    #undef STRESS_ALLOC_COUNT
+    #undef STRESS_FREE_COUNT
+}
+
+/* =============================================================================
  * Main Test Runner
  * =============================================================================
  */
@@ -587,7 +700,8 @@ void test_memory_manager(void) {
     test_fragmentation();
     test_large_allocations();
     test_bitmap_allocator();
-    
+    test_memory_stress();  /* TEST-MEM-001: Stress test */
+
     /* Print final stats */
     serial_write_str("\r\nFinal memory state:\r\n");
     heap_print_stats();

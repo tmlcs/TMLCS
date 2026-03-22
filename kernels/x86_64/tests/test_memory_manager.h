@@ -94,6 +94,12 @@ void test_large_allocations(void);
  */
 void test_bitmap_allocator(void);
 
+/**
+ * TEST-MEM-001: Stress test for memory allocator
+ * Tests allocator under memory pressure with many alloc/free cycles
+ */
+void test_memory_stress(void);
+
 #ifdef __cplusplus
 }
 #endif
