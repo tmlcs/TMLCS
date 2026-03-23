@@ -191,46 +191,6 @@ void* krealloc(void* ptr, size_t new_size) {
     return new_ptr;
 }
 
-void kfree(void* ptr) {
-    if (!g_heap_initialized || ptr == NULL) {
-        return;
-    }
-
-    /* Note: For slab allocations (size <= 2048), use kmem_free_auto() */
-    /* kfree() is for large allocations only (bitmap-based) */
-
-    /* Validate pointer is in managed range */
-    uintptr_t phys = (uintptr_t)ptr;
-    if (phys < PHYSICAL_MEMORY_START || phys >= PHYSICAL_MEMORY_END) {
-        return;  /* Invalid pointer */
-    }
-
-    /* Convert to page number */
-    size_t start_page = addr_to_page(ptr);
-
-    if (start_page == (size_t)-1) {
-        return;  /* Invalid address */
-    }
-
-    /* Acquire lock */
-    spinlock_acquire(&g_heap_lock);
-
-    /* Calculate number of pages */
-    /* We need to find how many contiguous pages are allocated starting here */
-    size_t pages = 0;
-    while (bitmap_is_page_allocated(start_page + pages) == 1) {
-        pages++;
-    }
-
-    /* Free all pages */
-    if (pages > 0) {
-        bitmap_free_contiguous(start_page, pages);
-    }
-
-    /* Release lock */
-    spinlock_release(&g_heap_lock);
-}
-
 /* =============================================================================
  * Unified Free API - kmem_free_auto()
  * =============================================================================
@@ -244,7 +204,12 @@ extern uint8_t* g_slab_pool;
 extern size_t g_slab_pool_size;
 
 /**
- * Check if a pointer belongs to the slab memory pool
+ * Check if a pointer belongs to a slab-allocated object.
+ *
+ * Slab pages are 4KB-aligned and start with a slab_t header whose
+ * magic field is set to SLAB_MAGIC on initialization. Aligning ptr
+ * down to the nearest 4KB boundary and reading the magic field is
+ * sufficient to distinguish slab pages from other heap pages.
  */
 int is_slab_address(void* ptr) {
     if (ptr == nullptr) {
@@ -252,16 +217,21 @@ int is_slab_address(void* ptr) {
     }
 
     uintptr_t addr = (uintptr_t)ptr;
-    
-    /* Check if pool is initialized */
-    if (g_slab_pool == 0) {
-        return 0;
-    }
-    
-    uintptr_t pool_start = (uintptr_t)g_slab_pool;
-    uintptr_t pool_end = pool_start + g_slab_pool_size;
 
-    return (addr >= pool_start && addr < pool_end) ? 1 : 0;
+    /* Align down to slab page boundary (SLAB_SIZE = 4KB = power of 2) */
+    uintptr_t page_start = addr & ~((uintptr_t)(SLAB_SIZE - 1));
+
+    /* Read slab magic from potential slab header */
+    const slab_t* possible_slab = reinterpret_cast<const slab_t*>(page_start);
+
+    /* Verify object falls within the object area (after 64-byte header) */
+    if (possible_slab->magic == SLAB_MAGIC) {
+        uintptr_t obj_start = page_start + 64;
+        uintptr_t obj_end   = page_start + SLAB_SIZE;
+        return (addr >= obj_start && addr < obj_end) ? 1 : 0;
+    }
+
+    return 0;
 }
 
 /**
@@ -290,7 +260,7 @@ void kmem_free_auto(void* ptr) {
         kmem_free(ptr, 0);
     } else {
         /* Not slab - must be bitmap allocation, free directly */
-        /* Inline the bitmap free logic to avoid calling deprecated kfree() */
+        /* Not slab — bitmap allocation; free pages directly */
         if (!g_heap_initialized) {
             return;
         }

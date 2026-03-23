@@ -36,7 +36,7 @@ extern "C" {
  *   void* ptr = kmalloc(1024);
  *   if (ptr != NULL) {
  *       // Use memory...
- *       kfree(ptr);
+ *       kmem_free_auto(ptr);
  *   }
  *
  *   // Allocate zeroed memory
@@ -72,7 +72,7 @@ extern "C" {
  * @brief Initialize the kernel heap
  * @return 1 on success, 0 on failure
  *
- * Must be called before any kmalloc/kfree calls.
+ * Must be called before any kmalloc/kmem_free_auto calls.
  * Initializes the underlying bitmap allocator.
  *
  * @note Called once at kernel startup
@@ -139,7 +139,7 @@ void* kcalloc(size_t nmemb, size_t size);
  *
  * Behavior:
  *   - If ptr is NULL: Equivalent to kmalloc(new_size)
- *   - If new_size is 0: Equivalent to kfree(ptr), returns NULL
+ *   - If new_size is 0: Equivalent to kmem_free_auto(ptr), returns NULL
  *   - If new_size > old_size: Old data is preserved
  *   - If new_size < old_size: Data is truncated (old data preserved)
  *
@@ -152,31 +152,6 @@ void* kcalloc(size_t nmemb, size_t size);
  *   ptr = krealloc(ptr, 4096);  // Grow to 4KB
  */
 void* krealloc(void* ptr, size_t new_size);
-
-/**
- * @brief Free allocated memory
- * @param ptr Pointer to memory to free (or NULL)
- *
- * Returns memory to the kernel heap.
- *
- * Behavior:
- *   - If ptr is NULL: No operation (safe)
- *   - If ptr is invalid: Undefined behavior (may crash)
- *   - If ptr already freed: Undefined behavior (double-free)
- *
- * @note Safe to call with NULL (no operation)
- * @note Do NOT free the same pointer twice
- * @note Do NOT free stack or static memory
- * @deprecated Use kmem_free_auto() instead which works for all allocation types
- *
- * @example
- *   void* ptr = kmalloc(1024);
- *   // ... use ptr ...
- *   kfree(ptr);  // Memory returned to heap
- *   ptr = NULL;  // Good practice
- */
-[[deprecated("Use kmem_free_auto() instead which handles all allocation types")]]
-void kfree(void* ptr);
 
 /**
  * @brief Free allocated memory (unified API)
