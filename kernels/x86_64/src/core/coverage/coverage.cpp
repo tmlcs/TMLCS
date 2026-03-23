@@ -14,6 +14,12 @@
 coverage_entry_t g_coverage_table[COVERAGE_MAX_ENTRIES];
 int g_coverage_count = 0;
 
+/* strcmp is not in the kernel's freestanding string.h; implement locally */
+static int str_eq(const char* a, const char* b) {
+    size_t la = strlen(a);
+    return la == strlen(b) && memcmp(a, b, la) == 0;
+}
+
 /* =============================================================================
  * Helper Functions - Reduce complexity of coverage_print_summary
  * =============================================================================
@@ -29,21 +35,24 @@ static void print_number(int value) {
     int idx = 0;
 
     // Handle negative numbers
-    bool negative = false;
-    if (value < 0) {
-        negative = true;
-        value = -value;
-    }
+    bool negative = (value < 0);
+
+    /* MED-003 FIX: negating INT_MIN (-2147483648) directly is UB in signed
+     * arithmetic.  Convert via int64_t so the negation is well-defined, then
+     * store in uint32_t for the digit-extraction loop. */
+    uint32_t uval = negative ?
+        static_cast<uint32_t>(-static_cast<int64_t>(value)) :
+        static_cast<uint32_t>(value);
 
     // Convert to string
-    if (value == 0) {
+    if (uval == 0) {
         buf[idx++] = '0';
     } else {
         char temp[16];
         int temp_idx = 0;
-        while (value > 0) {
-            temp[temp_idx++] = '0' + (value % 10);
-            value /= 10;
+        while (uval > 0) {
+            temp[temp_idx++] = static_cast<char>('0' + static_cast<int>(uval % 10));
+            uval /= 10;
         }
         // Reverse
         while (temp_idx > 0) {
@@ -173,7 +182,11 @@ void coverage_init(void) {
 void coverage_hit(const char* function, int line) {
     // Search for existing entry
     for (int i = 0; i < g_coverage_count; i++) {
-        if (g_coverage_table[i].function == function && g_coverage_table[i].line == line) {
+        /* MED-002 FIX: compare string contents, not pointer addresses.
+         * Checking line first (cheap int compare) short-circuits most misses
+         * before the strcmp call. */
+        if (g_coverage_table[i].line == line &&
+            str_eq(g_coverage_table[i].function, function)) {
             g_coverage_table[i].hits++;
             return;
         }
