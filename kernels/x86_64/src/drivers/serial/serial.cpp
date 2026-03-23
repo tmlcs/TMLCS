@@ -487,9 +487,9 @@ int serial_write_char(char data) {
  * This is more efficient than per-character locking and ensures
  * the entire string is output atomically without interleaving.
  *
- * Returns status to allow callers to detect timeouts.
- * If timeout occurs mid-string, remaining characters are dropped
- * and the function returns 0 to indicate incomplete write.
+ * HIGH-002 FIX: Returns character count for partial write tracking.
+ * If timeout occurs mid-string, returns count of characters written.
+ * Callers can use this to retry remaining characters.
  *
  * Null Pointer Handling:
  *   Passing NULL is a programming error, NOT hardware failure.
@@ -507,7 +507,7 @@ int serial_write_str(const char* str) {
         g_serial_state.error_code = SERIAL_ERROR_NULL_PTR;
         wmb();
         /* Do NOT set serial_failed = 1 - this is not a hardware error */
-        return 0; /* Return failure status */
+        return 0; /* Return 0 characters written */
     }
 
     /* ==========================================
@@ -518,27 +518,28 @@ int serial_write_str(const char* str) {
      * ========================================== */
     serial_lock();
 
-    int success = 1; /* Assume success unless timeout occurs */
+    int chars_written = 0; /* HIGH-002 FIX: Track partial writes */
 
     while (*str) {
         /* Inline character output for efficiency (lock already held) */
         if (!g_serial_state.initialized) {
             serial_unlock();
-            return 0; /* Serial became uninitialized */
+            return chars_written; /* Return partial count */
         }
 
         if (!serial_wait_transmit_empty_timeout(SERIAL_MAX_WAIT)) {
             serial_unlock();
-            return 0; /* Return failure on timeout */
+            return chars_written; /* HIGH-002 FIX: Return partial count on timeout */
         }
 
         outb(g_serial_state.port + SERIAL_THR, (uint8_t) *str);
         str++;
+        chars_written++; /* HIGH-002 FIX: Increment count */
     }
 
     serial_unlock();
 
-    return success; /* Return success status */
+    return chars_written; /* HIGH-002 FIX: Return total characters written */
 }
 
 /**

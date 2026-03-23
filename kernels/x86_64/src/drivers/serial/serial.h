@@ -182,12 +182,24 @@ int serial_is_initialized(void);
 int serial_write_char(char data);
 
 /**
- * @brief Write a null-terminated string to serial
- * @param str Null-terminated string
- * @return 1 on success, 0 on timeout/failure (some characters may have been written)
+ * @brief Write a null-terminated string to serial with partial write tracking
+ * @param str Null-terminated string to write
+ * @return Number of characters written (0 on complete failure or null pointer)
  *
- * @note If timeout occurs mid-string, remaining characters are dropped.
- *       The return value will be 0 to indicate incomplete write.
+ * HIGH-002 FIX: Returns character count instead of binary success/failure.
+ * This allows callers to detect partial writes and resume from timeout point.
+ *
+ * @note If timeout occurs mid-string, returns count of characters written.
+ *       Callers can retry remaining characters: str + chars_written
+ *
+ * @example
+ *   @code
+ *   int written = serial_write_str("Hello World");
+ *   if (written < 11) {
+ *       // Partial write - retry remaining characters
+ *       serial_write_str("Hello World" + written);
+ *   }
+ *   @endcode
  */
 int serial_write_str(const char* str);
 
