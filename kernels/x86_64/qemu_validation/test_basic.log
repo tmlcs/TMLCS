@@ -1,0 +1,270 @@
+[BOOT] Serial initialized successfully
+[BOOT] Baud rate: 115200
+[BOOT] Port: COM1 (0x3F8)
+[BOOT] VGA initialized successfully
+
+=== BSS Initialization Test ===
+BSS variable (should be 0x00000000): 0x0x00000000
+DATA variable (should be 0x12345678): 0x0x12345678
+[BSS TEST] PASSED: BSS initialized to zero
+
+=== Memory Mapping Test ===
+Page tables: 2GiB mapped (0x00000000-0x7FFFFFFF)
+Testing access to 80MB (0x05000000)...
+CR3 value: 0x0x0000000000231000
+Page table base: 0x0x0000000000231000
+CR3 validation: OK
+L4[0] -> L3 at: 0x0x0000000000232000
+L4->L3 mapping: OK
+Write pattern: 0x0xDEADBEEF
+Read back:   0x0xDEADBEEF
+[MEM TEST] PASSED: Memory access at 80MB works
+
+=== Color Validation Test ===
+Testing valid colors (0-15)...
+Testing invalid colors (>15)...
+Color validation: PASSED
+[COLOR TEST] PASSED: Color validation works
+
+=== Debug Macros Test ===
+Testing DEBUG_PRINTLN...
+[DEBUG MACRO] DEBUG_PRINTLN: OK
+[DEBUG] test_debug_value = 0xCAFEBABE
+[DEBUG MACRO] DEBUG_VAR: OK
+[DEBUG MACRO] DEBUG_ASSERT (pass): OK
+[DEBUG] Testing DEBUG_LOG macro
+[DEBUG MACRO] DEBUG_LOG: OK
+[DEBUG MACROS] All tests passed
+
+=== GDT Initialization Test ===
+[PASS] GDT table pointer is valid
+[PASS] Null descriptor: limit_low = 0
+[PASS] Null descriptor: base_low = 0
+[PASS] Null descriptor: access = 0
+[FAIL] Kernel code: access byte correct
+[FAIL] Kernel code: 64-bit mode flag set
+[ABORT] Test aborted due to prior failure
+
+=== IDT Initialization Test ===
+Checking all exception vectors (0-31)...
+  Vector 0 (Divide Error): Registered
+  Vector 3 (Breakpoint): Registered
+  Vector 8 (Double Fault): Registered
+  Vector 9 (Reserved): Registered - NEW
+  Vector 13 (General Protection): Registered
+  Vector 14 (Page Fault): Registered
+  Vector 15 (Reserved): Registered - NEW
+  Vector 19 (SIMD FPU): Registered
+  Vectors 20-31 (Reserved): Registered - NEW
+All 32 exception vectors (0-31) have handlers
+
+Checking IRQ handlers...
+  IRQ0 (PIT): Vector 0x20
+  IRQ1 (Keyboard): Vector 0x21
+  IRQ12 (Mouse): Vector 0x2C
+
+Verifying PIC remap...
+  PIC1 offset: 0x20 (IRQ 0-7 -> INT 0x20-0x27)
+  PIC2 offset: 0x28 (IRQ 8-15 -> INT 0x28-0x2F)
+
+[IDT INIT] All 32 vectors registered successfully
+[HEAP] Initializing slab allocator...
+[SLAB] slab_init() started
+[SLAB] Allocated 4096 bytes from early heap
+[SLAB] Pool address: 0x0x000000000011F1C0
+[SLAB] Reset counters...
+[SLAB] Initializing 7 caches (32-2048 bytes)...
+...[SLAB] Cache 32 bytes OK
+...[SLAB] Cache 64 bytes OK
+...[SLAB] Cache 128 bytes OK
+...[SLAB] Cache 256 bytes OK
+...[SLAB] Cache 512 bytes OK
+...[SLAB] Cache 1024 bytes OK
+...[SLAB] Cache 2048 bytes OK
+[SLAB] All caches initialized
+[SLAB] Pool memory used: 336 bytes
+[SLAB] Set initialized=1...
+[SLAB] slab_init() DONE
+[HEAP] Slab allocator initialized
+
+=== Print Functions Test ===
+print_hex64(0x123456789ABCDEF0): 0x123456789ABCDEF0
+print_dec_signed(12345): 12345
+print_dec_signed(-9876): -9876
+print_dec64_signed(-123456789012345): -123456789012345
+[PRINT FUNCTIONS] All tests passed
+
+=== Decimal Boundary Test ===
+serial_write_dec(UINT32_MAX): 4294967295
+serial_write_dec64(UINT64_MAX): 18446744073709551615
+serial_write_dec(0): 0
+serial_write_dec(5): 5
+serial_write_dec(1000000000): 1000000000
+serial_write_dec64(10000000000000000000): 10000000000000000000
+serial_write_dec_signed(INT32_MIN): -2147483648
+serial_write_dec_signed(INT32_MAX): 2147483647
+[DECIMAL BOUNDARY] All tests passed
+
+=== Query Functions Test ===
+Current cursor: col=0, row=5
+print_get_cursor_pos: OK
+Setting cursor to (40, 12)...
+Cursor set successfully: col=40, row=12
+print_set_cursor: OK
+print_set_cursor clamp col: OK
+print_set_cursor clamp row: OK
+print_set_cursor max boundary: OK
+print_set_cursor zero: OK
+Current color: fg=10, bg=0
+print_get_color: OK
+print_is_initialized: OK (VGA ready)
+[QUERY FUNCTIONS] All tests passed
+
+=== Serial Baud Rate Test ===
+Baud 115200: OK
+Baud 9600: OK
+Baud 110: OK
+Baud 57600: OK
+Baud 0 (invalid): correctly rejected
+Baud 50 (invalid): correctly rejected
+Baud 230400 (invalid): correctly rejected
+[SERIAL BAUD RATE] All tests passed
+
+=== Serial Null Pointer Test ===
+Serial initial state: OK (not failed)
+Testing serial_write_str(nullptr)...
+serial_failed NOT set for null pointer passed
+Error code: SERIAL_ERROR_NULL_PTR (correct)
+Testing serial still works after nullptr...
+Serial still functional: OK
+[SERIAL NULL POINTER] All tests passed
+
+=== String Functions Test ===
+memcpy non-overlapping: OK
+memmove overlapping: OK
+strcpy basic: OK
+strcpy empty string: OK
+strlen normal: OK (len=5)
+strlen empty: OK (len=0)
+strlen nullptr: OK (safely returns 0)
+[STRING FUNCTIONS] All tests passed
+
+=== String NULL Pointer Safety Test ===
+memcpy(NULL, src, n): OK - returned NULL safely
+memcpy(dest, NULL, n): OK - returned dest safely
+memmove NULL handling: OK
+strcpy NULL handling: OK
+memset(NULL, c, n): OK - returned NULL safely
+memcmp NULL handling: OK - returns 0 (equal)
+[STRING NULL SAFETY] All tests passed
+
+=== strlcpy Safe Copy Test ===
+strlcpy complete copy: OK
+strlcpy truncation: OK (len=13, truncated to 5 chars)
+strlcpy exact fit: OK
+strlcpy empty string: OK
+strlcpy destsize=1: OK (null only)
+strlcpy destsize=0: OK (no write)
+strlcpy NULL handling: OK
+[STRLCPY SAFE COPY] All tests passed
+
+=== strlcpy vs strcpy Overflow Demo ===
+strlcpy result: This is a
+  Source length: 27, Buffer size: 10
+strlcpy prevented overflow: OK
+[STRLCPY VS STRCPY] Demo complete
+
+=== Memcpy Overlap Detection Test ===
+memcpy non-overlap: OK
+memcpy overlap (dest in src): OK - handled
+memcpy overlap (src in dest): OK - handled
+memcpy zero-length: OK
+memcpy adjacent: OK
+[MEMCPY OVERLAP] All tests passed
+
+=== Serial Signed Numbers Test ===
+serial_write_dec_signed(42): 42
+serial_write_dec_signed(-1234): -1234
+serial_write_dec_signed(0): 0
+serial_write_dec64_signed(-9876543210): -9876543210
+serial_write_dec64_signed(INT64_MIN): -9223372036854775808
+[SERIAL SIGNED] All tests passed
+
+============================================
+GLOBEX_OS Spinlock Test Suite
+============================================
+
+=== Spinlock Initialization Test ===
+[PASS] SPINLOCK_INIT: locked == 0
+[PASS] SPINLOCK_INIT: interrupts_enabled == false
+[PASS] spinlock_init(): locked == 0
+[PASS] spinlock_init(): interrupts_enabled == false
+[PASS] spinlock_init() re-init: locked == 0
+[SPINLOCK INIT] All initialization tests passed
+
+=== Spinlock Acquire/Release Test ===
+[PASS] Initial state: unlocked
+[PASS] After acquire: locked == 1
+[PASS] After release: locked == 0
+[PASS] Cycle %d: acquire sets locked == 1
+[PASS] Cycle %d: release sets locked == 0
+[PASS] Cycle %d: acquire sets locked == 1
+[PASS] Cycle %d: release sets locked == 0
+[PASS] Cycle %d: acquire sets locked == 1
+[PASS] Cycle %d: release sets locked == 0
+[PASS] Cycle %d: acquire sets locked == 1
+[PASS] Cycle %d: release sets locked == 0
+[PASS] Cycle %d: acquire sets locked == 1
+[PASS] Cycle %d: release sets locked == 0
+[SPINLOCK ACQUIRE/RELEASE] All acquire/release tests passed
+
+=== Spinlock Try Acquire Test ===
+[PASS] try_acquire(unlocked) returns true
+[PASS] try_acquire(unlocked) sets locked == 1
+[PASS] try_acquire(locked) returns false
+[PASS] try_acquire(locked) preserves locked == 1
+[PASS] After release: locked == 0
+[PASS] try_acquire after release returns true
+[PASS] try_acquire after release sets locked == 1
+[SPINLOCK TRY_ACQUIRE] All try_acquire tests passed
+
+=== Spinlock NULL Pointer Safety Test ===
+[PASS] spinlock_init(nullptr) handled safely
+[PASS] spinlock_acquire(nullptr) handled safely
+[PASS] spinlock_release(nullptr) handled safely
+[PASS] spinlock_try_acquire(nullptr) returns false
+[PASS] Valid lock works after NULL calls
+[PASS] Valid release works after NULL calls
+[SPINLOCK NULL SAFETY] All NULL pointer tests passed
+
+=== Spinlock Interrupt State Test ===
+[PASS] Initial state: interrupts_enabled == false
+[PASS] After release: interrupts_enabled reset to false
+[PASS] Lock functional after interrupt test
+[PASS] Release functional after interrupt test
+[SPINLOCK INTERRUPT STATE] All interrupt state tests passed
+
+============================================
+[SPINLOCK TEST] ALL TESTS PASSED
+============================================
+
+============================================
+GLOBEX_OS Slab Allocator Test Suite
+============================================
+Slab allocator ready
+
+--- Basic Slab Allocation ---
+  [PASS] Slab allocator initialized
+........  [PASS] kmem_alloc(32) returned non-NULL
+  [PASS] Write to allocated memory succeeded
+....  [PASS] kmem_free() completed without crash
+  [PASS] kmem_free(NULL) is safe
+
+--- Cache Sizes (Minimal) ---
+..  [PASS] 32-byte allocation works correctly
+............  [FAIL] 64-byte allocation should return NULL
+....
+--- Memory Leak Fix (FEAT-MEM-003) ---
+......  [PASS] kmem_free() returned memory to slab
+..  [PASS] Memory reuse works
+....  [PASS] Second free succeeded
