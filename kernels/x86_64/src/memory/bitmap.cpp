@@ -32,6 +32,21 @@ extern "C" char __kernel_end;
  */
 
 /**
+ * @brief Count set bits in a 64-bit word (freestanding popcount)
+ *
+ * __builtin_popcountll emits a call to __popcountdi2 (libgcc) when the
+ * hardware popcnt instruction is not explicitly enabled, which is unavailable
+ * in -nostdlib freestanding builds.  This parallel bit-count is O(1) with
+ * no library dependencies.
+ */
+static inline size_t popcount64(uint64_t x) {
+    x -= (x >> 1) & 0x5555555555555555ULL;
+    x  = (x & 0x3333333333333333ULL) + ((x >> 2) & 0x3333333333333333ULL);
+    x  = (x + (x >> 4)) & 0x0F0F0F0F0F0F0F0FULL;
+    return (size_t)((x * 0x0101010101010101ULL) >> 56);
+}
+
+/**
  * @brief Get the word index and bit index for a page
  */
 static inline void get_bit_indices(size_t page, size_t* word_idx, size_t* bit_idx) {
@@ -139,27 +154,39 @@ size_t bitmap_alloc(void) {
         return (size_t)-1;
     }
 
-    /* Scan bitmap for first free page */
+    /* HIGH-004 FIX: Atomic CAS loop prevents TOCTOU race between scan and mark.
+     *
+     * Original: read word → find free bit → set_bit() (non-atomic |=)
+     * Race: another CPU could claim the same bit between the read and |=.
+     *
+     * Fix: use __atomic_compare_exchange_n. If another CPU modifies the word
+     * between our read and CAS, the CAS fails and 'word' is refreshed with
+     * the current value — we retry within the same word_idx without
+     * re-scanning from the beginning.
+     */
     for (size_t word_idx = 0; word_idx < BITMAP_WORDS; word_idx++) {
-        uint64_t word = g_page_bitmap.words[word_idx];
+        uint64_t word = __atomic_load_n(&g_page_bitmap.words[word_idx],
+                                        __ATOMIC_RELAXED);
 
-        /* If word is all 1s, no free pages here */
-        if (word == 0xFFFFFFFFFFFFFFFFULL) {
-            continue;
+        while (word != 0xFFFFFFFFFFFFFFFFULL) {
+            /* Find first free bit in this word */
+            unsigned int bit_idx = __builtin_ctzll(~word);
+            uint64_t desired = word | (1ULL << bit_idx);
+
+            /* Attempt to claim the bit atomically.
+             * On failure, 'word' is updated with the current memory value
+             * so the next iteration retries with fresh data. */
+            if (__atomic_compare_exchange_n(
+                    &g_page_bitmap.words[word_idx],
+                    &word,
+                    desired,
+                    0 /* strong */,
+                    __ATOMIC_SEQ_CST,
+                    __ATOMIC_SEQ_CST)) {
+                return word_idx * 64 + (size_t)bit_idx;
+            }
+            /* CAS failed: 'word' refreshed — retry same word */
         }
-
-        /* PERF-MEM-001: Use __builtin_ctzll for O(1) bit finding
-         * Find first zero bit: invert word and count trailing zeros
-         * __builtin_ctzll returns number of trailing zeros
-         * For inverted word, this gives us the first zero bit position
-         */
-        unsigned int bit_idx = __builtin_ctzll(~word);
-        size_t page = word_idx * 64 + bit_idx;
-
-        /* Mark as used */
-        set_bit(page);
-
-        return page;
     }
 
     /* No free pages found */
@@ -170,34 +197,71 @@ size_t bitmap_alloc_contiguous(size_t count) {
     if (!g_bitmap_initialized || count == 0) {
         return (size_t)-1;
     }
-    
-    size_t found_start = (size_t)-1;
-    size_t found_count = 0;
-    
-    /* Scan bitmap for contiguous region */
-    for (size_t page = 0; page < TOTAL_PAGES; page++) {
-        if (test_bit(page) == 0) {
-            /* Free page found */
-            if (found_start == (size_t)-1) {
-                found_start = page;
+
+    /* HIGH-004 FIX: Atomic fetch_or + rollback prevents TOCTOU race.
+     *
+     * Original: scan with test_bit() → set_bit() for each page (non-atomic).
+     * Race: another CPU could claim a page in the candidate run between the
+     * scan and the mark, causing two allocations to overlap.
+     *
+     * Fix:
+     *   1. Scan for a candidate free run (non-atomic — just a hint).
+     *   2. Claim each page with __atomic_fetch_or; if any bit was already
+     *      set by another CPU, roll back all claimed pages with
+     *      __atomic_fetch_and and restart the scan past the conflict.
+     */
+    size_t scan_start = 0;
+
+    while (scan_start < TOTAL_PAGES) {
+        /* Find next free run of 'count' pages starting at scan_start */
+        size_t found_start = scan_start;
+        size_t found_count = 0;
+
+        for (size_t page = scan_start; page < TOTAL_PAGES; page++) {
+            uint64_t word = __atomic_load_n(
+                &g_page_bitmap.words[page / 64], __ATOMIC_RELAXED);
+            if (word & (1ULL << (page % 64))) {
+                /* Allocated — reset run, advance start past this page */
+                found_start = page + 1;
+                found_count = 0;
+            } else {
+                if (++found_count >= count) break;
             }
-            found_count++;
-            
-            /* Check if we found enough */
-            if (found_count >= count) {
-                /* Mark all pages as used */
-                for (size_t i = 0; i < count; i++) {
-                    set_bit(found_start + i);
-                }
-                return found_start;
-            }
-        } else {
-            /* Allocated page - reset search */
-            found_start = (size_t)-1;
-            found_count = 0;
         }
+
+        if (found_count < count) {
+            return (size_t)-1;  /* No free run exists */
+        }
+
+        /* Attempt to claim [found_start, found_start+count) atomically */
+        size_t claimed = 0;
+        for (; claimed < count; claimed++) {
+            size_t p = found_start + claimed;
+            uint64_t mask = 1ULL << (p % 64);
+            uint64_t old_val = __atomic_fetch_or(
+                &g_page_bitmap.words[p / 64], mask, __ATOMIC_SEQ_CST);
+            if (old_val & mask) {
+                break;  /* Conflict: page already in use */
+            }
+        }
+
+        if (claimed == count) {
+            return found_start;  /* All pages claimed successfully */
+        }
+
+        /* Conflict at found_start+claimed — roll back pages we claimed */
+        for (size_t j = 0; j < claimed; j++) {
+            size_t rp = found_start + j;
+            __atomic_fetch_and(
+                &g_page_bitmap.words[rp / 64],
+                ~(1ULL << (rp % 64)),
+                __ATOMIC_SEQ_CST);
+        }
+
+        /* Restart scan past the conflicting page */
+        scan_start = found_start + claimed + 1;
     }
-    
+
     /* No contiguous region found */
     return (size_t)-1;
 }
@@ -294,18 +358,14 @@ size_t bitmap_count_free_pages(void) {
     }
     
     size_t count = 0;
-    
+
     for (size_t word_idx = 0; word_idx < BITMAP_WORDS; word_idx++) {
         uint64_t word = g_page_bitmap.words[word_idx];
-        
-        /* Count zero bits */
-        for (size_t bit_idx = 0; bit_idx < 64; bit_idx++) {
-            if (!(word & (1ULL << bit_idx))) {
-                count++;
-            }
-        }
+        /* MED-001 FIX: popcount64(~word) counts free (zero) bits in O(1)
+         * using the parallel bit-count method (no libgcc dependency). */
+        count += popcount64(~word);
     }
-    
+
     return count;
 }
 
