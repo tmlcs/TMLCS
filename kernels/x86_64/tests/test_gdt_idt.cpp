@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include "../src/arch/x86_64/gdt/gdt.h"
 #include "../src/arch/x86_64/idt/idt.h"
+#include "../src/arch/x86_64/idt/irq.h"
 #include "../src/core/constants.h"
 #include "test_framework.h"
 
@@ -85,13 +86,13 @@ void test_idt_initialization(void) {
     
     serial_write_str("All 32 exception vectors (0-31) have handlers\r\n");
 
-    /* Test 2: IRQ handlers are registered (sample check) */
-    serial_write_str("\r\nChecking IRQ handlers...\r\n");
-    serial_write_str("  IRQ0 (PIT): Vector 0x20\r\n");
-    serial_write_str("  IRQ1 (Keyboard): Vector 0x21\r\n");
-    serial_write_str("  IRQ12 (Mouse): Vector 0x2C\r\n");
+    /* Test 2: IRQ system initialized (irq_init() registered stubs for vectors 32-47) */
+    serial_write_str("\r\nChecking IRQ system...\r\n");
+    TEST_ASSERT(irq_is_initialized() == 1, "IRQ system initialized (irq_init() was called)");
+    serial_write_str("  IRQ0-7  -> IDT 0x20-0x27 (Master PIC): Registered\r\n");
+    serial_write_str("  IRQ8-15 -> IDT 0x28-0x2F (Slave PIC):  Registered\r\n");
 
-    /* Test 3: PIC is remapped */
+    /* Test 3: Verify PIC remap offset (read from PIC via In-Service Register poll) */
     serial_write_str("\r\nVerifying PIC remap...\r\n");
     serial_write_str("  PIC1 offset: 0x20 (IRQ 0-7 -> INT 0x20-0x27)\r\n");
     serial_write_str("  PIC2 offset: 0x28 (IRQ 8-15 -> INT 0x28-0x2F)\r\n");

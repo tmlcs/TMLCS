@@ -6,6 +6,9 @@
 #include "vga.h"
 #include "heap.h"
 #include "early_alloc.h"
+#include "gdt.h"
+#include "idt.h"
+#include "irq.h"
 
 // Enable debug macros for testing
 #define DEBUG_ENABLE 1
@@ -216,6 +219,17 @@ extern "C" [[noreturn]] void kernel_main() {
         print_str("64-bit kernel on C++!\r\n");
         print_str("\r\n");
     }
+
+    // ==========================================
+    // Initialize GDT, TSS, and IDT
+    // ==========================================
+    gdt_init();
+    uint64_t rsp;
+    __asm__ volatile("mov %%rsp, %0" : "=r"(rsp));
+    tss_init(rsp);
+    idt_init();
+    irq_init();
+    serial_write_str("[BOOT] GDT/TSS/IDT/IRQ initialized\r\n");
 
     // ==========================================
     // Run Test Suite

@@ -404,9 +404,6 @@ void idt_init(void) {
         idt_table[i].reserved = 0;
     }
 
-    /* Remap PIC */
-    pic_remap();
-
     /* ==========================================================
      * Register CPU Exception Handlers (INT 0-31)
      * ==========================================================
