@@ -19,6 +19,13 @@ bitmap_t g_page_bitmap;
  */
 static int g_bitmap_initialized = 0;
 
+/* Linker script symbol: end of all kernel sections
+ * (.text + .rodata + .data + .bss incl. early_alloc pool + .boot.data
+ *  incl. page tables and boot stack).
+ * Declared as char so taking its address gives the raw byte address.
+ */
+extern "C" char __kernel_end;
+
 /* =============================================================================
  * Helper Functions (Internal)
  * =============================================================================
@@ -78,21 +85,40 @@ static inline void clear_bit(size_t page) {
  */
 
 void bitmap_init(void) {
-    /* 
+    /*
      * Bitmap is in .bss, so it's already zero-initialized.
-     * All pages are FREE by default.
-     * 
-     * We could mark some pages as used here if needed:
-     * - Pages containing the kernel itself
-     * - Pages containing page tables
-     * - Reserved regions
+     * All pages start as FREE.
+     *
+     * Reserve all pages occupied by the kernel image so the heap
+     * cannot hand them out and overwrite running kernel code/data.
+     *
+     * __kernel_end (linker.ld) is placed after the last section:
+     *   .text + .rodata + .data + .bss (incl. 1 MB early_alloc pool)
+     *   + .boot.data (page tables + 64 KB boot stack)
+     *
+     * Round up to the next page boundary so the final partial page
+     * (if any) is fully protected.
      */
-    
-    /* For now, mark first 16 pages (64KB) as used for kernel/boot data */
-    for (size_t i = 0; i < 16; i++) {
+    uintptr_t end_addr      = (uintptr_t)&__kernel_end;
+    uintptr_t protected_end = (end_addr + PAGE_SIZE - 1) & ~((uintptr_t)(PAGE_SIZE - 1));
+    size_t    pages_to_reserve = (protected_end - PHYSICAL_MEMORY_START) / PAGE_SIZE;
+
+    if (pages_to_reserve > TOTAL_PAGES) {
+        pages_to_reserve = TOTAL_PAGES;
+    }
+
+    for (size_t i = 0; i < pages_to_reserve; i++) {
         set_bit(i);
     }
-    
+
+    serial_write_str("[BITMAP] Reserved ");
+    serial_write_dec(pages_to_reserve);
+    serial_write_str(" pages for kernel (");
+    serial_write_dec((uint32_t)(pages_to_reserve * PAGE_SIZE / 1024));
+    serial_write_str(" KB, 0x100000-0x");
+    serial_write_hex(protected_end);
+    serial_write_str(")\r\n");
+
     wmb();
     g_bitmap_initialized = 1;
     mb();  /* Ensure initialization is visible */
