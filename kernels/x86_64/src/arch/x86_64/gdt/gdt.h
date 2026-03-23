@@ -105,6 +105,9 @@ static inline gdt_granularity_t gdt_granularity(uint8_t v) { gdt_granularity_t w
  * Bits 55:     G (Granularity: 1=4KB pages, 0=1 byte)
  * Bits 56-63:  Base 24-31
  * Bits 64-95:  Base 32-63 (only for TSS and call gates)
+ *
+ * HIGH-005 FIX: TSS descriptors require 16 bytes (two GDT entries) in x86_64.
+ * The upper 32 bits of the base address are stored in the second entry.
  * =============================================================================
  */
 
@@ -117,6 +120,18 @@ typedef struct {
     uint8_t granularity; /* Limit 16-19 + flags */
     uint8_t base_high;   /* Base bits 24-31 */
 } gdt_entry_t;
+
+/**
+ * HIGH-005 FIX: TSS High Descriptor (upper 32 bits of base)
+ * 
+ * In x86_64, TSS descriptors are 16 bytes total:
+ * - First 8 bytes: Standard descriptor (gdt_entry_t)
+ * - Second 8 bytes: Upper 32 bits of base address
+ */
+typedef struct {
+    uint32_t base_high32; /* Base bits 32-63 */
+    uint32_t reserved;    /* Must be zero */
+} tss_descriptor_high_t;
 #pragma pack(pop)
 
 /* =============================================================================
@@ -205,8 +220,11 @@ typedef struct {
  * =============================================================================
  */
 
-/* Number of GDT entries */
-#define GDT_ENTRIES 6
+/* 
+ * HIGH-005 FIX: Increased to 7 entries to accommodate 16-byte TSS descriptor.
+ * TSS requires two consecutive GDT entries in x86_64.
+ */
+#define GDT_ENTRIES 7
 
 /* GDT entry indices */
 #define GDT_INDEX_NULL 0
@@ -215,6 +233,7 @@ typedef struct {
 #define GDT_INDEX_USER_CODE 3
 #define GDT_INDEX_USER_DATA 4
 #define GDT_INDEX_TSS 5
+/* Entry 6 is reserved for TSS high descriptor (internal use) */
 
 /* Segment selectors (index << 3 | RPL) */
 #define GDT_SELECTOR_KERNEL_CODE ((GDT_INDEX_KERNEL_CODE << 3) | 0) /* 0x08 */
