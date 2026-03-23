@@ -156,9 +156,9 @@ extern "C" {
  * @brief IDT gate types
  * @note Type field in IDT entry
  */
-#define IDT_INTERRUPT_GATE 0xE  /**< 32-bit interrupt gate */
-#define IDT_TRAP_GATE 0xF       /**< 32-bit trap gate */
-#define IDT_USER_INTERRUPT 0x8  /**< User-defined interrupt gate */
+#define IDT_INTERRUPT_GATE 0x8E  /**< 64-bit interrupt gate (P=1, DPL=0, type=0xE) */
+#define IDT_TRAP_GATE      0x8F  /**< 64-bit trap gate (P=1, DPL=0, type=0xF) */
+#define IDT_USER_INTERRUPT 0x8   /**< User-defined interrupt gate */
 
 /**
  * @brief IDT vector offsets
