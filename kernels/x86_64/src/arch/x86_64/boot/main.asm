@@ -1,4 +1,6 @@
 global start
+global stack_guard        ; Guard page address (exported for C++ guard setup)
+global page_table_l2_0   ; First 1GiB L2 page table (exported for guard page setup)
 extern long_mode_start
 extern __bss_start
 extern __bss_end
@@ -286,6 +288,8 @@ page_table_l2_0:
     resb 4096               ; L2_0: 512 entries × 2MiB = 1GiB (0-0x3FFFFFFF)
 page_table_l2_1:
     resb 4096               ; L2_1: 512 entries × 2MiB = 1GiB (0x40000000-0x7FFFFFFF)
+stack_guard:
+    resb 4096               ; HIGH-005: guard page - marked not-present by stack_guard_init()
 stack_bottom:
     resb 4096 * 16          ; 64KB stack
 stack_top:

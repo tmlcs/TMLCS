@@ -424,6 +424,7 @@ void idt_init(void) {
 
     /* Exceptions with error code (vectors 8-14) */
     idt_set_gate(8, handler_addr((uint64_t) isr8), type_attr(IDT_INTERRUPT_GATE), dpl(0));
+    idt_table[8].ist = 1;  /* HIGH-005: #DF uses IST1 (dedicated stack from TSS) */
     idt_set_gate(9, handler_addr((uint64_t) isr9), type_attr(IDT_INTERRUPT_GATE), dpl(0));   /* Reserved */
     idt_set_gate(10, handler_addr((uint64_t) isr10), type_attr(IDT_INTERRUPT_GATE), dpl(0));
     idt_set_gate(11, handler_addr((uint64_t) isr11), type_attr(IDT_INTERRUPT_GATE), dpl(0));

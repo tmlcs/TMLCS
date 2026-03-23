@@ -6,9 +6,11 @@
 #include "vga.h"
 #include "heap.h"
 #include "early_alloc.h"
+#include "guard.h"
 #include "gdt.h"
 #include "idt.h"
 #include "irq.h"
+#include "pit.h"
 
 // Enable debug macros for testing
 #define DEBUG_ENABLE 1
@@ -26,6 +28,7 @@
 #include "../../tests/test_serial.h"
 #include "../../tests/test_serial_signed.h"
 #include "../../tests/test_slab.h"
+#include "../../tests/test_pit.h"
 #include "../../tests/test_spinlock.h"
 #include "../../tests/test_string.h"
 #include "../../tests/test_strlcpy.h"
@@ -229,7 +232,13 @@ extern "C" [[noreturn]] void kernel_main() {
     tss_init(rsp);
     idt_init();
     irq_init();
-    serial_write_str("[BOOT] GDT/TSS/IDT/IRQ initialized\r\n");
+    pit_init();
+    irq_register_handler(0, pit_irq_handler);
+    irq_enable(0);
+    stack_guard_init();   /* HIGH-005: guard page + IST1 active */
+    serial_write_str("[BOOT] GDT/TSS/IDT/IRQ/PIT initialized\r\n");
+    interrupts_enable();   /* sti: enable hardware interrupts */
+    serial_write_str("[BOOT] Interrupts enabled (sti)\r\n");
 
     // ==========================================
     // Run Test Suite
@@ -240,7 +249,8 @@ extern "C" [[noreturn]] void kernel_main() {
     test_debug_macros();
     test_gdt_initialization();        // Test GDT initialization
     test_idt_initialization();        // Test IDT initialization (all vectors 0-31)
-    
+    test_pit_all();                   // Test PIT timer: IRQ0, ticks, wait functions
+
     /* Initialize early allocator before heap and slab */
     early_alloc_init_default();
     
@@ -299,6 +309,7 @@ extern "C" [[noreturn]] void kernel_main() {
     serial_write_str("Test: Debug macros - OK\r\n");
     serial_write_str("Test: GDT initialization - OK\r\n");
     serial_write_str("Test: IDT initialization (vectors 0-31) - OK\r\n");
+    serial_write_str("Test: PIT timer (IRQ0, ticks, wait) - OK\r\n");
     serial_write_str("Test: Heap/Slab initialization - OK\r\n");
     serial_write_str("Test: Print functions (64-bit, signed) - OK\r\n");
     serial_write_str("Test: Query functions (cursor, color) - OK\r\n");

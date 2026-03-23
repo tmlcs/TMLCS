@@ -158,7 +158,7 @@ typedef struct {
     uint64_t rsp0;       /* Ring 0 Stack Pointer */
     uint64_t rsp1;       /* Ring 1 Stack Pointer (unused) */
     uint64_t rsp2;       /* Ring 2 Stack Pointer (unused) */
-    uint64_t ist1;       /* Interrupt Stack Table 1 (unused) */
+    uint64_t ist1;       /* Interrupt Stack Table 1 (HIGH-005: dedicated #DF stack) */
     uint64_t ist2;       /* Interrupt Stack Table 2 (unused) */
     uint64_t ist3;       /* Interrupt Stack Table 3 (unused) */
     uint64_t ist4;       /* Interrupt Stack Table 4 (unused) */

@@ -99,9 +99,10 @@ SECTIONS
     ASSERT(ADDR(.bss) % 4096 == 0, "ERROR: .bss section not 4KB aligned")
     ASSERT(ADDR(.boot.data) % 4096 == 0, "ERROR: .boot.data section not 4KB aligned")
 
-    /* Verify page tables fit in .boot.data */
-    ASSERT((__boot_data_end - __boot_data_start) >= 0x10000,
-           "ERROR: .boot.data too small for page tables + stack")
+    /* Verify page tables + guard page + stack fit in .boot.data
+     * Layout: 4×4KB page tables + 1×4KB guard + 16×4KB stack = 21×4KB = 0x15000 */
+    ASSERT((__boot_data_end - __boot_data_start) >= 0x15000,
+           "ERROR: .boot.data too small for page tables + guard + stack")
 
     /* Discard debug sections */
     /DISCARD/ : { *(.stab) *(.stabstr) }

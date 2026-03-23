@@ -56,6 +56,10 @@ void test_gdt_initialization(void) {
     TEST_ASSERT(tss != NULL, "TSS pointer is valid");
     TEST_ABORT_IF_FAILED();
 
+    /* Test 7: IST1 configured for double-fault handler (HIGH-005) */
+    TEST_ASSERT(tss->ist1 != 0, "IST1 stack configured (double-fault protection)");
+    TEST_ABORT_IF_FAILED();
+
     serial_write_str("[GDT INIT] All tests passed\r\n");
 }
 

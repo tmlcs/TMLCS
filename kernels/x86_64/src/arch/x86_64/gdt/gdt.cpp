@@ -45,6 +45,18 @@ static tss_descriptor_high_t g_tss_high __attribute__((aligned(8)));
 static gdt_pointer_t gdt_pointer;
 
 /* =============================================================================
+ * IST1 Stack - Dedicated stack for double-fault handler (HIGH-005 fix)
+ * =============================================================================
+ * When a double fault fires, the kernel stack may already be corrupted.
+ * IST1 provides an independent 8KB stack loaded directly from TSS.ist1,
+ * bypassing RSP entirely. This guarantees the #DF handler always has a
+ * valid stack even if the main kernel stack has overflowed.
+ * =============================================================================
+ */
+#define IST1_STACK_SIZE 8192  /* 8KB - enough for #DF handler + serial output */
+static uint8_t g_ist1_stack[IST1_STACK_SIZE] __attribute__((aligned(16)));
+
+/* =============================================================================
  * TSS - Task State Segment
  * =============================================================================
  * Aligned to 16 bytes for proper access.
@@ -203,7 +215,8 @@ void tss_init(uint64_t kernel_stack) {
     tss_entry.rsp0 = kernel_stack;
     tss_entry.rsp1 = 0;
     tss_entry.rsp2 = 0;
-    tss_entry.ist1 = 0;
+    /* HIGH-005: IST1 points to top of dedicated double-fault stack */
+    tss_entry.ist1 = (uint64_t)(g_ist1_stack + IST1_STACK_SIZE);
     tss_entry.ist2 = 0;
     tss_entry.ist3 = 0;
     tss_entry.ist4 = 0;
