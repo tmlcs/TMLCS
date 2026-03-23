@@ -17,23 +17,42 @@
  * SLAB_DEBUG Configuration
  * =============================================================================
  * INVESTIGATION RESULT (2026-03-19):
- * 
+ *
  * Serial corruption was traced to QEMU UART 16550 emulation, NOT the slab.
  * Guard band tests showed NO corruption in slab memory.
  * Double-free detection found NO issues.
- * 
+ *
  * The corruption pattern "Allocated: 5/5" -> "Allocate5" occurs in the
  * UART transmit buffer when many characters are written rapidly.
- * 
+ *
  * SLAB_DEBUG is disabled because:
  *   1. Slab allocator is NOT the source of corruption
  *   2. Guard validation adds overhead without benefit
  *   3. Tests are disabled to avoid QEMU UART bug
- * 
+ *
  * For more details, see: SLAB_CORRUPTION_INVESTIGATION.md
  * =============================================================================
  */
 #define SLAB_DEBUG 0  /* Not needed - slab is verified correct */
+
+/* =============================================================================
+ * MED-001 FIX: Slab Timing Delays Configuration
+ * =============================================================================
+ * These serial_write_str(".") calls were added as timing delays to work
+ * around a QEMU UART emulation bug. They are NOT needed for normal operation
+ * and add unnecessary overhead.
+ *
+ * Enable SLAB_DEBUG_TIMING only when debugging QEMU UART timing issues.
+ * For production builds or real hardware, set to 0.
+ * =============================================================================
+ */
+#define SLAB_DEBUG_TIMING 0  /* Set to 1 only when debugging QEMU UART */
+
+#if SLAB_DEBUG_TIMING
+    #define SLAB_TIMING_DELAY() do { serial_write_str("."); mb(); } while(0)
+#else
+    #define SLAB_TIMING_DELAY() do { mb(); } while(0)
+#endif
 
 #if SLAB_DEBUG
     #define SLAB_GUARD_PATTERN  0xDEADBEEF
@@ -270,10 +289,13 @@ static void clear_tracked_frees(void) {
  * Initialize a single cache from the memory pool
  *
  * REFACTOR (2026-03-21): Use early_alloc pool instead of BSS array.
- * 
- * NOTE: serial_write_str(".") provides critical timing delay.
+ *
+ * MED-001 FIX (2026-03-23): Timing delays now conditional via SLAB_DEBUG_TIMING.
  * Root cause: Memory timing requires ~15-110μs between pointer writes.
  * This is a known QEMU emulation timing issue.
+ * 
+ * Use SLAB_DEBUG_TIMING=1 only when debugging QEMU UART timing.
+ * For production/real hardware, SLAB_DEBUG_TIMING=0 (no overhead).
  */
 static int init_cache(int idx, size_t size) {
     /* Allocate cache structure from early heap pool */
@@ -285,16 +307,13 @@ static int init_cache(int idx, size_t size) {
 
     /* Use 0 instead of nullptr for freestanding compatibility */
     cache->partial = 0;
-    serial_write_str(".");  /* Timing delay */
-    mb();
-    
+    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
+
     cache->full = 0;
-    serial_write_str(".");  /* Timing delay */
-    mb();
+    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
     
     cache->empty = 0;
-    serial_write_str(".");  /* Timing delay */
-    mb();
+    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
 
     cache->num_slabs = 0;
     cache->num_allocations = 0;
@@ -415,8 +434,9 @@ void slab_shutdown(void) {
  *   - Proper memory reclamation on free
  *   - Guard bytes for corruption detection (DEBUG mode)
  *
- * NOTE: This implementation uses serial_write_str(".") for timing delays
- * between pointer writes to avoid QEMU emulation hangs.
+ * MED-001 FIX (2026-03-23): Timing delays now conditional via SLAB_DEBUG_TIMING.
+ * Set SLAB_DEBUG_TIMING=1 only when debugging QEMU UART timing issues.
+ * For production/real hardware, use SLAB_DEBUG_TIMING=0 (no overhead).
  * =============================================================================
  */
 
@@ -503,25 +523,23 @@ void* kmem_alloc(size_t size) {
     /* First, try to allocate from partial slabs */
     if (cache->partial) {
         slab_t* slab = cache->partial;
-        
+
         /* Allocate from free list */
         void* obj = slab->free_list;
         slab->free_list = slab->free_list->next;
         slab->num_free--;
-        
+
         cache->num_allocations++;
-        serial_write_str(".");  /* Timing delay */
-        mb();
+        SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
         g_slab_total_allocs++;
-        serial_write_str(".");  /* Timing delay */
-        mb();
-        
+        SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
+
         /* Move slab to full list if exhausted */
         if (slab->num_free == 0) {
             remove_slab_from_list(slab, &cache->partial);
             add_slab_to_list(slab, &cache->full);
         }
-        
+
         spinlock_release(&g_slab_lock);
         return obj;
     }
@@ -542,9 +560,8 @@ void* kmem_alloc(size_t size) {
     slab->next = 0;
     slab->prev = 0;
     slab->magic = SLAB_MAGIC;
-    
-    serial_write_str(".");  /* Timing delay */
-    mb();
+
+    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
 
     /* Build free list - optimized with single delay at end */
     uint8_t* objects = (uint8_t*)slab + 64;
@@ -556,40 +573,33 @@ void* kmem_alloc(size_t size) {
         current = current->next;
     }
     current->next = 0;
-    
+
     /* Single timing delay after loop */
-    serial_write_str(".");
-    mb();
+    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
 
     /* Allocate first object */
     void* obj = slab->free_list;
     slab->free_list = slab->free_list->next;
     slab->num_free--;
-    
-    serial_write_str(".");  /* Timing delay */
-    mb();
+
+    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
 
     /* Add slab to partial list */
     add_slab_to_list(slab, &cache->partial);
-    
-    serial_write_str(".");  /* Timing delay */
-    mb();
-    
+
+    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
+
     cache->num_slabs++;
-    serial_write_str(".");  /* Timing delay */
-    mb();
-    
+    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
+
     cache->num_allocations++;
-    serial_write_str(".");  /* Timing delay */
-    mb();
+    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
     
     g_slab_total_slabs++;
-    serial_write_str(".");  /* Timing delay */
-    mb();
+    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
     
     g_slab_total_allocs++;
-    serial_write_str(".");  /* Timing delay */
-    mb();
+    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
 
     spinlock_release(&g_slab_lock);
 
@@ -722,30 +732,25 @@ void kmem_free(void* ptr, size_t size) {
     /* Return object to free list - SINGLE POINTER WRITE (needs delay) */
     slab_free_node_t* node = (slab_free_node_t*)ptr;
     node->next = slab->free_list;
-    serial_write_str(".");  /* Timing delay for pointer write */
-    mb();
-    
+    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
+
     slab->free_list = node;
     slab->num_free++;
-    
-    serial_write_str(".");  /* Timing delay */
-    mb();
-    
+
+    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
+
     target_cache->num_frees++;
-    serial_write_str(".");  /* Timing delay */
-    mb();
-    
+    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
+
     g_slab_total_frees++;
-    serial_write_str(".");  /* Timing delay */
-    mb();
+    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
 
     /* Move slab between lists as needed */
     if (slab->num_free == 1) {
         /* Was full, now has one free - move to partial */
         remove_slab_from_list(slab, &target_cache->full);
         add_slab_to_list(slab, &target_cache->partial);
-        serial_write_str(".");  /* Timing delay for list update */
-        mb();
+        SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
     }
     /* NOTE: We don't free empty slabs yet - that would call kmem_free_auto()
      * which may not be ready. Slabs are freed on shutdown. */

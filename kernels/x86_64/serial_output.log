@@ -74,13 +74,13 @@ Verifying PIC remap...
 [SLAB] Pool address: 0x0x000000000011F1C0
 [SLAB] Reset counters...
 [SLAB] Initializing 7 caches (32-2048 bytes)...
-...[SLAB] Cache 32 bytes OK
-...[SLAB] Cache 64 bytes OK
-...[SLAB] Cache 128 bytes OK
-...[SLAB] Cache 256 bytes OK
-...[SLAB] Cache 512 bytes OK
-...[SLAB] Cache 1024 bytes OK
-...[SLAB] Cache 2048 bytes OK
+[SLAB] Cache 32 bytes OK
+[SLAB] Cache 64 bytes OK
+[SLAB] Cache 128 bytes OK
+[SLAB] Cache 256 bytes OK
+[SLAB] Cache 512 bytes OK
+[SLAB] Cache 1024 bytes OK
+[SLAB] Cache 2048 bytes OK
 [SLAB] All caches initialized
 [SLAB] Pool memory used: 336 bytes
 [SLAB] Set initialized=1...
@@ -255,16 +255,16 @@ Slab allocator ready
 
 --- Basic Slab Allocation ---
   [PASS] Slab allocator initialized
-........  [PASS] kmem_alloc(32) returned non-NULL
+  [PASS] kmem_alloc(32) returned non-NULL
   [PASS] Write to allocated memory succeeded
-....  [PASS] kmem_free() completed without crash
+  [PASS] kmem_free() completed without crash
   [PASS] kmem_free(NULL) is safe
 
 --- Cache Sizes (Minimal) ---
-..  [PASS] 32-byte allocation works correctly
-............  [FAIL] 64-byte allocation should return NULL
-....
+  [PASS] 32-byte allocation works correctly
+  [FAIL] 64-byte allocation should return NULL
+
 --- Memory Leak Fix (FEAT-MEM-003) ---
-......  [PASS] kmem_free() returned memory to slab
-..  [PASS] Memory reuse works
-....  [PASS] Second free succeeded
+  [PASS] kmem_free() returned memory to slab
+  [PASS] Memory reuse works
+  [PASS] Second free succeeded
