@@ -257,11 +257,6 @@ extern "C" {
 #define ICW4_BUF_MASTER 0x0C /**< Buffered mode/master */
 #define ICW4_SFNM 0x10    /**< Special fully nested mode */
 
-/**
- * @brief PIC ICW3 master/slave configuration
- */
-#define ICW3_MASTER_MASK 0xFF  /**< All IRQs masked initially */
-
 /* ==========================================
  * IRQ Vector Definitions
  * ========================================== */
@@ -320,9 +315,10 @@ extern "C" {
  * ========================================== */
 
 /**
- * @brief PIC ICW3 master/slave configuration
+ * @brief PIC ICW3 master/slave configuration constants
  * @note Used during PIC initialization
  */
+#define ICW3_MASTER_MASK 0xFF             /**< All IRQs masked initially */
 #define ICW3_MASTER_SLAVE_ON_IRQ2 0x04    /**< Master: slave connected to IRQ2 */
 #define ICW3_SLAVE_CASCADE_IDENTITY 0x02  /**< Slave: cascade identity */
 
