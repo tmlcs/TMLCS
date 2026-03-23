@@ -408,24 +408,17 @@ void vga_put_string(const char* str) {
         return;
     }
 
-    /* Limit maximum length to prevent holding VGA lock for too long.
+    /* MED-004 FIX: Limit to VGA_ROWS * VGA_COLS (screen capacity).
      *
-     * SMP CONSIDERATION:
-     * The VGA lock is held for the entire duration of this function.
-     * A very long string could block other CPUs from writing to VGA,
-     * causing visible output delays or apparent system hangs.
+     * Previous limit was an arbitrary 256 which silently truncated any
+     * string longer than two screen rows.  The natural hard ceiling is the
+     * total number of display cells (25 × 80 = 2000): writing more
+     * characters than fit on screen is pointless and the lock-hold-time
+     * is still bounded.
      *
-     * 256 characters is sufficient for:
-     *   - Most debug messages (~50-100 chars)
-     *   - Error messages (~100-150 chars)
-     *   - Test output lines (~80 chars = one screen row)
-     *
-     * For longer output, consider:
-     *   - Using serial output instead
-     *   - Breaking into multiple print_str() calls
-     *   - Implementing periodic lock release (future enhancement)
+     * This matches vga_put_string_early() which uses the same limit.
      */
-    constexpr size_t MAX_STRING_LEN = 256;
+    constexpr size_t MAX_STRING_LEN = VGA_ROWS * VGA_COLS;
 
     for (size_t i = 0; i < MAX_STRING_LEN && str[i] != '\0'; i++) {
         switch (str[i]) {
@@ -536,8 +529,8 @@ void vga_put_char_early(char character, vga_pos_t pos, uint8_t color) {
  * @param pos Position struct with starting column (0-79) and row (0-24)
  * @param color Color attribute byte
  *
- *   Unlike vga_put_string() which has MAX_STRING_LEN = 256,
- *   this function previously had no length limit. A very long string
+ *   Both vga_put_string() and this function cap at VGA_ROWS * VGA_COLS.
+ *   vga_put_string() previously capped at 256 (MED-004 fix); this function had no limit. A very long string
  *   could wrap around the screen multiple times, overwriting its own
  *   panic message and producing confusing output.
  *
