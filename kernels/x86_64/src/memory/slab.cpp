@@ -749,14 +749,39 @@ void kmem_free(void* ptr, size_t size) {
     SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
 
     /* Move slab between lists as needed */
-    if (slab->num_free == 1) {
-        /* Was full, now has one free - move to partial */
+    if (slab->num_free == slab->num_objects) {
+        /* SLAB-MED-002 FIX: Slab fully empty — return page to heap.
+         *
+         * Previously slabs were never freed, causing permanent memory loss
+         * proportional to peak live-slab count.
+         *
+         * Transition source:
+         *   num_objects == 1 (2048-byte cache): 0→1 means slab was in full.
+         *   num_objects  > 1 (all other caches): came from partial.
+         *
+         * Lock-order protocol to prevent g_slab_lock → g_heap_lock deadlock:
+         *   1. Remove slab from list while holding g_slab_lock.
+         *   2. Clear magic so kmem_free_auto() routes to bitmap path,
+         *      NOT back into kmem_free() which would re-acquire g_slab_lock.
+         *   3. Release g_slab_lock.
+         *   4. Call kmem_free_auto() — acquires g_heap_lock only. */
+        if (slab->num_objects == 1) {
+            remove_slab_from_list(slab, &target_cache->full);
+        } else {
+            remove_slab_from_list(slab, &target_cache->partial);
+        }
+        target_cache->num_slabs--;
+        g_slab_total_slabs--;
+        slab->magic = 0;
+        spinlock_release(&g_slab_lock);
+        kmem_free_auto((void*)slab);
+        return;
+    } else if (slab->num_free == 1) {
+        /* Was full (0 free → 1 free) — move to partial */
         remove_slab_from_list(slab, &target_cache->full);
         add_slab_to_list(slab, &target_cache->partial);
         SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
     }
-    /* NOTE: We don't free empty slabs yet - that would call kmem_free_auto()
-     * which may not be ready. Slabs are freed on shutdown. */
 
     spinlock_release(&g_slab_lock);
 }
