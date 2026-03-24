@@ -224,9 +224,9 @@ int is_slab_address(void* ptr) {
     /* Read slab magic from potential slab header */
     const slab_t* possible_slab = reinterpret_cast<const slab_t*>(page_start);
 
-    /* Verify object falls within the object area (after 64-byte header) */
+    /* Verify object falls within the object area (after slab header) */
     if (possible_slab->magic == SLAB_MAGIC) {
-        uintptr_t obj_start = page_start + 64;
+        uintptr_t obj_start = page_start + SLAB_HEADER_SIZE;
         uintptr_t obj_end   = page_start + SLAB_SIZE;
         return (addr >= obj_start && addr < obj_end) ? 1 : 0;
     }

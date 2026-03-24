@@ -35,6 +35,9 @@
  */
 #define SLAB_DEBUG 0  /* Not needed - slab is verified correct */
 
+static_assert(sizeof(slab_t) <= SLAB_HEADER_SIZE,
+              "slab_t exceeds SLAB_HEADER_SIZE -- update SLAB_HEADER_SIZE in slab.h");
+
 /* =============================================================================
  * MED-001 FIX: Slab Timing Delays Configuration
  * =============================================================================
@@ -303,7 +306,7 @@ static int init_cache(int idx, size_t size) {
 
     /* Initialize cache struct */
     cache->object_size = size;
-    cache->objects_per_slab = (SLAB_SIZE - 64) / size;
+    cache->objects_per_slab = (SLAB_SIZE - SLAB_HEADER_SIZE) / size;
 
     /* Use 0 instead of nullptr for freestanding compatibility */
     cache->partial = 0;
@@ -447,7 +450,7 @@ static slab_t* find_slab_for_object(void* ptr, slab_cache_t* cache) {
     /* Search partial slabs */
     slab_t* slab = cache->partial;
     while (slab) {
-        uintptr_t slab_start = (uintptr_t)slab + 64;
+        uintptr_t slab_start = (uintptr_t)slab + SLAB_HEADER_SIZE;
         uintptr_t slab_end = slab_start + (cache->objects_per_slab * cache->object_size);
         if ((uintptr_t)ptr >= slab_start && (uintptr_t)ptr < slab_end) {
             return slab;
@@ -458,7 +461,7 @@ static slab_t* find_slab_for_object(void* ptr, slab_cache_t* cache) {
     /* Search full slabs */
     slab = cache->full;
     while (slab) {
-        uintptr_t slab_start = (uintptr_t)slab + 64;
+        uintptr_t slab_start = (uintptr_t)slab + SLAB_HEADER_SIZE;
         uintptr_t slab_end = slab_start + (cache->objects_per_slab * cache->object_size);
         if ((uintptr_t)ptr >= slab_start && (uintptr_t)ptr < slab_end) {
             return slab;
@@ -564,7 +567,7 @@ void* kmem_alloc(size_t size) {
     SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
 
     /* Build free list - optimized with single delay at end */
-    uint8_t* objects = (uint8_t*)slab + 64;
+    uint8_t* objects = (uint8_t*)slab + SLAB_HEADER_SIZE;
     slab->free_list = (slab_free_node_t*)objects;
 
     slab_free_node_t* current = slab->free_list;
@@ -645,7 +648,7 @@ void kmem_free(void* ptr, size_t size) {
             /* Check partial slabs */
             slab_t* slab = cache->partial;
             while (slab) {
-                uintptr_t slab_start = (uintptr_t)slab + 64;
+                uintptr_t slab_start = (uintptr_t)slab + SLAB_HEADER_SIZE;
                 uintptr_t slab_end = slab_start + (cache->objects_per_slab * cache->object_size);
                 if ((uintptr_t)ptr >= slab_start && (uintptr_t)ptr < slab_end) {
                     target_cache = cache;
@@ -658,7 +661,7 @@ void kmem_free(void* ptr, size_t size) {
                 /* Check full slabs */
                 slab = cache->full;
                 while (slab) {
-                    uintptr_t slab_start = (uintptr_t)slab + 64;
+                    uintptr_t slab_start = (uintptr_t)slab + SLAB_HEADER_SIZE;
                     uintptr_t slab_end = slab_start + (cache->objects_per_slab * cache->object_size);
                     if ((uintptr_t)ptr >= slab_start && (uintptr_t)ptr < slab_end) {
                         target_cache = cache;
@@ -695,7 +698,7 @@ void kmem_free(void* ptr, size_t size) {
     }
 
     /* Validate object alignment */
-    uintptr_t obj_offset = (uintptr_t)ptr - ((uintptr_t)slab + 64);
+    uintptr_t obj_offset = (uintptr_t)ptr - ((uintptr_t)slab + SLAB_HEADER_SIZE);
     if (obj_offset % target_cache->object_size != 0) {
         /* Invalid pointer - not aligned to object boundary */
         spinlock_release(&g_slab_lock);

@@ -77,14 +77,18 @@ extern "C" {
 #define CACHE_SIZE_1024 1024
 #define CACHE_SIZE_2048 2048
 
+/** Reserved space for slab_t header at start of each slab page.
+ * static_assert in slab.cpp verifies sizeof(slab_t) <= SLAB_HEADER_SIZE. */
+#define SLAB_HEADER_SIZE 64
+
 /** Objects per slab (excluding metadata) */
-#define OBJECTS_PER_SLAB_32   ((SLAB_SIZE - 64) / 32)
-#define OBJECTS_PER_SLAB_64   ((SLAB_SIZE - 64) / 64)
-#define OBJECTS_PER_SLAB_128  ((SLAB_SIZE - 64) / 128)
-#define OBJECTS_PER_SLAB_256  ((SLAB_SIZE - 64) / 256)
-#define OBJECTS_PER_SLAB_512  ((SLAB_SIZE - 64) / 512)
-#define OBJECTS_PER_SLAB_1024 ((SLAB_SIZE - 64) / 1024)
-#define OBJECTS_PER_SLAB_2048 ((SLAB_SIZE - 64) / 2048)
+#define OBJECTS_PER_SLAB_32   ((SLAB_SIZE - SLAB_HEADER_SIZE) / 32)
+#define OBJECTS_PER_SLAB_64   ((SLAB_SIZE - SLAB_HEADER_SIZE) / 64)
+#define OBJECTS_PER_SLAB_128  ((SLAB_SIZE - SLAB_HEADER_SIZE) / 128)
+#define OBJECTS_PER_SLAB_256  ((SLAB_SIZE - SLAB_HEADER_SIZE) / 256)
+#define OBJECTS_PER_SLAB_512  ((SLAB_SIZE - SLAB_HEADER_SIZE) / 512)
+#define OBJECTS_PER_SLAB_1024 ((SLAB_SIZE - SLAB_HEADER_SIZE) / 1024)
+#define OBJECTS_PER_SLAB_2048 ((SLAB_SIZE - SLAB_HEADER_SIZE) / 2048)
 
 /* =============================================================================
  * Data Structures
