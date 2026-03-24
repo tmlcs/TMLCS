@@ -270,16 +270,33 @@ int bitmap_free(size_t page) {
     if (!g_bitmap_initialized) {
         return -1;
     }
-    
+
     if (page >= TOTAL_PAGES) {
         return -1;  /* Invalid page */
     }
-    
-    if (test_bit(page) == 0) {
-        return -1;  /* Page already free */
+
+    /* BITMAP-MED-001 FIX: Atomic test-and-clear prevents TOCTOU race.
+     *
+     * Original: test_bit() then clear_bit() — two separate non-atomic ops.
+     * Race: another CPU could free the same page between the check and
+     * the clear, causing a silent double-free that corrupts the bitmap.
+     *
+     * Fix: __atomic_fetch_and clears the bit and returns the old word in
+     * a single atomic RMW. If the bit was already clear in the old word,
+     * report double-free without corrupting state (the fetch_and was a
+     * no-op since the bit was already 0). */
+    size_t   word_idx = page / 64;
+    uint64_t mask     = 1ULL << (page % 64);
+
+    uint64_t old_val = __atomic_fetch_and(
+        &g_page_bitmap.words[word_idx],
+        ~mask,
+        __ATOMIC_SEQ_CST);
+
+    if (!(old_val & mask)) {
+        return -1;  /* Page was already free — double-free detected */
     }
-    
-    clear_bit(page);
+
     return 0;
 }
 
