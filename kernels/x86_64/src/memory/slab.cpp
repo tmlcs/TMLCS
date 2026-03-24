@@ -307,6 +307,15 @@ static void clear_tracked_frees(void) {
  * For production/real hardware, SLAB_DEBUG_TIMING=0 (no overhead).
  */
 static int init_cache(int idx, size_t size) {
+    /* MED-NEW-005 FIX: Verify the pool has room for one more slab_cache_t
+     * before writing into it.  Without this check, a misconfigured pool
+     * size (g_slab_pool_size too small) would silently corrupt adjacent
+     * heap memory. */
+    if (g_slab_memory_used + sizeof(slab_cache_t) > g_slab_pool_size) {
+        serial_write_str("[SLAB] FATAL: slab cache pool exhausted in init_cache\r\n");
+        return 0;
+    }
+
     /* Allocate cache structure from early heap pool */
     slab_cache_t* cache = (slab_cache_t*)(g_slab_pool + g_slab_memory_used);
 

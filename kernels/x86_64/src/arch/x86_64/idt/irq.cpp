@@ -16,7 +16,11 @@ static irq_handler_t g_irq_handlers[IRQ_COUNT];
 static uint32_t g_irq_counts[IRQ_COUNT];
 static uint16_t g_irq_mask = 0;  /* Bitmask of enabled IRQs */
 
-/* CRIT-002 FIX: IRQ stack depth tracking to prevent stack overflow */
+/* IRQ nesting depth counter.
+ * SINGLE-CPU ASSUMPTION: This is a global, not per-CPU. On SMP, two CPUs
+ * handling IRQs simultaneously would incorrectly share this counter.
+ * When adding SMP support, replace with a per-CPU variable indexed by
+ * APIC ID or use a dedicated CPU-local storage segment. */
 static volatile uint32_t g_irq_stack_depth = 0;
 static constexpr uint32_t MAX_IRQ_DEPTH = 8;  /* Maximum nested IRQ depth */
 
@@ -107,24 +111,24 @@ int irq_init(void) {
 
     /* Register IRQ stubs in IDT */
     /* Master PIC */
-    idt_set_gate(32, handler_addr((uint64_t)irq0_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(33, handler_addr((uint64_t)irq1_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(34, handler_addr((uint64_t)irq2_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(35, handler_addr((uint64_t)irq3_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(36, handler_addr((uint64_t)irq4_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(37, handler_addr((uint64_t)irq5_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(38, handler_addr((uint64_t)irq6_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(39, handler_addr((uint64_t)irq7_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
+    idt_set_gate(32, handler_addr((uint64_t)irq0_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(33, handler_addr((uint64_t)irq1_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(34, handler_addr((uint64_t)irq2_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(35, handler_addr((uint64_t)irq3_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(36, handler_addr((uint64_t)irq4_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(37, handler_addr((uint64_t)irq5_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(38, handler_addr((uint64_t)irq6_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(39, handler_addr((uint64_t)irq7_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
 
     /* Slave PIC */
-    idt_set_gate(40, handler_addr((uint64_t)irq8_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(41, handler_addr((uint64_t)irq9_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(42, handler_addr((uint64_t)irq10_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(43, handler_addr((uint64_t)irq11_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(44, handler_addr((uint64_t)irq12_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(45, handler_addr((uint64_t)irq13_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(46, handler_addr((uint64_t)irq14_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(47, handler_addr((uint64_t)irq15_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
+    idt_set_gate(40, handler_addr((uint64_t)irq8_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(41, handler_addr((uint64_t)irq9_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(42, handler_addr((uint64_t)irq10_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(43, handler_addr((uint64_t)irq11_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(44, handler_addr((uint64_t)irq12_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(45, handler_addr((uint64_t)irq13_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(46, handler_addr((uint64_t)irq14_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(47, handler_addr((uint64_t)irq15_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
 
     serial_write_str("[IRQ] IRQ stubs registered in IDT\r\n");
 
@@ -171,9 +175,12 @@ int irq_register_handler(uint8_t irq, irq_handler_t handler) {
         return 0;
     }
 
-    wmb();
+    /* MED-004 FIX: Full mb() ensures the handler write is visible to all
+     * CPUs before any subsequent loads can observe the updated pointer.
+     * wmb() (compiler barrier) was insufficient for the publish side. */
+    mb();
     g_irq_handlers[irq] = handler;
-    wmb();
+    mb();
 
     return 1;
 }
@@ -183,9 +190,9 @@ int irq_unregister_handler(uint8_t irq) {
         return 0;
     }
 
-    wmb();
+    mb();
     g_irq_handlers[irq] = nullptr;
-    wmb();
+    mb();
 
     return 1;
 }
@@ -225,6 +232,15 @@ void irq_enable(uint8_t irq) {
         io_delay();
         mask &= ~(1 << irq2);
         outb(PIC2_DATA, mask);
+        io_delay();
+
+        /* MED-006 FIX: Slave IRQs (8-15) are cascaded through master IRQ2.
+         * Unmasking a slave IRQ without also unmasking the cascade line on the
+         * master means the interrupt never reaches the CPU. */
+        uint8_t master_mask = inb(PIC1_DATA);
+        io_delay();
+        master_mask &= ~(1 << 2);  /* Unmask IRQ2 (cascade) on master */
+        outb(PIC1_DATA, master_mask);
         io_delay();
     }
 }
@@ -300,8 +316,10 @@ void irq_dispatch(uint8_t irq) {
         return;
     }
     
-    /* Increment counter */
-    g_irq_counts[irq]++;
+    /* MED-003 FIX: Use atomic increment — irq_dispatch() can be called
+     * concurrently on multiple CPUs; plain ++ is not atomic. Relaxed
+     * ordering is sufficient for a statistics counter. */
+    atomic_inc32_relaxed((volatile uint32_t*)&g_irq_counts[irq]);
 
     /* Call handler if registered */
     irq_handler_t handler = g_irq_handlers[irq];
@@ -317,15 +335,15 @@ void irq_dispatch(uint8_t irq) {
 }
 
 void irq_send_eoi(uint8_t irq) {
-    /* Send EOI to master PIC */
-    outb(PIC1_COMMAND, PIC_EOI);
-    io_delay();
-
-    /* If IRQ came from slave, also send EOI to slave */
+    /* HIGH-001 FIX: For slave IRQs (8-15), send EOI to slave first, then
+     * master. Sending master EOI first re-arms IRQ2 (cascade) before the
+     * slave has acknowledged, risking spurious re-entry on slave IRQs. */
     if (irq >= 8) {
         outb(PIC2_COMMAND, PIC_EOI);
         io_delay();
     }
+    outb(PIC1_COMMAND, PIC_EOI);
+    io_delay();
 }
 
 /* =============================================================================
@@ -371,9 +389,12 @@ uint32_t irq_get_count(uint8_t irq) {
 }
 
 void irq_reset_counts(void) {
-    wmb();
+    /* MED-NEW-004 FIX: Use atomic_store32 so each reset is a single
+     * sequentially-consistent store.  A plain assignment under -O2 could
+     * be widened/reordered; atomic_store32 emits an XCHG or MOV + MFENCE,
+     * ensuring no IRQ increment is lost between a non-atomic read-zero-write
+     * and the next handler execution. */
     for (int i = 0; i < IRQ_COUNT; i++) {
-        g_irq_counts[i] = 0;
+        atomic_store32(&g_irq_counts[i], 0);
     }
-    wmb();
 }

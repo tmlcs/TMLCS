@@ -52,9 +52,30 @@ void stack_guard_init(void) {
     /* 2MiB-aligned base of the huge page that contains the guard page */
     uint64_t huge_base = guard_addr & ~(uint64_t)(0x1FFFFF);
 
+    /* HIGH-NEW-002: IDENTITY-MAPPING ASSUMPTION — This code writes physical
+     * addresses directly into the L1 page table entries
+     * (huge_base + i * PAGE_SIZE).  This is correct only because the boot
+     * code identity-maps the first 2GiB (virtual == physical,
+     * 0x00000000–0x7FFFFFFF) via huge-page L2 entries in main.asm.
+     *
+     * If the kernel is ever moved to a higher-half mapping or KASLR is
+     * added, every address written into g_guard_l1_table must be replaced
+     * with a virt_to_phys() translation, and the L2 entry pointer must
+     * likewise use the physical address of g_guard_l1_table. */
+
     /* Index of that 2MiB entry inside page_table_l2_0
      * (valid because the kernel is always in the first 1GiB) */
     size_t l2_idx = (huge_base >> 21) & 0x1FF;
+
+    /* LOW-NEW-008 FIX: Reject an out-of-range l2_idx before using it as
+     * an array index into page_table_l2_0[512].  Under the current layout
+     * the guard page is always within the first 1GiB so this index is
+     * always < 512; the check guards against future linker script changes
+     * that move the stack above 1GiB. */
+    if (l2_idx >= 512) {
+        serial_write_str("[GUARD] FATAL: guard address outside L2 table range\r\n");
+        return;
+    }
 
     /* Index of the guard page inside the new 4KiB L1 table */
     size_t guard_l1_idx = (guard_addr >> 12) & 0x1FF;
