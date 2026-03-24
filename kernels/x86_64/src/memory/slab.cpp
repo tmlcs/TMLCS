@@ -35,6 +35,10 @@
  */
 #define SLAB_DEBUG 0  /* Not needed - slab is verified correct */
 
+/* Sentinel byte written beyond each allocation when SLAB_DEBUG=1.
+ * If this byte is overwritten, a buffer overflow is detected. */
+#define SLAB_GUARD_BYTE 0xAB
+
 static_assert(sizeof(slab_t) <= SLAB_HEADER_SIZE,
               "slab_t exceeds SLAB_HEADER_SIZE -- update SLAB_HEADER_SIZE in slab.h");
 
@@ -446,34 +450,8 @@ void slab_shutdown(void) {
  * =============================================================================
  */
 
-/**
- * Find slab containing a given object pointer
- */
-static slab_t* find_slab_for_object(void* ptr, slab_cache_t* cache) {
-    /* Search partial slabs */
-    slab_t* slab = cache->partial;
-    while (slab) {
-        uintptr_t slab_start = (uintptr_t)slab + SLAB_HEADER_SIZE;
-        uintptr_t slab_end = slab_start + (cache->objects_per_slab * cache->object_size);
-        if ((uintptr_t)ptr >= slab_start && (uintptr_t)ptr < slab_end) {
-            return slab;
-        }
-        slab = slab->next;
-    }
-    
-    /* Search full slabs */
-    slab = cache->full;
-    while (slab) {
-        uintptr_t slab_start = (uintptr_t)slab + SLAB_HEADER_SIZE;
-        uintptr_t slab_end = slab_start + (cache->objects_per_slab * cache->object_size);
-        if ((uintptr_t)ptr >= slab_start && (uintptr_t)ptr < slab_end) {
-            return slab;
-        }
-        slab = slab->next;
-    }
-    
-    return 0;
-}
+/* find_slab_for_object() removed: kmem_free() derives the owning slab in O(1)
+ * by aligning the pointer down to the SLAB_SIZE page boundary (MED-001 fix). */
 
 /**
  * Remove slab from a list (partial, full, or empty)
@@ -643,65 +621,40 @@ void kmem_free(void* ptr, size_t size) {
 
     spinlock_acquire(&g_slab_lock);
 
-    /* Find cache by scanning all caches */
-    slab_cache_t* target_cache = 0;
-    for (int i = 0; i < NUM_CACHES; i++) {
-        slab_cache_t* cache = get_cache(i);
-        if (cache) {
-            /* Check partial slabs */
-            slab_t* slab = cache->partial;
-            while (slab) {
-                uintptr_t slab_start = (uintptr_t)slab + SLAB_HEADER_SIZE;
-                uintptr_t slab_end = slab_start + (cache->objects_per_slab * cache->object_size);
-                if ((uintptr_t)ptr >= slab_start && (uintptr_t)ptr < slab_end) {
-                    target_cache = cache;
-                    break;
-                }
-                slab = slab->next;
-            }
+    /* MED-001 FIX: O(1) slab lookup.
+     * Each slab occupies exactly one SLAB_SIZE-aligned page with the
+     * slab_t header at the page base.  Aligning ptr down to SLAB_SIZE
+     * gives the owning slab directly, replacing the previous O(N*M) scan
+     * over all caches and all their partial/full slab lists. */
+    slab_t* slab = (slab_t*)((uintptr_t)ptr & ~((uintptr_t)(SLAB_SIZE - 1)));
 
-            if (!target_cache) {
-                /* Check full slabs */
-                slab = cache->full;
-                while (slab) {
-                    uintptr_t slab_start = (uintptr_t)slab + SLAB_HEADER_SIZE;
-                    uintptr_t slab_end = slab_start + (cache->objects_per_slab * cache->object_size);
-                    if ((uintptr_t)ptr >= slab_start && (uintptr_t)ptr < slab_end) {
-                        target_cache = cache;
-                        break;
-                    }
-                    slab = slab->next;
-                }
-            }
-
-            if (target_cache) {
-                break;
-            }
-        }
-    }
-
-    if (!target_cache) {
-        /* Object not found in any slab - invalid free */
-        spinlock_release(&g_slab_lock);
-        return;
-    }
-
-    /* Find the specific slab */
-    slab_t* slab = find_slab_for_object(ptr, target_cache);
-    if (!slab) {
-        spinlock_release(&g_slab_lock);
-        return;
-    }
-
-    /* Validate slab magic */
+    /* Validate slab magic before dereferencing any other field */
     if (slab->magic != SLAB_MAGIC) {
-        /* Slab corrupted! */
+        /* Not a live slab page - invalid free */
+        spinlock_release(&g_slab_lock);
+        return;
+    }
+
+    slab_cache_t* target_cache = slab->cache;
+    if (!target_cache) {
+        spinlock_release(&g_slab_lock);
+        return;
+    }
+
+    /* MED-NEW-001 FIX: Validate that ptr falls within the object area of this
+     * slab page before computing obj_offset.  Without this check, a pointer
+     * below obj_area_start causes uintptr_t underflow, producing a large
+     * positive offset that passes the alignment check and corrupts memory.
+     * obj_area_end is the first byte past the slab page. */
+    uint8_t* obj_area_start = (uint8_t*)slab + SLAB_HEADER_SIZE;
+    uint8_t* obj_area_end   = (uint8_t*)slab + SLAB_SIZE;
+    if ((uint8_t*)ptr < obj_area_start || (uint8_t*)ptr >= obj_area_end) {
         spinlock_release(&g_slab_lock);
         return;
     }
 
     /* Validate object alignment */
-    uintptr_t obj_offset = (uintptr_t)ptr - ((uintptr_t)slab + SLAB_HEADER_SIZE);
+    uintptr_t obj_offset = (uintptr_t)ptr - (uintptr_t)obj_area_start;
     if (obj_offset % target_cache->object_size != 0) {
         /* Invalid pointer - not aligned to object boundary */
         spinlock_release(&g_slab_lock);

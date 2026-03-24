@@ -41,30 +41,47 @@ void panic(const char* message, uint32_t error_code) {
      */
     __asm__ volatile("cli");
 
-    /* ==========================================
-     * Try to initialize serial if not ready
-     * ========================================== */
-    if (!serial_is_initialized()) {
-        serial_init_default();
-    }
+    /* HIGH-NEW-001 FIX: Force-release serial lock before any output.
+     *
+     * If panic() is called while g_serial_lock is held (e.g., a fault
+     * fires inside serial_write_str()), spinlock_acquire() in the serial
+     * output path would spin forever — deadlock.
+     *
+     * Preconditions are met: interrupts are disabled (cli above) and
+     * this is a fatal non-returning path, so breaking mutual exclusion
+     * is safe here.
+     */
+    serial_force_unlock();
 
     /* ==========================================
-     * Error message via serial (always available)
-     * ========================================== */
-    serial_write_str("\r\n\r\n");
-    serial_write_str("!!! KERNEL PANIC !!!\r\n");
-    serial_write_str("\r\n");
-
-    if (message != nullptr) {
-        serial_write_str("Error: ");
-        serial_write_str(message);
+     * Error message via serial (if initialized)
+     * ==========================================
+     * Note: Serial is initialized early in kernel_main() before
+     * any code that can panic. If serial failed at boot, it will
+     * not work here either. Do NOT attempt re-initialization:
+     *   - serial_init_default() with interrupts disabled could hang
+     *   - If serial hardware is broken, we'd waste time retrying
+     *   - The panic message should be as fast as possible
+     *
+     * If serial was not initialized, skip serial output and rely
+     * on VGA (if available) or just halt.
+     */
+    if (serial_is_initialized()) {
+        serial_write_str("\r\n\r\n");
+        serial_write_str("!!! KERNEL PANIC !!!\r\n");
         serial_write_str("\r\n");
-    }
 
-    serial_write_str("Error Code: 0x");
-    serial_write_hex(error_code);
-    serial_write_str("\r\n");
-    serial_write_str("\r\nSystem halted.\r\n");
+        if (message != nullptr) {
+            serial_write_str("Error: ");
+            serial_write_str(message);
+            serial_write_str("\r\n");
+        }
+
+        serial_write_str("Error Code: 0x");
+        serial_write_hex(error_code);
+        serial_write_str("\r\n");
+        serial_write_str("\r\nSystem halted.\r\n");
+    }
 
     /* ==========================================
      * Error message via VGA (if initialized)

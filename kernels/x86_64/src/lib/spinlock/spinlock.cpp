@@ -401,3 +401,24 @@ void serial_unlock(void) {
 bool serial_try_lock(void) {
     return spinlock_try_acquire(&g_serial_lock);
 }
+
+void serial_force_unlock(void) {
+    /* HIGH-002 FIX: Reset the serial spinlock for use in exception handlers.
+     *
+     * If a CPU exception fires while g_serial_lock is held (e.g., a fault
+     * inside serial_write_str()), the exception handler cannot call any
+     * serial_write_* function — spinlock_acquire() would spin forever.
+     *
+     * PRECONDITIONS (both must be true before calling this):
+     *   1. Interrupts MUST be disabled (cli) — prevents a second CPU or IRQ
+     *      from acquiring the lock between the reset and the next acquire.
+     *   2. The caller MUST NOT return — this path is for fatal halt sequences
+     *      only. Forcing the lock open breaks the mutual exclusion guarantee,
+     *      so the lock is permanently invalid after this call.
+     *
+     * LOW-NEW-001 FIX: Compiler barrier before the store prevents the
+     * compiler from reordering prior writes past this unlock under -O2.
+     */
+    __asm__ volatile("" ::: "memory");
+    g_serial_lock.locked = 0;
+}
