@@ -5,6 +5,7 @@
 #include "barriers.h"
 #include "constants.h"
 #include "atomic.h"
+#include "io.h"
 
 /* =============================================================================
  * IRQ System State
@@ -18,25 +19,6 @@ static uint16_t g_irq_mask = 0;  /* Bitmask of enabled IRQs */
 /* CRIT-002 FIX: IRQ stack depth tracking to prevent stack overflow */
 static volatile uint32_t g_irq_stack_depth = 0;
 static constexpr uint32_t MAX_IRQ_DEPTH = 8;  /* Maximum nested IRQ depth */
-
-/* =============================================================================
- * Low-Level I/O Functions
- * =============================================================================
- */
-
-static inline void outb(uint16_t port, uint8_t value) {
-    __asm__ volatile("outb %0, %1" : : "a"(value), "Nd"(port));
-}
-
-static inline uint8_t inb(uint16_t port) {
-    uint8_t ret;
-    __asm__ volatile("inb %1, %0" : "=a"(ret) : "Nd"(port));
-    return ret;
-}
-
-static inline void io_delay(void) {
-    (void)inb(0x80);
-}
 
 /* =============================================================================
  * PIC Initialization

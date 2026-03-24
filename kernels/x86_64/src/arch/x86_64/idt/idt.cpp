@@ -195,61 +195,6 @@ void idt_set_gate(uint8_t vector, handler_addr_t handler, type_attr_t type_attr,
 }
 
 /* =============================================================================
- * io_wait - Small delay for I/O operations
- * =============================================================================
- */
-static inline void io_wait(void) {
-    /* Port 0x80 is used for checkpoints during POST */
-    __asm__ volatile("outb %%al, $0x80" ::"a"(0));
-}
-
-/* =============================================================================
- * pic_remap - Remap PIC IRQs to vectors 0x20-0x2F
- * =============================================================================
- *
- * The PIC by default maps IRQs to INT 0x08-0x0F (master) and 0x70-0x77 (slave).
- * This conflicts with CPU exceptions (INT 0x00-0x1F).
- *
- * We remap to:
- *   - Master PIC: IRQ 0-7  -> INT 0x20-0x27
- *   - Slave PIC:  IRQ 8-15 -> INT 0x28-0x2F
- * =============================================================================
- */
-void pic_remap(void) {
-    /* Save current masks */
-    uint8_t mask1 = pic_read_data(io_port(PIC1_DATA));
-    uint8_t mask2 = pic_read_data(io_port(PIC2_DATA));
-
-    /* ICW1: Start initialization */
-    pic_send_command(io_port(PIC1_COMMAND), ICW1_INIT | ICW1_ICW4);
-    io_wait();
-    pic_send_command(io_port(PIC2_COMMAND), ICW1_INIT | ICW1_ICW4);
-    io_wait();
-
-    /* ICW2: Set vector offsets */
-    pic_send_data(io_port(PIC1_DATA), io_data(PIC1_OFFSET)); /* 0x20 */
-    io_wait();
-    pic_send_data(io_port(PIC2_DATA), io_data(PIC2_OFFSET)); /* 0x28 */
-    io_wait();
-
-    /* ICW3: Configure cascading */
-    pic_send_data(io_port(PIC1_DATA), io_data(ICW3_MASTER_SLAVE_ON_IRQ2)); /* Tell master: slave on IRQ2 */
-    io_wait();
-    pic_send_data(io_port(PIC2_DATA), io_data(ICW3_SLAVE_CASCADE_IDENTITY)); /* Tell slave: cascade identity */
-    io_wait();
-
-    /* ICW4: Set 8086 mode */
-    pic_send_data(io_port(PIC1_DATA), io_data(ICW4_8086));
-    io_wait();
-    pic_send_data(io_port(PIC2_DATA), io_data(ICW4_8086));
-    io_wait();
-
-    /* Restore masks */
-    pic_send_data(io_port(PIC1_DATA), io_data(mask1));
-    pic_send_data(io_port(PIC2_DATA), io_data(mask2));
-}
-
-/* =============================================================================
  * pic_send_eoi - Send End of Interrupt to PIC
  * =============================================================================
  */

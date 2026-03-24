@@ -3,6 +3,7 @@
 #include "print.h"
 #include "barriers.h"
 #include "constants.h"
+#include "io.h"
 
 /* =============================================================================
  * PIT Driver State
@@ -15,37 +16,6 @@ static volatile pit_state_t g_pit_state;
 
 /* Custom callback (optional) */
 static pit_callback_t g_pit_callback = nullptr;
-
-/* =============================================================================
- * Low-Level I/O Functions
- * =============================================================================
- */
-
-/**
- * @brief Write a byte to an I/O port
- */
-static inline void outb(uint16_t port, uint8_t value) {
-    __asm__ volatile("outb %0, %1" : : "a"(value), "Nd"(port));
-}
-
-/**
- * @brief Read a byte from an I/O port
- */
-static inline uint8_t inb(uint16_t port) {
-    uint8_t ret;
-    __asm__ volatile("inb %1, %0" : "=a"(ret) : "Nd"(port));
-    return ret;
-}
-
-/**
- * @brief Small delay for I/O operations
- */
-static inline void io_delay(void) {
-    /* Read from port 0x80 (POST code port) for delay
-     * This is a standard I/O delay technique on x86
-     */
-    (void)inb(0x80);
-}
 
 /* =============================================================================
  * PIT Hardware Access

@@ -353,15 +353,6 @@ void idt_init(void);
 void idt_set_gate(uint8_t vector, handler_addr_t handler, type_attr_t type_attr, dpl_t dpl);
 
 /**
- * @brief Remap the PIC (Programmable Interrupt Controller)
- *
- * Remaps PIC IRQs to vectors 0x20-0x2F to avoid conflict with CPU exceptions.
- *
- * @note Called internally by idt_init()
- */
-void pic_remap(void);
-
-/**
  * @brief Send command to PIC
  *
  * @param port I/O port wrapper from io_port()

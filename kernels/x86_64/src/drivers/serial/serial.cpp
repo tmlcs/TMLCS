@@ -2,6 +2,7 @@
 #include "atomic.h"
 #include "barriers.h"
 #include "constants.h"
+#include "io.h"
 #include "decimal_utils.h"
 #include "hex_utils.h"
 #include "print.h"
@@ -83,71 +84,6 @@ static SerialState_t g_serial_state; /* Zero-initialized by default (BSS) */
  */
 static inline SerialState_t* get_serial_state(void) {
     return &g_serial_state;
-}
-
-/* ==========================================
- * Low-Level I/O Functions
- * ==========================================
- */
-
-/**
- * @brief Write a byte to a port
- *
- * @assembly
- *   Instruction: outb
- *   Operands:
- *     - %0 (output): AL register (value to send)
- *     - %1 (input): DX register (I/O port)
- *   Constraint "a": Uses AL/AX/EAX/RAX register
- *   Constraint "Nd": Immediate port (0-255) or DX register
- *   Effects: Writes byte to specified I/O port
- *   Cycles: ~100-1000 (depends on device)
- *   Barriers: Implicit (volatile prevents reordering)
- *
- * @note This function is x86/x86_64 specific
- * @note Cannot be fully inlined due to volatile
- * @note I/O ports are separate address space (I/O mapped)
- * @note Compiler cannot reorder this instruction due to volatile
- *
- * @param port I/O port (e.g., 0x3F8 for COM1)
- * @param value Byte to send
- *
- * @see inb() for port reads
- * @see SERIAL_COM1, SERIAL_COM2 for standard ports
- */
-static inline void outb(uint16_t port, uint8_t value) {
-    __asm__ volatile("outb %0, %1" : : "a"(value), "Nd"(port));
-}
-
-/**
- * @brief Read a byte from a port
- *
- * @assembly
- *   Instruction: inb
- *   Operands:
- *     - %0 (output): AL register (value read)
- *     - %1 (input): DX register (I/O port)
- *   Constraint "=a": Writes to AL/AX/EAX/RAX
- *   Constraint "Nd": Immediate port (0-255) or DX register
- *   Effects: Reads byte from specified I/O port
- *   Cycles: ~100-1000 (depends on device)
- *   Barriers: Implicit (volatile prevents reordering)
- *
- * @note This function is x86/x86_64 specific
- * @note Return value is in AL register after instruction
- * @note I/O ports are separate address space (I/O mapped)
- * @note Compiler cannot reorder this instruction due to volatile
- *
- * @param port I/O port (e.g., 0x3F8 for COM1)
- * @return uint8_t Byte read from port
- *
- * @see outb() for port writes
- * @see SERIAL_COM1, SERIAL_COM2 for standard ports
- */
-static inline uint8_t inb(uint16_t port) {
-    uint8_t ret;
-    __asm__ volatile("inb %1, %0" : "=a"(ret) : "Nd"(port));
-    return ret;
 }
 
 /* ==========================================
