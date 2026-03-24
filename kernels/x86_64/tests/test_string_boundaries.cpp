@@ -4,6 +4,9 @@
 #include "string.h"
 #include "test_framework.h"
 
+/* This file intentionally tests the deprecated strcpy() function. */
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 /* ==========================================
  * Helper Functions
  * ========================================== */

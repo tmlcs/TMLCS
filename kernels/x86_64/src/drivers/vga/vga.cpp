@@ -242,6 +242,13 @@ uint8_t vga_get_color(void) {
  * =============================================================================
  */
 
+/* VGA-LOW-001: Cursor getters are intentionally unlocked.
+ *
+ * On x86_64 a single aligned load of a `volatile size_t` is hardware-atomic
+ * (64-bit aligned word read).  The compiler barrier `mb()` prevents the
+ * compiler from hoisting the read above any preceding stores.  Adding the
+ * spinlock here would risk deadlock for callers that already hold vga_lock
+ * (e.g. inside a vga_begin_atomic() section). */
 size_t vga_get_cursor_col(void) {
     mb();
     return cursor_col;

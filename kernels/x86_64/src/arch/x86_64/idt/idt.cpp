@@ -324,16 +324,6 @@ void default_exception_handler(interrupt_frame_t* frame) {
 }
 
 /* =============================================================================
- * default_irq_handler - Default hardware IRQ handler
- * =============================================================================
- */
-void default_irq_handler(interrupt_frame_t* frame) {
-    /* Send EOI to PIC */
-    uint8_t irq = (uint8_t) (frame->int_num - IRQ_PIT);
-    pic_send_eoi(irq);
-}
-
-/* =============================================================================
  * idt_init - Initialize Interrupt Descriptor Table
  * =============================================================================
  */

@@ -76,6 +76,7 @@ int memcmp(const void* s1, const void* s2, size_t n);
  * @warning This function is UNSAFE for untrusted input.
  *          Use strlcpy() for safe bounded copying.
  */
+[[deprecated("unsafe: no bounds checking — use strlcpy instead")]]
 char* strcpy(char* dest, const char* src);
 
 /**

@@ -24,7 +24,6 @@ global irq8_stub, irq9_stub, irq10_stub, irq11_stub, irq12_stub, irq13_stub, irq
 
 ; External C handlers
 extern default_exception_handler
-extern default_irq_handler
 extern irq_dispatch
 
 section .text
@@ -255,8 +254,10 @@ irq%1_stub:
     ; Save all registers
     pushaq
 
-    ; Call irq_dispatch with IRQ number
-    mov dil, %1           ; First argument: IRQ number (8-bit)
+    ; Call irq_dispatch with IRQ number.
+    ; mov edi (32-bit) zero-extends into the full RDI register on x86_64,
+    ; ensuring bits 8-63 are clean — correct per System V AMD64 ABI.
+    mov edi, %1           ; First argument: IRQ number (zero-extended into RDI)
     call irq_dispatch
 
     ; Restore all registers

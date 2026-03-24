@@ -134,7 +134,7 @@ static void gdt_set_tss_entry(gdt_entry_t* entry, gdt_base_t base, gdt_limit_t l
  * =============================================================================
  */
 void gdt_init(void) {
-    /* Clear GDT table */
+    /* Clear GDT table - this zeroes all entries including the Null descriptor */
     for (size_t i = 0; i < GDT_ENTRIES; i++) {
         gdt_table[i].limit_low = 0;
         gdt_table[i].base_low = 0;
@@ -144,13 +144,12 @@ void gdt_init(void) {
         gdt_table[i].base_high = 0;
     }
 
-    /* Entry 0: Null descriptor (required by Intel spec) */
-    gdt_table[GDT_INDEX_NULL].limit_low = 0;
-    gdt_table[GDT_INDEX_NULL].base_low = 0;
-    gdt_table[GDT_INDEX_NULL].base_middle = 0;
-    gdt_table[GDT_INDEX_NULL].access = 0;
-    gdt_table[GDT_INDEX_NULL].granularity = 0;
-    gdt_table[GDT_INDEX_NULL].base_high = 0;
+    /* Entry 0: Null descriptor (convention, not a processor requirement)
+     * Already zeroed by the loop above.
+     * Intel SDM Vol 3A, Section 3.4.2: "The first descriptor in the GDT is
+     * not used by the processor."  A null descriptor is placed here by
+     * convention for compatibility with protected-mode segment models.
+     */
 
     /* Entry 1: Kernel code segment
      * Base: 0x00000000, Limit: 0xFFFFFFFF

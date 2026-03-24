@@ -215,6 +215,11 @@ void pit_wait_us(uint32_t us) {
      * Approximate: 1 us ≈ 3 CPU cycles at 3 GHz
      * This is not precise but works for small delays
      */
+    /* PIT-LOW-001 FIX: Cap us before multiplying to prevent uint32_t overflow.
+     * 0xFFFFFFFF / 3 = 1431655765; above that, us * 3 wraps around. */
+    if (us > 0xFFFFFFFFU / 3U) {
+        us = 0xFFFFFFFFU / 3U;
+    }
     uint32_t iterations = us * 3;  /* Rough calibration */
     
     for (uint32_t i = 0; i < iterations; i++) {

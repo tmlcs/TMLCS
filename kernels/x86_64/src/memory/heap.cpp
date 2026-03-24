@@ -416,26 +416,12 @@ void* kmalloc_align(size_t size, size_t alignment) {
         return kmalloc(size);
     }
     
-    /* For larger alignments, we need special handling */
-    /* This is a simplified implementation */
-
-    size_t pages = size_to_pages(size);
-
-    /* Use bitmap_alloc_contiguous which handles allocation internally */
-    /* For aligned allocation, we may need to try multiple times */
-    /* This is a simplified approach - just use regular allocation for now */
-    spinlock_acquire(&g_heap_lock);
-    size_t start_page = bitmap_alloc_contiguous(pages);
-    spinlock_release(&g_heap_lock);
-
-    if (start_page == (size_t)-1) {
-        return NULL;
-    }
-
-    /* MED-001 FIX: Record page count for this allocation */
-    g_page_alloc_count[start_page] = (uint16_t)pages;
-
-    return page_to_addr(start_page);
+    /* HEAP-MED-002 FIX: Alignments larger than PAGE_SIZE are not implemented.
+     * A future implementation would scan the bitmap for a page whose physical
+     * address satisfies the requested alignment.
+     * Return NULL rather than silently ignoring the alignment constraint,
+     * which would hand the caller a misaligned pointer. */
+    return NULL;
 }
 
 size_t kmalloc_size(void* ptr) {

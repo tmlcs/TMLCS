@@ -358,9 +358,10 @@ int slab_init(void) {
     serial_write_hex64((uint64_t)(uintptr_t)g_slab_pool);
     serial_write_str("\r\n");
 
-    /* Initialize spinlock at runtime */
-    g_slab_lock.locked = 0;
-    g_slab_lock.interrupts_enabled = false;
+    /* SLAB-LOW-001 FIX: Removed redundant field-by-field reset.
+     * g_slab_lock is statically initialized to SPINLOCK_INIT at declaration;
+     * slab_init() is only called once from heap_init(), so the lock is always
+     * in its clean default state here. */
     mb();
 
     serial_write_str("[SLAB] Reset counters...\r\n");

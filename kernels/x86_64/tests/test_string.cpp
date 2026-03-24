@@ -2,6 +2,9 @@
 #include "serial.h"
 #include "string.h"
 
+/* This file intentionally tests the deprecated strcpy() function. */
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 /* ==========================================
  * String Functions Test
  * ==========================================

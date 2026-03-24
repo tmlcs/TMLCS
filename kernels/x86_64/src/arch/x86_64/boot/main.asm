@@ -2,8 +2,6 @@ global start
 global stack_guard        ; Guard page address (exported for C++ guard setup)
 global page_table_l2_0   ; First 1GiB L2 page table (exported for guard page setup)
 extern long_mode_start
-extern __bss_start
-extern __bss_end
 
 section .text
 bits 32
@@ -40,29 +38,6 @@ start:
 	jmp gdt64.code_segment:long_mode_start
 
 	hlt
-
-; ==========================================
-; zero_bss - Initialize BSS section to zero
-; ==========================================
-; @brief Zeros the BSS section before jump to long mode
-; @note Essential for global variables without explicit initializer
-; ==========================================
-zero_bss:
-	push eax
-	push ecx
-	push edi
-
-	mov edi, __bss_start
-	mov ecx, __bss_end
-	sub ecx, edi
-	shr ecx, 2          ; Convert bytes to dwords
-	xor eax, eax
-	rep stosd           ; Fill with zeros
-
-	pop edi
-	pop ecx
-	pop eax
-	ret
 
 check_multiboot:
 	cmp eax, 0x36d76289
