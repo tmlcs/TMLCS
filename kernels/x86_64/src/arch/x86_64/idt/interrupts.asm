@@ -145,8 +145,8 @@ isr%1:
     ; Restore all registers
     popaq
     
-    ; Remove interrupt number from stack (error code removed by IRETQ)
-    add rsp, 8
+    ; Remove interrupt number and error code from stack
+    add rsp, 16
     
     ; Return from interrupt
     iretq
