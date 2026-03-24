@@ -19,6 +19,17 @@ static spinlock_t g_heap_lock = SPINLOCK_INIT;
 /* HIGH-001 FIX: Track slab availability separately */
 static int g_slab_available = 0;
 
+/* MED-001 FIX: Per-page allocation count metadata.
+ * Stores the number of contiguous pages in each bitmap allocation, indexed
+ * by the starting page number.  Non-first pages and unallocated pages hold 0.
+ * Eliminates the forward bitmap scan in kmem_free_auto() / kmalloc_size()
+ * that incorrectly merged adjacent independent allocations into one free.
+ *
+ * Storage: TOTAL_PAGES * sizeof(uint16_t) ≈ 1 MB in .bss (zero-initialised).
+ * uint16_t covers up to 65535 pages = 256 MB, well above HEAP_MAX_ALLOC.
+ */
+static uint16_t g_page_alloc_count[TOTAL_PAGES];
+
 /* =============================================================================
  * Helper Functions
  * =============================================================================
@@ -119,6 +130,9 @@ void* kmalloc(size_t size) {
     if (start_page == (size_t)-1) {
         return NULL;  /* Out of memory */
     }
+
+    /* MED-001 FIX: Record page count so free path does not need to scan */
+    g_page_alloc_count[start_page] = (uint16_t)pages;
 
     /* Convert page number to address */
     void* ptr = page_to_addr(start_page);
@@ -292,14 +306,13 @@ void kmem_free_auto(void* ptr) {
         /* Acquire lock */
         spinlock_acquire(&g_heap_lock);
 
-        /* Calculate number of pages */
-        size_t pages = 0;
-        while (bitmap_is_page_allocated(start_page + pages) == 1) {
-            pages++;
-        }
+        /* MED-001 FIX: Read page count from metadata instead of scanning the
+         * bitmap forward.  The forward scan merged adjacent allocations into
+         * one free, silently double-freeing the neighbor pages. */
+        size_t pages = g_page_alloc_count[start_page];
 
-        /* Free all pages */
         if (pages > 0) {
+            g_page_alloc_count[start_page] = 0;
             bitmap_free_contiguous(start_page, pages);
         }
 
@@ -419,6 +432,9 @@ void* kmalloc_align(size_t size, size_t alignment) {
         return NULL;
     }
 
+    /* MED-001 FIX: Record page count for this allocation */
+    g_page_alloc_count[start_page] = (uint16_t)pages;
+
     return page_to_addr(start_page);
 }
 
@@ -438,11 +454,6 @@ size_t kmalloc_size(void* ptr) {
         return 0;
     }
     
-    /* Count contiguous allocated pages */
-    size_t pages = 0;
-    while (bitmap_is_page_allocated(start_page + pages) == 1) {
-        pages++;
-    }
-    
-    return pages * PAGE_SIZE;
+    /* MED-001 FIX: Read page count from metadata (O(1), no scan) */
+    return g_page_alloc_count[start_page] * PAGE_SIZE;
 }
