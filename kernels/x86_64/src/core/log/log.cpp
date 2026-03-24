@@ -440,12 +440,13 @@ void log_hex_dump(const char* label, const void* addr, size_t len) {
         return;
     }
 
+    /* Print label before acquiring lock — LOG_DEBUG internally acquires
+     * g_log_lock; calling it while the lock is held would self-deadlock. */
+    LOG_DEBUG("%s (%u bytes):", label, (uint32_t)len);
+
     spinlock_acquire(&g_log_lock);
 
     const uint8_t* bytes = reinterpret_cast<const uint8_t*>(addr);
-
-    /* Print label */
-    LOG_DEBUG("%s at %p (%zu bytes):", label, addr, len);
 
     for (size_t i = 0; i < len; i += 16) {
         char output[80];
