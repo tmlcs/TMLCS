@@ -108,8 +108,10 @@ static size_t g_slab_corruptions_detected = 0;
 static size_t g_slab_double_frees = 0;
 #endif
 
-/* Spinlock - runtime initialized */
-static spinlock_t g_slab_lock;
+/* MED-002 FIX: Use SPINLOCK_INIT for compile-time initialization.
+ * Previously relied on BSS zero-fill to produce locked=0, which is
+ * fragile and inconsistent with g_heap_lock and g_log_lock. */
+static spinlock_t g_slab_lock = SPINLOCK_INIT;
 
 /* For testing access */
 slab_state_t g_slab_state;
