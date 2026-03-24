@@ -40,7 +40,8 @@ long_mode_start:
     sub rcx, rdi
     test rcx, rcx
     jz .bss_done          ; Skip if BSS is empty
-    shr rcx, 3            ; Convert bytes to qwords
+    add rcx, 7            ; Ceiling division: round up to next qword boundary
+    shr rcx, 3            ; Convert bytes to qwords (rounded up)
     xor rax, rax          ; Zero
     rep stosq             ; Fill with zeros
 .bss_done:
