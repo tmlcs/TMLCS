@@ -327,8 +327,10 @@ int bitmap_free_contiguous(size_t page, size_t count) {
         
         /* Check if bit was already clear (double-free) */
         if (!(old_val & mask)) {
-            /* Page was already free - rollback all freed pages */
-            for (size_t j = 0; j <= freed; j++) {
+            /* Page was already free - rollback pages [0, freed) that we cleared.
+             * NOTE: page+freed was NOT cleared by us (its bit was already 0),
+             * so the rollback must stop at j < freed, not j <= freed. */
+            for (size_t j = 0; j < freed; j++) {
                 set_bit(page + j);
             }
             return -1;  /* Double-free detected */
