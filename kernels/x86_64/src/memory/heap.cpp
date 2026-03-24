@@ -166,8 +166,19 @@ void* krealloc(void* ptr, size_t new_size) {
         return NULL;
     }
 
-    /* Get old size */
-    size_t old_size = kmalloc_size(ptr);
+    /* Get old size — slab and bitmap allocations report size differently.
+     * kmalloc_size() scans the bitmap and always returns PAGE_SIZE (4096)
+     * for slab pages, which would make krealloc() incorrectly report the
+     * object fits when it does not.  Read object_size from the slab header
+     * directly for slab pointers. */
+    size_t old_size;
+    if (is_slab_address(ptr)) {
+        uintptr_t page_start = (uintptr_t)ptr & ~((uintptr_t)(SLAB_SIZE - 1));
+        const slab_t* slab = reinterpret_cast<const slab_t*>(page_start);
+        old_size = slab->object_size;
+    } else {
+        old_size = kmalloc_size(ptr);
+    }
 
     /* Case 3: new size fits in old allocation */
     if (new_size <= old_size) {
