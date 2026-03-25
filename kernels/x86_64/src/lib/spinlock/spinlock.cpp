@@ -297,12 +297,18 @@ void spinlock_release(spinlock_t* lock) {
     barrier();
 
     /*
-     * CRITICAL: Check if we need to restore interrupts
-     * If interrupts was disabled during acquire (slow path), we MUST NOT enable them
-     * because they were already disabled before we acquired the lock.
+     * CRITICAL: Restore interrupt state to what it was before acquire
      *
-     * interrupts_enabled == true  => We disabled interrupts, must restore
-     * interrupts_enabled == false => Fast path, interrupts were never touched
+     * spinlock_acquire() ALWAYS calls cli_save() before the CAS loop,
+     * regardless of the lock's initial state. The saved interrupt state
+     * (whether interrupts were enabled or disabled at acquire time) is
+     * stored in lock->interrupts_enabled and must be restored here.
+     *
+     * was_enabled == true  => Interrupts were enabled at acquire time, restore them
+     * was_enabled == false => Interrupts were disabled at acquire time, keep them disabled
+     *
+     * This ensures we return to the exact interrupt state the caller had
+     * before acquiring the lock (nested spinlock correctness).
      */
     bool was_enabled = lock->interrupts_enabled;
 
@@ -310,10 +316,8 @@ void spinlock_release(spinlock_t* lock) {
     lock->locked = 0;
 
     /*
-     * Restore interrupt state
-     * Read interrupts_enabled BEFORE the memory barrier
-     * interrupts_enabled is volatile - ensures we see the latest value
-     * written by spinlock_acquire() on any CPU.
+     * Reset interrupt state flag for next acquire
+     * interrupts_enabled is volatile - ensures visibility across CPUs
      */
     lock->interrupts_enabled = false; /* Reset for next acquire */
 
@@ -321,9 +325,9 @@ void spinlock_release(spinlock_t* lock) {
     barrier();
 
     /*
-     * Only restore interrupts if we disabled them during acquire.
-     * If was_enabled == false, we got the lock via fast path and
-     * interrupts were never disabled.
+     * Restore the interrupt state that was saved during spinlock_acquire().
+     * spinlock_acquire() always disables interrupts via cli_save() before
+     * the CAS loop, so we must always restore based on the saved state.
      */
     if (was_enabled) {
         __asm__ volatile("sti" ::: "memory");
