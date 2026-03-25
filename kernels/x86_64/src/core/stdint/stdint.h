@@ -170,15 +170,15 @@ typedef uint64_t           uintmax_t;     /**< Largest unsigned integer type */
 #define INT_FAST8_MAX   INT8_MAX
 #define UINT_FAST8_MAX  UINT8_MAX
 
-/* Limits of fast16 types */
-#define INT_FAST16_MIN  INT16_MIN
-#define INT_FAST16_MAX  INT16_MAX
-#define UINT_FAST16_MAX UINT16_MAX
+/* Limits of fast16 types — typedef'd to long (64-bit on x86_64) */
+#define INT_FAST16_MIN  INT64_MIN
+#define INT_FAST16_MAX  INT64_MAX
+#define UINT_FAST16_MAX UINT64_MAX
 
-/* Limits of fast32 types */
-#define INT_FAST32_MIN  INT32_MIN
-#define INT_FAST32_MAX  INT32_MAX
-#define UINT_FAST32_MAX UINT32_MAX
+/* Limits of fast32 types — typedef'd to long (64-bit on x86_64) */
+#define INT_FAST32_MIN  INT64_MIN
+#define INT_FAST32_MAX  INT64_MAX
+#define UINT_FAST32_MAX UINT64_MAX
 
 /* Limits of fast64 types */
 #define INT_FAST64_MIN  INT64_MIN
