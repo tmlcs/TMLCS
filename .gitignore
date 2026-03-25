@@ -11,3 +11,4 @@ kernels/x86_64/serial_debug.log
 
 # compile_commands.json (generated)
 kernels/x86_64/scripts/compile_commands.json
+.worktrees/
