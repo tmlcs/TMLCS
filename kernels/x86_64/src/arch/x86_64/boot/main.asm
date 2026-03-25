@@ -96,6 +96,15 @@ check_long_mode:
 ;   - 512 L3 entries × 512 L2 entries × 2MiB = 512GiB theoretical
 ; ==========================================
 setup_page_tables:
+    ; LOW-NEW-007: ARCHITECTURAL DEBT — NX/XD bit (bit 63 of each page
+    ; table entry) is NOT set on any entry.  All pages (stack, heap, data)
+    ; are therefore executable.  This allows code-injection attacks to run
+    ; shellcode placed on the stack or heap.
+    ; To fix: set the NX bit (EFER.NXE must also be set, bit 11 of MSR
+    ; 0xC0000080) on all non-code pages when a user-space or syscall
+    ; interface is added.  Until then this is acceptable for a ring-0-only
+    ; bare-metal kernel with no untrusted input.
+
     ; ==========================================
     ; Configure L4 -> L3 mapping
     ; ==========================================
@@ -103,6 +112,7 @@ setup_page_tables:
     mov eax, page_table_l3
     or eax, 0b11            ; present (bit 0) + writable (bit 1)
     mov [page_table_l4], eax
+    mov dword [page_table_l4 + 4], 0    ; LOW-002: explicitly zero upper 32 bits (NX=0)
 
     ; ==========================================
     ; Configure L3 -> L2 mapping for 2GiB
@@ -111,11 +121,13 @@ setup_page_tables:
     mov eax, page_table_l2_0
     or eax, 0b11            ; present + writable
     mov [page_table_l3 + 0 * 8], eax
+    mov dword [page_table_l3 + 0 * 8 + 4], 0    ; LOW-002: zero upper 32 bits
 
     ; L3[1] -> L2_1 (second 1GiB: 0x40000000-0x7FFFFFFF)
     mov eax, page_table_l2_1
     or eax, 0b11            ; present + writable
     mov [page_table_l3 + 1 * 8], eax
+    mov dword [page_table_l3 + 1 * 8 + 4], 0    ; LOW-002: zero upper 32 bits
 
     ; ==========================================
     ; Map first 1GiB (L2_0)
@@ -123,9 +135,10 @@ setup_page_tables:
     mov ecx, 0              ; counter
 .map_loop_0:
     mov eax, 0x200000       ; 2MiB
-    mul ecx                 ; eax = ecx * 2MiB (physical address)
+    mul ecx                 ; eax = ecx * 2MiB (physical address); edx = 0 (always, addr < 2GiB)
     or eax, 0b10000011      ; present + writable + huge page (bit 7)
     mov [page_table_l2_0 + ecx * 8], eax
+    mov dword [page_table_l2_0 + ecx * 8 + 4], 0    ; LOW-002: zero upper 32 bits (NX=0)
 
     inc ecx
     cmp ecx, 512            ; 512 entries × 2MiB = 1GiB
@@ -137,10 +150,11 @@ setup_page_tables:
     mov ecx, 0              ; counter
 .map_loop_1:
     mov eax, 0x200000       ; 2MiB
-    mul ecx                 ; eax = ecx * 2MiB
+    mul ecx                 ; eax = ecx * 2MiB; edx = 0 (addr < 2GiB)
     add eax, 0x40000000     ; + 1GiB offset (physical address base)
     or eax, 0b10000011      ; present + writable + huge page
     mov [page_table_l2_1 + ecx * 8], eax
+    mov dword [page_table_l2_1 + ecx * 8 + 4], 0    ; LOW-002: zero upper 32 bits (NX=0)
 
     inc ecx
     cmp ecx, 512            ; 512 entries × 2MiB = 1GiB
@@ -213,9 +227,14 @@ enable_paging:
 	or eax, 1 << 8
 	wrmsr
 
-	; enable paging
+	; enable paging + write-protect (CR0.WP, bit 16)
+	; LOW-NEW-006 FIX: Set WP (bit 16) alongside PG (bit 31) so that even
+	; ring-0 (kernel) code cannot write to pages whose page table entry has
+	; the read-only (R/W=0) bit clear.  Without WP, CR0.PG alone does NOT
+	; enforce write protection at CPL 0 — a kernel bug can silently corrupt
+	; any page in the identity-mapped region.
 	mov eax, cr0
-	or eax, 1 << 31
+	or eax, (1 << 31) | (1 << 16)
 	mov cr0, eax
 
 	ret

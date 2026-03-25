@@ -90,6 +90,46 @@ static void append_dec(char** buf, uint32_t val, const char* buf_end) {
     }
 }
 
+/* Helper: append unsigned 64-bit decimal */
+static void append_dec64(char** buf, uint64_t val, const char* buf_end) {
+    if (val == 0) {
+        append_char(buf, '0', buf_end);
+        return;
+    }
+    char tmp[24];  /* max 20 digits for uint64_t */
+    int i = 0;
+    while (val > 0) {
+        tmp[i++] = '0' + (int)(val % 10);
+        val /= 10;
+    }
+    while (i > 0) {
+        append_char(buf, tmp[--i], buf_end);
+    }
+}
+
+/* Helper: append signed 64-bit decimal */
+static void append_dec64_signed(char** buf, int64_t val, const char* buf_end) {
+    if (val < 0) {
+        append_char(buf, '-', buf_end);
+        /* Safe negate: avoids UB on INT64_MIN by widening before negation */
+        append_dec64(buf, (uint64_t)(-(val + 1)) + 1, buf_end);
+    } else {
+        append_dec64(buf, (uint64_t)val, buf_end);
+    }
+}
+
+/* Helper: append 64-bit hex, always zero-padded to 16 digits.
+ * LOW-NEW-002 FIX: Variable-width output made %p unreadable for addresses
+ * with leading zero nibbles (e.g. 0x1234 instead of 0x0000000000001234).
+ * Emitting exactly 16 digits makes pointer values easy to compare. */
+static void append_hex64(char** buf, uint64_t val, const char* buf_end) {
+    append_string(buf, "0x", buf_end);
+    for (int shift = 60; shift >= 0; shift -= 4) {
+        int d = (int)((val >> shift) & 0xF);
+        append_char(buf, (d < 10) ? ('0' + d) : ('A' + d - 10), buf_end);
+    }
+}
+
 /* Helper: append hex */
 static void append_hex(char** buf, uint32_t val, const char* buf_end) {
     append_string(buf, "0x", buf_end);
@@ -185,12 +225,46 @@ static void build_message(char* message, size_t message_size, const char* fmt, v
             if (!*fmt) {
                 break;
             }
-            format_append_arg(&buf, *fmt, args, buf_end);
+            /* LOW-002 FIX: Handle multi-char format specifiers %ll*, %z*, %p */
+            if (*fmt == 'l' && *(fmt + 1) == 'l') {
+                fmt += 2;  /* skip "ll" */
+                if (!*fmt) break;
+                switch (*fmt) {
+                case 'd': append_dec64_signed(&buf, va_arg(args, int64_t),  buf_end); break;
+                case 'u': append_dec64(&buf,        va_arg(args, uint64_t), buf_end); break;
+                case 'x': append_hex64(&buf,        va_arg(args, uint64_t), buf_end); break;
+                default:
+                    append_char(&buf, '%', buf_end);
+                    append_string(&buf, "ll", buf_end);
+                    append_char(&buf, *fmt, buf_end);
+                    break;
+                }
+            } else if (*fmt == 'z' && *(fmt + 1) == 'u') {
+                fmt++;  /* skip 'z', loop will advance past 'u' */
+                append_dec64(&buf, (uint64_t)va_arg(args, size_t), buf_end);
+            } else if (*fmt == 'p') {
+                append_hex64(&buf, (uint64_t)(uintptr_t)va_arg(args, void*), buf_end);
+            } else {
+                format_append_arg(&buf, *fmt, args, buf_end);
+            }
         } else {
             append_char(&buf, *fmt, buf_end);
         }
         fmt++;
     }
+
+    /* LOW-003 FIX: Append "..." truncation marker when the format string was
+     * not fully consumed.  Overwrites the last 3 characters so the NUL slot
+     * is always preserved. */
+    if (*fmt != '\0' && message_size >= 4) {
+        char* mark = buf_end - 2;  /* 3 chars + 1 NUL slot = buf_end */
+        if (mark < message) mark = message;
+        mark[0] = '.';
+        if (mark + 1 < buf_end) mark[1] = '.';
+        if (mark + 2 < buf_end) mark[2] = '.';
+        buf = (mark + 3 <= buf_end) ? mark + 3 : buf_end;
+    }
+
     *buf = '\0';
 }
 
@@ -443,6 +517,7 @@ void log_hex_dump(const char* label, const void* addr, size_t len) {
     /* Print label before acquiring lock — LOG_DEBUG internally acquires
      * g_log_lock; calling it while the lock is held would self-deadlock. */
     LOG_DEBUG("%s (%u bytes):", label, (uint32_t)len);
+    (void)label;  /* Suppress unused-parameter warning when LOG_DEBUG is compiled out */
 
     spinlock_acquire(&g_log_lock);
 

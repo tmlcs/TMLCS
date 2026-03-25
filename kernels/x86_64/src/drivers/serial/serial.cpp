@@ -702,7 +702,20 @@ int serial_reinit(uint16_t port, uint32_t baud) {
     wmb(); /* Ensure cleared state is visible before re-init */
 
     /* Now perform normal initialization */
-    return serial_init(port, baud);
+    int result = serial_init(port, baud);
+
+    /* LOW-NEW-005 FIX: If re-initialization fails, explicitly mark the
+     * port as failed so that serial_has_failed() / serial_get_error_code()
+     * reflect the true state.  Without this, a failed reinit leaves the
+     * state as "no error, not initialized" — ambiguous for the caller who
+     * cannot distinguish "never initialized" from "tried and failed". */
+    if (!result) {
+        g_serial_state.failed = 1;
+        g_serial_state.error_code = SERIAL_ERROR_INIT_FAIL;
+        wmb();
+    }
+
+    return result;
 }
 
 /**

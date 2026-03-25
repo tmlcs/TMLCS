@@ -149,6 +149,12 @@ int bitmap_is_initialized(void) {
  * =============================================================================
  */
 
+/* MED-NEW-003: INTERNAL API — bitmap_alloc() is an internal function.
+ * Direct callers (outside heap.cpp) must:
+ *   1. Hold g_heap_lock for the entire alloc + g_page_alloc_count update.
+ *   2. Update g_page_alloc_count[page] immediately after a successful return.
+ * Failing to do so leaves the per-page metadata out of sync with the
+ * bitmap, breaking kmalloc_size() and krealloc() for that page. */
 size_t bitmap_alloc(void) {
     if (!g_bitmap_initialized) {
         return (size_t)-1;
@@ -324,9 +330,13 @@ int bitmap_free_contiguous(size_t page, size_t count) {
         
         /* Check bounds */
         if (current_page >= TOTAL_PAGES) {
-            /* Rollback already-freed pages */
+            /* Rollback already-freed pages — atomic to prevent SMP race */
             for (size_t j = 0; j < freed; j++) {
-                set_bit(page + j);
+                size_t rp = page + j;
+                __atomic_fetch_or(
+                    &g_page_bitmap.words[rp / 64],
+                    1ULL << (rp % 64),
+                    __ATOMIC_SEQ_CST);
             }
             return -1;
         }
@@ -346,9 +356,14 @@ int bitmap_free_contiguous(size_t page, size_t count) {
         if (!(old_val & mask)) {
             /* Page was already free - rollback pages [0, freed) that we cleared.
              * NOTE: page+freed was NOT cleared by us (its bit was already 0),
-             * so the rollback must stop at j < freed, not j <= freed. */
+             * so the rollback must stop at j < freed, not j <= freed.
+             * Use atomic fetch_or to prevent SMP race during rollback. */
             for (size_t j = 0; j < freed; j++) {
-                set_bit(page + j);
+                size_t rp = page + j;
+                __atomic_fetch_or(
+                    &g_page_bitmap.words[rp / 64],
+                    1ULL << (rp % 64),
+                    __ATOMIC_SEQ_CST);
             }
             return -1;  /* Double-free detected */
         }

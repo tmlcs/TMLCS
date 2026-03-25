@@ -124,15 +124,20 @@ void* kmalloc(size_t size) {
     /* Allocate contiguous pages */
     size_t start_page = bitmap_alloc_contiguous(pages);
 
+    /* MED-002 FIX: Write metadata inside the lock so bitmap state and
+     * g_page_alloc_count are always consistent. A window between the
+     * bitmap update and the metadata write would allow a concurrent
+     * kmalloc_size() / kmem_free_auto() to see stale count = 0. */
+    if (start_page != (size_t)-1) {
+        g_page_alloc_count[start_page] = (uint16_t)pages;
+    }
+
     /* Release lock */
     spinlock_release(&g_heap_lock);
 
     if (start_page == (size_t)-1) {
         return NULL;  /* Out of memory */
     }
-
-    /* MED-001 FIX: Record page count so free path does not need to scan */
-    g_page_alloc_count[start_page] = (uint16_t)pages;
 
     /* Convert page number to address */
     void* ptr = page_to_addr(start_page);
@@ -184,7 +189,14 @@ void* krealloc(void* ptr, size_t new_size) {
      * kmalloc_size() scans the bitmap and always returns PAGE_SIZE (4096)
      * for slab pages, which would make krealloc() incorrectly report the
      * object fits when it does not.  Read object_size from the slab header
-     * directly for slab pointers. */
+     * directly for slab pointers.
+     *
+     * MED-NEW-002: slab->object_size is read here WITHOUT holding
+     * g_slab_lock.  This is safe because slab_cache_t.object_size is
+     * written exactly once in init_cache() during slab_init(), before any
+     * allocations are possible, and is never modified afterwards.  It is
+     * therefore effectively immutable at this point and can be read
+     * lock-free by any CPU. */
     size_t old_size;
     if (is_slab_address(ptr)) {
         uintptr_t page_start = (uintptr_t)ptr & ~((uintptr_t)(SLAB_SIZE - 1));
@@ -236,6 +248,10 @@ extern size_t g_slab_pool_size;
  * down to the nearest 4KB boundary and reading the magic field is
  * sufficient to distinguish slab pages from other heap pages.
  */
+/* Linker-script symbol: first byte after all kernel sections.
+ * Heap pages are allocated at or above this address. */
+extern "C" char __kernel_end;
+
 int is_slab_address(void* ptr) {
     if (ptr == nullptr) {
         return 0;
@@ -245,6 +261,16 @@ int is_slab_address(void* ptr) {
 
     /* Align down to slab page boundary (SLAB_SIZE = 4KB = power of 2) */
     uintptr_t page_start = addr & ~((uintptr_t)(SLAB_SIZE - 1));
+
+    /* LOW-001 FIX: Bounds check before dereferencing the potential slab header.
+     * Heap/slab pages are allocated above the kernel image and within the
+     * 2GiB identity-mapped window. A pointer outside this range cannot be
+     * a slab object, so skip the magic read entirely. */
+    uintptr_t heap_base  = (uintptr_t)&__kernel_end;
+    uintptr_t heap_limit = 0x80000000UL;  /* 2GiB identity-map limit */
+    if (page_start < heap_base || page_start >= heap_limit) {
+        return 0;
+    }
 
     /* Read slab magic from potential slab header */
     const slab_t* possible_slab = reinterpret_cast<const slab_t*>(page_start);
@@ -416,11 +442,12 @@ void* kmalloc_align(size_t size, size_t alignment) {
         return kmalloc(size);
     }
     
-    /* HEAP-MED-002 FIX: Alignments larger than PAGE_SIZE are not implemented.
+    /* LOW-NEW-011 FIX: Alignments larger than PAGE_SIZE are not implemented.
      * A future implementation would scan the bitmap for a page whose physical
      * address satisfies the requested alignment.
-     * Return NULL rather than silently ignoring the alignment constraint,
-     * which would hand the caller a misaligned pointer. */
+     * Emit a serial warning so callers can distinguish "not implemented" from
+     * other NULL returns (heap not initialized, bad alignment power-of-2). */
+    serial_write_str("[HEAP] kmalloc_align: alignment > PAGE_SIZE not implemented\r\n");
     return NULL;
 }
 

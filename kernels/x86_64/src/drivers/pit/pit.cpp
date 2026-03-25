@@ -87,6 +87,9 @@ int pit_init_frequency(uint32_t frequency_hz) {
     g_pit_state.milliseconds = 0;
     g_pit_state.frequency_hz = frequency_hz;
     g_pit_state.divisor = divisor;
+    /* MED-001 NOTE: The ms_remainder accumulator in pit_irq_handler() is a
+     * static local bounded by modulo(frequency_hz) each tick. After a frequency
+     * change the accumulator self-corrects within one tick. */
 
     /* Send command to PIT
      * Channel 0, access both bytes, square wave mode, binary
@@ -115,10 +118,17 @@ int pit_is_initialized(void) {
 }
 
 void pit_shutdown(void) {
-    /* Reset to default state (18.2 Hz - legacy DOS rate) */
+    /* LOW-NEW-003: Clear software state and callback, then reprogram the
+     * PIT hardware to the legacy 18.2 Hz default rate.
+     *
+     * INTENTIONAL SIDE EFFECT: The PIT channel 0 hardware keeps firing
+     * after this call — it is reprogrammed to 18.2 Hz, not stopped.
+     * x86 has no way to fully silence the PIT without masking IRQ0 in the
+     * PIC.  If silent hardware stop is required, call irq_disable(0) before
+     * or after this function. */
     g_pit_state.initialized = 0;
     g_pit_callback = nullptr;
-    
+
     /* Reprogram to 18.2 Hz */
     pit_init_frequency(18);
 }
@@ -211,17 +221,24 @@ void pit_wait_us(uint32_t us) {
         return;
     }
 
-    /* For very short delays, use a simple loop
-     * Approximate: 1 us ≈ 3 CPU cycles at 3 GHz
-     * This is not precise but works for small delays
-     */
-    /* PIT-LOW-001 FIX: Cap us before multiplying to prevent uint32_t overflow.
-     * 0xFFFFFFFF / 3 = 1431655765; above that, us * 3 wraps around. */
+    /* MED-005 FIX: For delays >= 1000 us, use pit_wait_ms() which is based on
+     * the PIT tick counter and is CPU-frequency independent.
+     * The spin-wait below is calibrated at ~3 cycles/us on a 3 GHz CPU, but
+     * PAUSE latency varies widely (5-140 cycles) across microarchitectures.
+     * For sub-millisecond precision this is acceptable; above 1ms it is not. */
+    if (us >= 1000) {
+        pit_wait_ms((us + 999) / 1000);  /* Ceiling division to ms */
+        return;
+    }
+
+    /* Short spin-wait for sub-millisecond delays.
+     * NOTE: Not a precise timer — CPU-frequency dependent. */
+    /* PIT-LOW-001 FIX: Cap us before multiplying to prevent uint32_t overflow. */
     if (us > 0xFFFFFFFFU / 3U) {
         us = 0xFFFFFFFFU / 3U;
     }
-    uint32_t iterations = us * 3;  /* Rough calibration */
-    
+    uint32_t iterations = us * 3;  /* Rough calibration: ~3 cycles/us at 3 GHz */
+
     for (uint32_t i = 0; i < iterations; i++) {
         __asm__ volatile("pause");
     }
@@ -236,9 +253,14 @@ void pit_irq_handler(void) {
     /* Increment tick counter */
     wmb();
     g_pit_state.ticks++;
-    
-    /* Update milliseconds (at 100 Hz, 100 ticks = 1000 ms) */
-    g_pit_state.milliseconds += (1000 / g_pit_state.frequency_hz);
+
+    /* MED-001 FIX: Fixed-point remainder accumulator avoids ms drift for
+     * frequencies that don't evenly divide 1000 (e.g. 120 Hz: 8.333... ms/tick).
+     * The remainder carries the sub-millisecond portion forward each tick. */
+    static volatile uint32_t ms_remainder = 0;
+    ms_remainder += 1000;
+    g_pit_state.milliseconds += ms_remainder / g_pit_state.frequency_hz;
+    ms_remainder %= g_pit_state.frequency_hz;
     wmb();
 
     /* Call custom callback if registered */

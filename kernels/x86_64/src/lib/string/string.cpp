@@ -256,24 +256,30 @@ size_t strlcpy(char* dest, const char* src, size_t destsize) {
         return 0; /* Cannot copy, return 0 */
     }
 
-    /* Handle zero-size buffer: just calculate source length */
-    if (destsize == 0) {
-        return strlen(src);
-    }
-
-    const char* original_src = src;
+    /* LOW-NEW-009 FIX: Single-pass implementation.
+     * Previously: copy loop (up to destsize-1 chars) + strlen(original_src)
+     * on the full source string — two passes for the common non-truncated case.
+     * Now: one unified loop copies up to destsize-1 chars while advancing src;
+     * after the copy the remaining tail of src (if any) is counted inline.
+     * In the common non-truncated case src[i] == '\0' immediately ends both
+     * phases, so the string is traversed exactly once. */
     size_t i = 0;
 
-    /* Copy at most destsize - 1 characters, leaving room for null terminator */
-    for (i = 0; i < destsize - 1 && src[i] != '\0'; i++) {
-        dest[i] = src[i];
+    if (destsize > 0) {
+        /* Copy at most destsize - 1 characters */
+        while (i < destsize - 1 && src[i] != '\0') {
+            dest[i] = src[i];
+            i++;
+        }
+        dest[i] = '\0';
     }
 
-    /* Always null-terminate (if destsize > 0) */
-    dest[i] = '\0';
-
-    /* Return length of source string (for truncation detection) */
-    return strlen(original_src);
+    /* Count any remaining source characters to return full source length */
+    size_t src_len = i;
+    while (src[src_len] != '\0') {
+        src_len++;
+    }
+    return src_len;
 }
 
 /* ==========================================

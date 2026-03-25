@@ -17,10 +17,12 @@ static uint32_t g_irq_counts[IRQ_COUNT];
 static uint16_t g_irq_mask = 0;  /* Bitmask of enabled IRQs */
 
 /* IRQ nesting depth counter.
- * SINGLE-CPU ASSUMPTION: This is a global, not per-CPU. On SMP, two CPUs
- * handling IRQs simultaneously would incorrectly share this counter.
- * When adding SMP support, replace with a per-CPU variable indexed by
- * APIC ID or use a dedicated CPU-local storage segment. */
+ * LOW-NEW-010 TODO(SMP): This is a single global, not per-CPU. On SMP,
+ * two CPUs handling IRQs simultaneously would race on this counter and
+ * produce an incorrect nesting depth on both.
+ * When adding SMP support: replace with a per-CPU variable indexed by
+ * APIC ID (lapic_id() & cpu_index), or use a FS/GS-relative CPU-local
+ * storage slot analogous to Linux's per_cpu() infrastructure. */
 static volatile uint32_t g_irq_stack_depth = 0;
 static constexpr uint32_t MAX_IRQ_DEPTH = 8;  /* Maximum nested IRQ depth */
 

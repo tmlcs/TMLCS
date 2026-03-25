@@ -441,6 +441,13 @@ int slab_is_initialized(void) {
 }
 
 void slab_shutdown(void) {
+    /* LOW-NEW-004: Slab pages allocated from the bitmap are NOT returned
+     * to the bitmap allocator here — this is intentional.  The slab
+     * allocator is a boot-lifetime subsystem that is never shut down in
+     * normal operation (only in test teardown).  Full reclamation would
+     * require walking all cache slab lists and calling bitmap_free() for
+     * each page, which is non-trivial and unnecessary for the current
+     * single-address-space kernel with no process isolation. */
     g_slab_initialized = 0;
 }
 
