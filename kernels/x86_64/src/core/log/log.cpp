@@ -257,7 +257,7 @@ static void build_message(char* message, size_t message_size, const char* fmt, v
      * not fully consumed.  Overwrites the last 3 characters so the NUL slot
      * is always preserved. */
     if (*fmt != '\0' && message_size >= 4) {
-        char* mark = buf_end - 2;  /* 3 chars + 1 NUL slot = buf_end */
+        char* mark = buf_end - 3;  /* positions: buf_end-3, buf_end-2, buf_end-1; NUL at buf_end */
         if (mark < message) mark = message;
         mark[0] = '.';
         if (mark + 1 < buf_end) mark[1] = '.';

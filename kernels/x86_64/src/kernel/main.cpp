@@ -11,6 +11,7 @@
 #include "idt.h"
 #include "irq.h"
 #include "pit.h"
+#include "log.h"
 
 // Enable debug macros for testing
 #define DEBUG_ENABLE 1
@@ -32,6 +33,7 @@
 #include "../../tests/test_spinlock.h"
 #include "../../tests/test_string.h"
 #include "../../tests/test_strlcpy.h"
+#include "../../tests/test_log.h"
 
 // Centralized version constant
 static constexpr const char* OS_VERSION = "GLOBEX_OS v0.015_x64";
@@ -132,7 +134,12 @@ extern "C" [[noreturn]] void kernel_main() {
     // test_bss_variable is a uint32_t without explicit initializer,
     // so it MUST be in .bss section and MUST be zeroed by boot code.
     // ==========================================
-    DEBUG_ASSERT(test_bss_variable == 0);
+    /* LOW-001 FIX: Always-on BSS check — DEBUG_ASSERT compiled out in release
+     * builds, silently hiding boot-code bugs.  Use early_panic (direct VGA
+     * write, no locks) so the fault is caught in every build configuration. */
+    if (test_bss_variable != 0) {
+        early_panic("BSS not zeroed - boot code bug");
+    }
 
     // ==========================================
     // Initialize Hardware with Robust Fallback
@@ -214,6 +221,19 @@ extern "C" [[noreturn]] void kernel_main() {
         serial_write_str("[BOOT] VGA initialized successfully\r\n");
     }
 
+    // ==========================================
+    // Initialize Logging System
+    // ==========================================
+    // Logging provides multi-level output (DEBUG, INFO, WARN, ERROR, PANIC)
+    // with automatic serial + VGA output and optional compile-time filtering.
+    // Must be initialized after serial and VGA are ready.
+    // ==========================================
+    log_init();
+    LOG_INFO("GLOBEX_OS kernel booting - version %s", OS_VERSION);
+    LOG_DEBUG("Debug logging enabled (verbose mode)");
+    LOG_INFO("GDT entries: %d", 7);
+    LOG_INFO("Memory: 2GiB identity-mapped (0x00000000-0x7FFFFFFF)");
+
     // Display boot banner on VGA if available
     if (vga_available) {
         print_str("Welcome to ");
@@ -226,19 +246,38 @@ extern "C" [[noreturn]] void kernel_main() {
     // ==========================================
     // Initialize GDT, TSS, and IDT
     // ==========================================
+    LOG_INFO("Initializing GDT...");
     gdt_init();
+    LOG_INFO("GDT initialized");
+    
     uint64_t rsp;
     __asm__ volatile("mov %%rsp, %0" : "=r"(rsp));
+    
+    LOG_INFO("Initializing TSS...");
     tss_init(rsp);
+    LOG_INFO("TSS initialized with IST1/IST2/IST3 stacks (#DF/NMI/#MC protection)");
+    
+    LOG_INFO("Initializing IDT...");
     idt_init();
+    LOG_INFO("IDT initialized with 32 exception vectors (0-31)");
+    
+    LOG_INFO("Initializing IRQ system...");
     irq_init();
+    LOG_INFO("IRQ system initialized (PIC remapped to IDT 32-47)");
+    
+    LOG_INFO("Initializing PIT at 100 Hz...");
     pit_init();
     irq_register_handler(0, pit_irq_handler);
     irq_enable(0);
+    LOG_INFO("PIT IRQ0 handler registered");
+    
+    LOG_INFO("Initializing stack guard page...");
     stack_guard_init();   /* HIGH-005: guard page + IST1 active */
-    serial_write_str("[BOOT] GDT/TSS/IDT/IRQ/PIT initialized\r\n");
+    LOG_INFO("Stack guard page active");
+    
+    LOG_INFO("Enabling hardware interrupts (sti)...");
     interrupts_enable();   /* sti: enable hardware interrupts */
-    serial_write_str("[BOOT] Interrupts enabled (sti)\r\n");
+    LOG_INFO("Interrupts enabled - hardware timer active");
 
     // ==========================================
     // Run Test Suite
@@ -249,6 +288,7 @@ extern "C" [[noreturn]] void kernel_main() {
     test_debug_macros();
     test_gdt_initialization();        // Test GDT initialization
     test_idt_initialization();        // Test IDT initialization (all vectors 0-31)
+    test_breakpoint_exception();      // Test #BP trap returns (LOW-004 fix)
     test_pit_all();                   // Test PIT timer: IRQ0, ticks, wait functions
 
     /* Initialize early allocator before heap and slab */
@@ -272,6 +312,7 @@ extern "C" [[noreturn]] void kernel_main() {
     test_slab_allocator();  // Slab allocator tests (FEAT-MEM-003: memory leak fix)
     test_kmem_free_auto();  // Unified memory free API test [FIX-MEM-001]
     test_hardware_info();
+    test_log_truncation();
 
     // ==========================================
     // Final Status Display
@@ -297,31 +338,33 @@ extern "C" [[noreturn]] void kernel_main() {
     print_str("System ready.\r\n");
 
     // ==========================================
-    // Summary Output to Serial
+    // Summary Output via Logging System
     // ==========================================
-    serial_write_str("\r\n=== GLOBEX_OS Kernel Started ===\r\n");
-    serial_write_str(OS_VERSION);
-    serial_write_str("\r\n");
-    serial_write_str("Page tables: 2GiB mapped\r\n");
-    serial_write_str("Test: BSS initialization - OK\r\n");
-    serial_write_str("Test: Memory mapping - OK\r\n");
-    serial_write_str("Test: Color validation - OK\r\n");
-    serial_write_str("Test: Debug macros - OK\r\n");
-    serial_write_str("Test: GDT initialization - OK\r\n");
-    serial_write_str("Test: IDT initialization (vectors 0-31) - OK\r\n");
-    serial_write_str("Test: PIT timer (IRQ0, ticks, wait) - OK\r\n");
-    serial_write_str("Test: Heap/Slab initialization - OK\r\n");
-    serial_write_str("Test: Print functions (64-bit, signed) - OK\r\n");
-    serial_write_str("Test: Query functions (cursor, color) - OK\r\n");
-    serial_write_str("Test: Serial baud rates - OK\r\n");
-    serial_write_str("Test: String functions - OK\r\n");
-    serial_write_str("Test: String NULL safety - OK\r\n");
-    serial_write_str("Test: strlcpy safe copy - OK\r\n");
-    serial_write_str("Test: Serial signed numbers - OK\r\n");
-    serial_write_str("Test: Spinlock (init, acquire/release, SMP) - OK\r\n");
-    serial_write_str("Test: kmem_free_auto() unified API - OK\r\n");
-    serial_write_str("Test: Hardware info (CPUID) - OK\r\n");
-    serial_write_str("System halted - press reset to restart\r\n");
+    LOG_INFO("=== GLOBEX_OS Kernel Started ===");
+    LOG_INFO("Version: %s", OS_VERSION);
+    LOG_INFO("Memory: 2GiB identity-mapped (0x00000000-0x7FFFFFFF)");
+    LOG_INFO("Tests executed:");
+    LOG_INFO("  - BSS initialization: PASSED");
+    LOG_INFO("  - Memory mapping: PASSED");
+    LOG_INFO("  - Color validation: PASSED");
+    LOG_INFO("  - Debug macros: PASSED");
+    LOG_INFO("  - GDT initialization: PASSED");
+    LOG_INFO("  - IDT initialization (vectors 0-31): PASSED");
+    LOG_INFO("  - Breakpoint (#BP) trap returns: PASSED");
+    LOG_INFO("  - PIT timer (IRQ0, ticks, wait): PASSED");
+    LOG_INFO("  - Heap/Slab initialization: PASSED");
+    LOG_INFO("  - Print functions: PASSED");
+    LOG_INFO("  - Query functions: PASSED");
+    LOG_INFO("  - Serial baud rates: PASSED");
+    LOG_INFO("  - String functions: PASSED");
+    LOG_INFO("  - String NULL safety: PASSED");
+    LOG_INFO("  - strlcpy safe copy: PASSED");
+    LOG_INFO("  - Serial signed numbers: PASSED");
+    LOG_INFO("  - Spinlock (init, acquire/release, SMP): PASSED");
+    LOG_INFO("  - kmem_free_auto() unified API: PASSED");
+    LOG_INFO("  - Hardware info (CPUID): PASSED");
+    LOG_INFO("  - Log truncation marker: PASSED");
+    LOG_INFO("System ready - halted (press reset to restart)");
 
     // ==========================================
     // Kernel idle loop - never return
