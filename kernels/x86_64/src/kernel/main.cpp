@@ -31,9 +31,11 @@
 #include "../../tests/test_slab.h"
 #include "../../tests/test_pit.h"
 #include "../../tests/test_spinlock.h"
+#include "../../tests/test_spinlock_smp.h"
 #include "../../tests/test_string.h"
 #include "../../tests/test_strlcpy.h"
 #include "../../tests/test_log.h"
+#include "../../tests/test_memory_manager.h"
 
 // Centralized version constant
 static constexpr const char* OS_VERSION = "GLOBEX_OS v0.015_x64";
@@ -289,13 +291,13 @@ extern "C" [[noreturn]] void kernel_main() {
     test_gdt_initialization();        // Test GDT initialization
     test_idt_initialization();        // Test IDT initialization (all vectors 0-31)
     test_breakpoint_exception();      // Test #BP trap returns (LOW-004 fix)
-    test_pit_all();                   // Test PIT timer: IRQ0, ticks, wait functions
 
     /* Initialize early allocator before heap and slab */
     early_alloc_init_default();
-    
+
     /* Initialize heap and slab allocator before memory tests */
     heap_init();
+    test_pit_all();                   // Test PIT timer: IRQ0, ticks, wait functions
     
     test_print_functions();
     test_decimal_boundary_values();  // Buffer overflow tests
@@ -308,9 +310,11 @@ extern "C" [[noreturn]] void kernel_main() {
     test_strlcpy_vs_strcpy_overflow();  // Overflow prevention demo
     test_memcpy_overlap_detection();    // Overlap detection in DEBUG mode
     test_serial_signed_numbers();
-    test_spinlock();  // Spinlock tests (initialization, acquire/release, SMP safety)
+    test_spinlock();            // Spinlock tests (initialization, acquire/release, SMP safety)
+    test_spinlock_smp();        // SMP spinlock stress tests
     test_slab_allocator();  // Slab allocator tests (FEAT-MEM-003: memory leak fix)
-    test_kmem_free_auto();  // Unified memory free API test [FIX-MEM-001]
+    test_kmem_free_auto();      // Unified memory free API test [FIX-MEM-001]
+    test_memory_manager();      // Full kmalloc/krealloc/kcalloc/kmem_free_auto suite
     test_hardware_info();
     test_log_truncation();
 
@@ -361,7 +365,9 @@ extern "C" [[noreturn]] void kernel_main() {
     LOG_INFO("  - strlcpy safe copy: PASSED");
     LOG_INFO("  - Serial signed numbers: PASSED");
     LOG_INFO("  - Spinlock (init, acquire/release, SMP): PASSED");
+    LOG_INFO("  - Spinlock SMP stress: PASSED");
     LOG_INFO("  - kmem_free_auto() unified API: PASSED");
+    LOG_INFO("  - Memory manager (kmalloc/krealloc/kcalloc): PASSED");
     LOG_INFO("  - Hardware info (CPUID): PASSED");
     LOG_INFO("  - Log truncation marker: PASSED");
     LOG_INFO("System ready - halted (press reset to restart)");
