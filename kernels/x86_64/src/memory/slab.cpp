@@ -316,6 +316,17 @@ static int init_cache(int idx, size_t size) {
         return 0;
     }
 
+    /* LOCK ORDERING INVARIANT: Any allocation called from here routes to
+     * bitmap_alloc() (via early_alloc or heap), NOT back to slab_alloc().
+     * This is safe because g_slab_available == 0 while slab_init() is
+     * running — heap.cpp:kmalloc() checks slab_is_initialized() before
+     * using the slab path, and falls through to bitmap_alloc() which
+     * uses g_heap_lock (not g_slab_lock).
+     *
+     * WARNING: setting g_slab_available = 1 before all caches are fully
+     * built would cause re-entrant acquisition of g_slab_lock here and
+     * deadlock, because spinlocks are non-reentrant and interrupt-disabling. */
+
     /* Allocate cache structure from early heap pool */
     slab_cache_t* cache = (slab_cache_t*)(g_slab_pool + g_slab_memory_used);
 
