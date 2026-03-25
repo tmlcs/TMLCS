@@ -176,7 +176,8 @@ static const char* exception_messages[] = {
 #define VALID_HANDLER_MIN 0x100000ULL       /* Kernel load address (1MB) */
 #define VALID_HANDLER_MAX 0x80000000ULL     /* 2GiB mapped limit */
 
-void idt_set_gate(uint8_t vector, handler_addr_t handler, type_attr_t type_attr, dpl_t dpl) {
+void idt_set_gate(uint8_t vector, handler_addr_t handler, type_attr_t type_attr,
+                  dpl_t dpl, uint8_t ist) {
     /* HIGH-004 FIX: Validate handler address */
     if (handler.value < VALID_HANDLER_MIN || handler.value >= VALID_HANDLER_MAX) {
         serial_write_str("[IDT] HIGH-004: Invalid handler address: 0x");
@@ -184,28 +185,17 @@ void idt_set_gate(uint8_t vector, handler_addr_t handler, type_attr_t type_attr,
         serial_write_str("\r\n");
         return;  /* Don't register invalid handler */
     }
-    
+
     idt_table[vector].offset_low = handler.value & IDT_OFFSET_LOW_MASK;
     idt_table[vector].selector = GDT_SELECTOR_KERNEL_CODE; /* Kernel code segment */
-    idt_table[vector].ist = 0;         /* IST = 0 (use current stack) */
+    idt_table[vector].ist = ist;       /* HIGH-003 FIX: caller controls IST */
     idt_table[vector].type_attr = type_attr.value | (dpl.value << 5);
     idt_table[vector].offset_middle = (handler.value >> IDT_OFFSET_MIDDLE_SHIFT) & IDT_OFFSET_MIDDLE_MASK;
     idt_table[vector].offset_high = (handler.value >> IDT_OFFSET_HIGH_SHIFT) & IDT_OFFSET_HIGH_MASK;
     idt_table[vector].reserved = 0;
 }
 
-/* =============================================================================
- * pic_send_eoi - Send End of Interrupt to PIC
- * =============================================================================
- */
-void pic_send_eoi(uint8_t irq) {
-    /* If IRQ >= 8, send EOI to both PICs */
-    if (irq >= 8) {
-        pic_send_command(io_port(PIC2_COMMAND), PIC_EOI);
-    }
-    /* Always send EOI to master */
-    pic_send_command(io_port(PIC1_COMMAND), PIC_EOI);
-}
+/* pic_send_eoi() removed — use irq_send_eoi() in irq.cpp (HIGH-001 fix). */
 
 /* =============================================================================
  * pic_disable - Disable PIC interrupts
@@ -247,8 +237,27 @@ int interrupts_are_enabled(void) {
  * =============================================================================
  */
 void default_exception_handler(interrupt_frame_t* frame) {
+    /* LOW-004 FIX: #BP (vector 3) is a trap — the CPU pushes the return
+     * address PAST the INT3 instruction, so IRETQ will resume normally.
+     * Log the event and return so the assembly stub executes IRETQ.
+     * serial_force_unlock is intentionally NOT called here: we are not
+     * halting, so mutual exclusion must be preserved. */
+    if (frame->int_num == 3) {
+        serial_write_str("[IDT] Breakpoint (#BP) at RIP=0x");
+        serial_write_hex64(frame->rip);
+        serial_write_str("\r\n");
+        return;
+    }
+
     /* Disable interrupts to prevent further exceptions */
     interrupts_disable();
+
+    /* HIGH-002 FIX: Reset serial lock before any serial output.
+     * If the exception fired while g_serial_lock was held (e.g., a fault
+     * inside serial_write_str()), spinlock_acquire() would spin forever.
+     * Preconditions are satisfied: interrupts are disabled (line above) and
+     * this function never returns (ends in for(;;) hlt). */
+    serial_force_unlock();
 
     /* Output to serial */
     serial_write_str("\r\n\r\n!!! EXCEPTION !!!\r\n");
@@ -261,8 +270,11 @@ void default_exception_handler(interrupt_frame_t* frame) {
 
     serial_write_str("\r\n");
 
-    /* Output error code if present */
-    if (frame->err_code != 0) {
+    /* Per Intel SDM Vol 3A Table 6-1, these vectors push an error code */
+    bool has_errcode = (frame->int_num == 8  ||
+                        (frame->int_num >= 10 && frame->int_num <= 14) ||
+                        frame->int_num == 17);
+    if (has_errcode) {
         serial_write_str("Error Code: 0x");
         serial_write_hex((uint32_t) frame->err_code);
         serial_write_str("\r\n");
@@ -348,71 +360,46 @@ void idt_init(void) {
      */
 
     /* Exceptions without error code (vectors 0-7) */
-    idt_set_gate(0, handler_addr((uint64_t) isr0), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(1, handler_addr((uint64_t) isr1), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(2, handler_addr((uint64_t) isr2), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(3, handler_addr((uint64_t) isr3), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(4, handler_addr((uint64_t) isr4), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(5, handler_addr((uint64_t) isr5), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(6, handler_addr((uint64_t) isr6), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(7, handler_addr((uint64_t) isr7), type_attr(IDT_INTERRUPT_GATE), dpl(0));
+    idt_set_gate(0, handler_addr((uint64_t) isr0), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(1, handler_addr((uint64_t) isr1), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(2, handler_addr((uint64_t) isr2), type_attr(IDT_INTERRUPT_GATE), dpl(0), 2); /* IST2: NMI dedicated stack */
+    idt_set_gate(3, handler_addr((uint64_t) isr3), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(4, handler_addr((uint64_t) isr4), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(5, handler_addr((uint64_t) isr5), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(6, handler_addr((uint64_t) isr6), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(7, handler_addr((uint64_t) isr7), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
 
     /* Exceptions with error code (vectors 8-14) */
-    idt_set_gate(8, handler_addr((uint64_t) isr8), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_table[8].ist = 1;  /* HIGH-005: #DF uses IST1 (dedicated stack from TSS) */
-    idt_set_gate(9, handler_addr((uint64_t) isr9), type_attr(IDT_INTERRUPT_GATE), dpl(0));   /* Reserved */
-    idt_set_gate(10, handler_addr((uint64_t) isr10), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(11, handler_addr((uint64_t) isr11), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(12, handler_addr((uint64_t) isr12), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(13, handler_addr((uint64_t) isr13), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(14, handler_addr((uint64_t) isr14), type_attr(IDT_INTERRUPT_GATE), dpl(0));
+    idt_set_gate(8, handler_addr((uint64_t) isr8), type_attr(IDT_INTERRUPT_GATE), dpl(0), 1); /* IST1: dedicated #DF stack */
+    idt_set_gate(9, handler_addr((uint64_t) isr9), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0); /* Reserved */
+    idt_set_gate(10, handler_addr((uint64_t) isr10), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(11, handler_addr((uint64_t) isr11), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(12, handler_addr((uint64_t) isr12), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(13, handler_addr((uint64_t) isr13), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(14, handler_addr((uint64_t) isr14), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
 
     /* Reserved and other exceptions (vectors 15-19) */
-    idt_set_gate(15, handler_addr((uint64_t) isr15), type_attr(IDT_INTERRUPT_GATE), dpl(0));  /* Reserved */
-    idt_set_gate(16, handler_addr((uint64_t) isr16), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(17, handler_addr((uint64_t) isr17), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(18, handler_addr((uint64_t) isr18), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(19, handler_addr((uint64_t) isr19), type_attr(IDT_INTERRUPT_GATE), dpl(0));
+    idt_set_gate(15, handler_addr((uint64_t) isr15), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);  /* Reserved */
+    idt_set_gate(16, handler_addr((uint64_t) isr16), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(17, handler_addr((uint64_t) isr17), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(18, handler_addr((uint64_t) isr18), type_attr(IDT_INTERRUPT_GATE), dpl(0), 3); /* IST3: #MC dedicated stack */
+    idt_set_gate(19, handler_addr((uint64_t) isr19), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
 
     /* Reserved vectors 20-31 (future CPU extensions) */
-    idt_set_gate(20, handler_addr((uint64_t) isr20), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(21, handler_addr((uint64_t) isr21), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(22, handler_addr((uint64_t) isr22), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(23, handler_addr((uint64_t) isr23), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(24, handler_addr((uint64_t) isr24), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(25, handler_addr((uint64_t) isr25), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(26, handler_addr((uint64_t) isr26), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(27, handler_addr((uint64_t) isr27), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(28, handler_addr((uint64_t) isr28), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(29, handler_addr((uint64_t) isr29), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(30, handler_addr((uint64_t) isr30), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(31, handler_addr((uint64_t) isr31), type_attr(IDT_INTERRUPT_GATE), dpl(0));
+    idt_set_gate(20, handler_addr((uint64_t) isr20), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(21, handler_addr((uint64_t) isr21), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(22, handler_addr((uint64_t) isr22), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(23, handler_addr((uint64_t) isr23), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(24, handler_addr((uint64_t) isr24), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(25, handler_addr((uint64_t) isr25), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(26, handler_addr((uint64_t) isr26), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(27, handler_addr((uint64_t) isr27), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(28, handler_addr((uint64_t) isr28), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(29, handler_addr((uint64_t) isr29), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(30, handler_addr((uint64_t) isr30), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(31, handler_addr((uint64_t) isr31), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
 
-    /* ==========================================================
-     * Register Hardware IRQ Handlers (INT 0x20-0x2F)
-     * Note: These are now registered by irq_init() in irq.cpp
-     * This code is kept for reference but commented out
-     * ==========================================================
-     */
-    /* IRQ handlers are now registered by irq_init() */
-    /*
-    idt_set_gate(0x20, handler_addr((uint64_t) irq0_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(0x21, handler_addr((uint64_t) irq1_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(0x22, handler_addr((uint64_t) irq2_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(0x23, handler_addr((uint64_t) irq3_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(0x24, handler_addr((uint64_t) irq4_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(0x25, handler_addr((uint64_t) irq5_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(0x26, handler_addr((uint64_t) irq6_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(0x27, handler_addr((uint64_t) irq7_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(0x28, handler_addr((uint64_t) irq8_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(0x29, handler_addr((uint64_t) irq9_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(0x2A, handler_addr((uint64_t) irq10_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(0x2B, handler_addr((uint64_t) irq11_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(0x2C, handler_addr((uint64_t) irq12_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(0x2D, handler_addr((uint64_t) irq13_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(0x2E, handler_addr((uint64_t) irq14_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    idt_set_gate(0x2F, handler_addr((uint64_t) irq15_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0));
-    */
+    /* IRQ vectors 32-47 are registered by irq_init() in irq.cpp */
 
     /* Set up IDT pointer */
     idt_pointer.limit = sizeof(idt_table) - 1;
