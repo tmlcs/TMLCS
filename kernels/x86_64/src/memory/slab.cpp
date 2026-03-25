@@ -595,8 +595,12 @@ void* kmem_alloc(size_t size) {
 
     SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
 
-    /* Add slab to partial list */
-    add_slab_to_list(slab, &cache->partial);
+    /* Add slab to appropriate list — full if no free objects remain */
+    if (slab->num_free == 0) {
+        add_slab_to_list(slab, &cache->full);
+    } else {
+        add_slab_to_list(slab, &cache->partial);
+    }
 
     SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
 
