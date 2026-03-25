@@ -13,8 +13,9 @@ PHDRS
      * Segments with explicit permissions to eliminate RWX warning
      * Flags: 1 = X (execute), 2 = W (write), 4 = R (read)
      */
-    text PT_LOAD FLAGS(5);  /* R + E = 5 */
-    data PT_LOAD FLAGS(6);  /* R + W = 6 */
+    text   PT_LOAD FLAGS(5);  /* R + E = 5  — executable code only */
+    rodata PT_LOAD FLAGS(4);  /* R     = 4  — read-only data, no execute */
+    data   PT_LOAD FLAGS(6);  /* R + W = 6  — read-write data */
 }
 
 SECTIONS
@@ -46,7 +47,7 @@ SECTIONS
     {
         *(.rodata)
         *(.rodata.*)
-    } :text
+    } :rodata
 
     /* ==========================================
      * Initialized Data - Global/static with initializer

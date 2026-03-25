@@ -35,11 +35,13 @@ QEMU_STDIO_FLAGS := -cdrom $(ISO_FILE) -serial stdio -no-reboot -no-shutdown
 # Include paths for all subdirectories
 CFLAGS := -ffreestanding -fno-exceptions -fno-rtti \
           -fno-stack-protector -nostdlib -nostartfiles \
+          -mno-sse -mno-sse2 -mno-mmx -mno-avx -mno-red-zone \
           -O2 -Wall -Wextra -Wpedantic -Werror -Wuninitialized \
           -I src/core \
           -I src/core/panic \
           -I src/core/debug \
           -I src/core/stdint \
+          -I src/core/log \
           -I src/drivers/console \
           -I src/drivers/vga \
           -I src/drivers/serial \
@@ -52,6 +54,24 @@ CFLAGS := -ffreestanding -fno-exceptions -fno-rtti \
           -I src/arch/x86_64/idt \
           -I src/arch/x86_64/gdt \
           -I src/memory
+
+# ==========================================
+# Log Level Configuration
+# ==========================================
+# Set LOG_MAX_LEVEL for compile-time log filtering:
+#   - LOG_LEVEL_DEBUG (0): All logs (verbose)
+#   - LOG_LEVEL_INFO (1):  Info and above (default)
+#   - LOG_LEVEL_WARN (2):  Warnings and errors only
+#   - LOG_LEVEL_ERROR (3): Errors only
+#   - LOG_LEVEL_PANIC (4): Panics only (silent)
+#
+# Usage: make LOG_LEVEL=0   # Debug build
+#        make LOG_LEVEL=1   # Info build (default)
+#        make LOG_LEVEL=2   # Warn build
+#        make LOG_LEVEL=3   # Error build
+# ==========================================
+LOG_LEVEL ?= 1
+CFLAGS += -DLOG_MAX_LEVEL=$(LOG_LEVEL)
 
 # ==========================================
 # Assembly Flags

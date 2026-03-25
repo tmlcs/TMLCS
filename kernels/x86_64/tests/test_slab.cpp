@@ -102,13 +102,13 @@ void test_slab_cache_sizes(void) {
         test_fail("32-byte allocation failed");
     }
 
-    /* Test that larger sizes fail gracefully */
+    /* Test 64-byte cache (supported — slab has 7 caches: 32-2048 bytes) */
     void* p64 = kmem_alloc(64);
-    if (p64 == NULL) {
-        test_pass("64-byte allocation correctly returns NULL (not supported)");
-    } else {
-        test_fail("64-byte allocation should return NULL");
+    if (p64 != NULL) {
+        test_pass("64-byte allocation works correctly");
         kmem_free(p64, 64);
+    } else {
+        test_fail("64-byte allocation should succeed");
     }
 }
 
@@ -277,7 +277,7 @@ void test_slab_memory_leak_fix(void) {
     } else {
         test_fail("Free counter not incremented");
     }
-    
+
     test_pass("Memory leak fix verified");
 }
 

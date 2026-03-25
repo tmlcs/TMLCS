@@ -269,7 +269,7 @@ void test_pit_stats(void) {
     pit_print_stats();
 
     /* Verify state structure */
-    pit_state_t* state = pit_get_state();
+    volatile pit_state_t* state = pit_get_state();
     if (state != nullptr) {
         test_pass("pit_get_state() returned valid pointer");
     } else {
@@ -294,26 +294,13 @@ void test_pit_all(void) {
     serial_write_str("GLOBEX_OS PIT (Timer) Test Suite\r\n");
     serial_write_str("============================================\r\n");
 
-    /* Initialize PIT */
+    /* Reset PIT state (IRQ system and handler already set up by kernel_main) */
     serial_write_str("Initializing PIT...\r\n");
     if (!pit_init()) {
         serial_write_str("[FAIL] pit_init() failed!\r\n");
         return;
     }
-
-    /* Initialize IRQ system */
-    serial_write_str("Initializing IRQ system...\r\n");
-    if (!irq_init()) {
-        serial_write_str("[FAIL] irq_init() failed!\r\n");
-        return;
-    }
-
-    /* Register PIT handler */
-    irq_register_handler(0, pit_irq_handler);
-    
-    /* Enable IRQ0 (timer) */
-    irq_enable(0);
-    serial_write_str("IRQ0 (timer) enabled, handler registered\r\n");
+    serial_write_str("IRQ0 (timer) handler active\r\n");
 
     /* Run tests */
     test_pit_init();

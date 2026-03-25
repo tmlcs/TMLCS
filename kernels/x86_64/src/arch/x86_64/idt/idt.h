@@ -350,7 +350,10 @@ void idt_init(void);
  *   // Type-safe: compiler rejects swapped arguments
  *   idt_set_gate(0x20, handler_addr(handler), type_attr(IDT_INTERRUPT_GATE), dpl(0));
  */
-void idt_set_gate(uint8_t vector, handler_addr_t handler, type_attr_t type_attr, dpl_t dpl);
+/* HIGH-003 FIX: Added ist parameter so IST assignment is atomic with gate
+ * write. Pass ist=1 for #DF (vector 8), ist=0 for all other vectors. */
+void idt_set_gate(uint8_t vector, handler_addr_t handler, type_attr_t type_attr,
+                  dpl_t dpl, uint8_t ist);
 
 /**
  * @brief Send command to PIC
@@ -392,14 +395,7 @@ static inline uint8_t pic_read_data(io_port_t port) {
     return ret;
 }
 
-/**
- * @brief Send End of Interrupt to PIC
- *
- * Must be called at the end of each hardware interrupt handler.
- *
- * @param irq IRQ number (0-15)
- */
-void pic_send_eoi(uint8_t irq);
+/* pic_send_eoi() removed — use irq_send_eoi() from irq.h (HIGH-001 fix). */
 
 /**
  * @brief Disable PIC interrupts

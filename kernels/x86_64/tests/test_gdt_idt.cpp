@@ -56,8 +56,10 @@ void test_gdt_initialization(void) {
     TEST_ASSERT(tss != NULL, "TSS pointer is valid");
     TEST_ABORT_IF_FAILED();
 
-    /* Test 7: IST1 configured for double-fault handler (HIGH-005) */
+    /* Test 7: IST1/IST2/IST3 configured for #DF, NMI, #MC (HIGH-005, LOW-006) */
     TEST_ASSERT(tss->ist1 != 0, "IST1 stack configured (double-fault protection)");
+    TEST_ASSERT(tss->ist2 != 0, "IST2 stack configured (NMI protection)");
+    TEST_ASSERT(tss->ist3 != 0, "IST3 stack configured (#MC protection)");
     TEST_ABORT_IF_FAILED();
 
     serial_write_str("[GDT INIT] All tests passed\r\n");
@@ -66,42 +68,90 @@ void test_gdt_initialization(void) {
 /* =============================================================================
  * Test IDT Initialization
  * =============================================================================
+ * MED-005 FIX: Structural verification — reads actual IDT entry fields via
+ * the SIDT instruction instead of just printing confirmation strings.
+ * =============================================================================
  */
 void test_idt_initialization(void) {
     TEST_RESET_FAILURE();
     serial_write_str("\r\n=== IDT Initialization Test ===\r\n");
 
-    /* Note: IDT is already initialized by kernel_main before tests run */
-    /* We can only verify that it was set up correctly */
+    /* Test 1: IRQ system initialized */
+    TEST_ASSERT(irq_is_initialized() == 1, "IRQ system initialized");
+    TEST_ABORT_IF_FAILED();
 
-    /* Test 1: Verify all exception vectors 0-31 have handlers */
-    serial_write_str("Checking all exception vectors (0-31)...\r\n");
-    
-    /* Verify key vectors are registered (sample check) */
-    serial_write_str("  Vector 0 (Divide Error): Registered\r\n");
-    serial_write_str("  Vector 3 (Breakpoint): Registered\r\n");
-    serial_write_str("  Vector 8 (Double Fault): Registered\r\n");
-    serial_write_str("  Vector 9 (Reserved): Registered - NEW\r\n");
-    serial_write_str("  Vector 13 (General Protection): Registered\r\n");
-    serial_write_str("  Vector 14 (Page Fault): Registered\r\n");
-    serial_write_str("  Vector 15 (Reserved): Registered - NEW\r\n");
-    serial_write_str("  Vector 19 (SIMD FPU): Registered\r\n");
-    serial_write_str("  Vectors 20-31 (Reserved): Registered - NEW\r\n");
-    
-    serial_write_str("All 32 exception vectors (0-31) have handlers\r\n");
+    /* Test 2: Read IDT via SIDT and verify structural fields.
+     * SIDT loads the 10-byte IDT descriptor (limit:base) into memory. */
+    idt_pointer_t idtp;
+    __asm__ volatile("sidt %0" : "=m"(idtp));
 
-    /* Test 2: IRQ system initialized (irq_init() registered stubs for vectors 32-47) */
-    serial_write_str("\r\nChecking IRQ system...\r\n");
-    TEST_ASSERT(irq_is_initialized() == 1, "IRQ system initialized (irq_init() was called)");
-    serial_write_str("  IRQ0-7  -> IDT 0x20-0x27 (Master PIC): Registered\r\n");
-    serial_write_str("  IRQ8-15 -> IDT 0x28-0x2F (Slave PIC):  Registered\r\n");
+    /* IDT must cover at minimum vectors 0-47 (32 exceptions + 16 IRQs) */
+    TEST_ASSERT(idtp.base != 0, "IDT base address is non-zero");
+    TEST_ASSERT(idtp.limit >= (48 * (uint16_t)sizeof(idt_entry_t) - 1),
+                "IDT limit covers all 48 vectors (0-47)");
+    TEST_ABORT_IF_FAILED();
 
-    /* Test 3: Verify PIC remap offset (read from PIC via In-Service Register poll) */
-    serial_write_str("\r\nVerifying PIC remap...\r\n");
-    serial_write_str("  PIC1 offset: 0x20 (IRQ 0-7 -> INT 0x20-0x27)\r\n");
-    serial_write_str("  PIC2 offset: 0x28 (IRQ 8-15 -> INT 0x28-0x2F)\r\n");
+    const idt_entry_t* idt = reinterpret_cast<const idt_entry_t*>(idtp.base);
 
-    serial_write_str("\r\n[IDT INIT] All 32 vectors registered successfully\r\n");
+    /* Test 3: All 32 exception vectors (0-31) must have non-zero handler addresses
+     * and use the kernel interrupt gate type (IDT_INTERRUPT_GATE = 0x8E). */
+    serial_write_str("Checking exception vectors 0-31...\r\n");
+    int all_exc_ok = 1;
+    for (int v = 0; v < 32; v++) {
+        uint64_t handler = (uint64_t)idt[v].offset_low
+                         | ((uint64_t)idt[v].offset_middle << 16)
+                         | ((uint64_t)idt[v].offset_high   << 32);
+        if (handler == 0 || idt[v].type_attr != IDT_INTERRUPT_GATE) {
+            serial_write_str("  FAIL vector ");
+            serial_write_dec((uint32_t)v);
+            serial_write_str(": handler=0x");
+            serial_write_hex64(handler);
+            serial_write_str(" type_attr=0x");
+            serial_write_hex((uint32_t)idt[v].type_attr);
+            serial_write_str("\r\n");
+            all_exc_ok = 0;
+        }
+    }
+    TEST_ASSERT(all_exc_ok, "All 32 exception vectors have handler and correct gate type");
+    TEST_ABORT_IF_FAILED();
+
+    /* Test 4: IST assignments — #DF uses IST1, NMI uses IST2, #MC uses IST3.
+     * All other exception vectors must use IST0 (no IST). */
+    TEST_ASSERT((idt[8].ist & 0x7) == 1, "Vector 8 (#DF) uses IST1");
+    TEST_ASSERT((idt[2].ist & 0x7) == 2, "Vector 2 (NMI) uses IST2");
+    TEST_ASSERT((idt[18].ist & 0x7) == 3, "Vector 18 (#MC) uses IST3");
+    int all_ist0_ok = 1;
+    for (int v = 0; v < 32; v++) {
+        if (v == 2 || v == 8 || v == 18) continue;
+        if ((idt[v].ist & 0x7) != 0) {
+            serial_write_str("  FAIL: vector ");
+            serial_write_dec((uint32_t)v);
+            serial_write_str(" has unexpected IST=");
+            serial_write_dec((uint32_t)(idt[v].ist & 0x7));
+            serial_write_str("\r\n");
+            all_ist0_ok = 0;
+        }
+    }
+    TEST_ASSERT(all_ist0_ok, "All other exception vectors use IST0");
+    TEST_ABORT_IF_FAILED();
+
+    /* Test 5: IRQ vectors 32-47 must have non-zero handler addresses. */
+    serial_write_str("Checking IRQ vectors 32-47...\r\n");
+    int all_irq_ok = 1;
+    for (int v = 32; v < 48; v++) {
+        uint64_t handler = (uint64_t)idt[v].offset_low
+                         | ((uint64_t)idt[v].offset_middle << 16)
+                         | ((uint64_t)idt[v].offset_high   << 32);
+        if (handler == 0) {
+            serial_write_str("  FAIL: IRQ vector ");
+            serial_write_dec((uint32_t)v);
+            serial_write_str(" has zero handler\r\n");
+            all_irq_ok = 0;
+        }
+    }
+    TEST_ASSERT(all_irq_ok, "All 16 IRQ vectors (32-47) have handlers");
+
+    serial_write_str("[IDT STRUCT] Structural verification passed\r\n");
 }
 
 /* =============================================================================

@@ -381,6 +381,21 @@ void serial_unlock(void);
  */
 bool serial_try_lock(void);
 
+/**
+ * @brief Force-release the serial spinlock from a fatal exception handler.
+ *
+ * If a CPU exception fires while the serial lock is held, the exception
+ * handler cannot call serial_write_* (spinlock_acquire would deadlock).
+ * This function resets the lock field directly so subsequent serial output
+ * works in the handler.
+ *
+ * @warning ONLY call this when:
+ *   1. Interrupts are already disabled (cli has been issued).
+ *   2. The caller will never return (fatal halt path).
+ * Calling it in any other context permanently breaks mutual exclusion.
+ */
+void serial_force_unlock(void);
+
 #ifdef __cplusplus
 }
 #endif

@@ -53,8 +53,16 @@ static gdt_pointer_t gdt_pointer;
  * valid stack even if the main kernel stack has overflowed.
  * =============================================================================
  */
-#define IST1_STACK_SIZE 8192  /* 8KB - enough for #DF handler + serial output */
+#define IST1_STACK_SIZE 8192  /* 8KB - #DF double-fault handler */
 static uint8_t g_ist1_stack[IST1_STACK_SIZE] __attribute__((aligned(16)));
+
+/* LOW-006 FIX: Dedicated IST stacks for NMI (IST2) and #MC (IST3).
+ * NMI and Machine Check can fire on any stack including a corrupt one;
+ * IST forces the CPU to switch to these known-good stacks unconditionally. */
+#define IST2_STACK_SIZE 8192  /* 8KB - NMI handler */
+#define IST3_STACK_SIZE 8192  /* 8KB - #MC machine-check handler */
+static uint8_t g_ist2_stack[IST2_STACK_SIZE] __attribute__((aligned(16)));
+static uint8_t g_ist3_stack[IST3_STACK_SIZE] __attribute__((aligned(16)));
 
 /* =============================================================================
  * TSS - Task State Segment
@@ -216,8 +224,9 @@ void tss_init(uint64_t kernel_stack) {
     tss_entry.rsp2 = 0;
     /* HIGH-005: IST1 points to top of dedicated double-fault stack */
     tss_entry.ist1 = (uint64_t)(g_ist1_stack + IST1_STACK_SIZE);
-    tss_entry.ist2 = 0;
-    tss_entry.ist3 = 0;
+    /* LOW-006 FIX: IST2 = NMI stack, IST3 = #MC stack */
+    tss_entry.ist2 = (uint64_t)(g_ist2_stack + IST2_STACK_SIZE);
+    tss_entry.ist3 = (uint64_t)(g_ist3_stack + IST3_STACK_SIZE);
     tss_entry.ist4 = 0;
     tss_entry.ist5 = 0;
     tss_entry.ist6 = 0;
