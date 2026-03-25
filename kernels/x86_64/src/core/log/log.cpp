@@ -458,6 +458,7 @@ void log_output(int level, const char* module, const char* file, int line, const
 
     /* Handle PANIC level - halt system */
     if (level == LOG_LEVEL_PANIC) {
+        __asm__ volatile("cli" ::: "memory");   /* Disable interrupts before halt */
         for (;;) {
             __asm__ volatile("hlt");
         }
