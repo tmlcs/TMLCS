@@ -5,7 +5,6 @@
 #include "io.h"
 #include "decimal_utils.h"
 #include "hex_utils.h"
-#include "print.h"
 #include "spinlock.h"
 
 /* =============================================================================
@@ -339,17 +338,11 @@ static bool serial_wait_transmit_empty_timeout(uint32_t timeout) {
     atomic_inc32_relaxed(&g_serial_state.timeout_count);
     wmb(); /* Ensure counter update is visible */
 
-    /* Use print_is_initialized() instead of print_detect()
-     * print_detect() performs a hardware test write which may not be safe
-     * if called before VGA is fully initialized.
-     * print_is_initialized() simply checks the initialization flag.
-     */
-    rmb(); /* Ensure we see latest print state */
-    if (print_is_initialized()) {
-        print_set_color(PRINT_COLOR_YELLOW, PRINT_COLOR_BLACK);
-        print_str("[SERIAL TIMEOUT] Hardware not responding!\r\n");
-        print_set_color(PRINT_COLOR_LIGHT_GREEN, PRINT_COLOR_BLACK);
-    }
+    /* VGA output intentionally omitted: this function is called while
+     * g_serial_lock is held. Calling print_str would acquire g_vga_lock,
+     * creating a lock-order inversion with callers that hold g_vga_lock
+     * and call serial functions. Error state already recorded in
+     * g_serial_state.error_code = SERIAL_ERROR_TIMEOUT above. */
 
     return false;
 }
