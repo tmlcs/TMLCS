@@ -339,7 +339,13 @@ void test_slab_statistics(void) {
     kmem_free(p2, 32);
 
     test_pass("2 frees OK");
-    test_pass("Stats tracked");
+
+    slab_state_t* state = slab_get_state();
+    if (state != nullptr && state->total_allocations > 0 && state->total_frees > 0) {
+        test_pass("Stats tracked: allocs and frees non-zero");
+    } else {
+        test_fail("Stats not tracked: counters unexpectedly zero");
+    }
 }
 
 /* =============================================================================
@@ -366,7 +372,7 @@ void test_slab_allocator(void) {
     test_slab_basic();
     test_slab_cache_sizes();
     /* test_slab_efficiency(); */  /* Disabled - requires full implementation */
-    /* test_slab_direct_api(); */  /* Disabled - only 32-byte supported */
+    test_slab_direct_api();
     test_slab_memory_leak_fix();   /* FEAT-MEM-003: Memory leak fix verification */
     test_slab_stress();            /* ENABLED - serial fix (TEMT wait) resolves QEMU bug */
     test_slab_statistics();        /* ENABLED - serial fix (TEMT wait) resolves QEMU bug */

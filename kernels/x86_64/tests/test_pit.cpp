@@ -213,7 +213,7 @@ void test_pit_irq(void) {
     pit_wait_ms(50);  /* Wait 50ms = ~5 ticks at 100Hz */
     
     uint32_t current_count = irq_get_count(0);
-    if (current_count >= initial_count) {
+    if (current_count > initial_count) {
         test_pass("IRQ0 count incrementing");
         serial_write_str("    Initial: ");
         serial_write_dec(initial_count);
