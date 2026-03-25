@@ -82,13 +82,15 @@ SECTIONS
      *
      * Separated from .bss to allow safe zero-initialization of BSS.
      * ========================================== */
-    .boot.data : ALIGN(4K)
+    .boot.data (NOLOAD) : ALIGN(4K)
     {
         __boot_data_start = .;
         *(.boot.data)
         *(.bss.boot)  /* Compatibility with existing code */
         __boot_data_end = .;
     } :data
+
+    __kernel_end = .;   /* End of kernel image — must be inside SECTIONS */
 
     /* ==========================================
      * Validations - ASSERTs for safety
@@ -113,7 +115,6 @@ SECTIONS
  * Useful global symbols for the kernel
  * ========================================== */
 __kernel_start = 1M;
-__kernel_end = .;
 
 /* ==========================================
  * Memory Map Information
