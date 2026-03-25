@@ -8,9 +8,13 @@
 #include "barriers.h"
 
 /* =============================================================================
- * Heap State
+ * Heap State and Constants
  * =============================================================================
  */
+
+/* 2 GiB identity map upper bound (set during boot in main.asm) */
+static constexpr uintptr_t IDENTITY_MAP_END = 0x80000000UL;
+
 static int g_heap_initialized = 0;
 
 /* Spinlock for thread-safe allocation */
@@ -267,7 +271,7 @@ int is_slab_address(void* ptr) {
      * 2GiB identity-mapped window. A pointer outside this range cannot be
      * a slab object, so skip the magic read entirely. */
     uintptr_t heap_base  = (uintptr_t)&__kernel_end;
-    uintptr_t heap_limit = 0x80000000UL;  /* 2GiB identity-map limit */
+    uintptr_t heap_limit = IDENTITY_MAP_END;
     if (page_start < heap_base || page_start >= heap_limit) {
         return 0;
     }
