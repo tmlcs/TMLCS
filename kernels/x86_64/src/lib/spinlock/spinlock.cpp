@@ -312,14 +312,21 @@ void spinlock_release(spinlock_t* lock) {
      */
     bool was_enabled = lock->interrupts_enabled;
 
-    /* Release the lock by setting locked to 0 */
-    lock->locked = 0;
-
     /*
-     * Reset interrupt state flag for next acquire
+     * Reset interrupt state flag BEFORE releasing the lock.
+     * CRITICAL: We must clear interrupts_enabled while still holding the lock,
+     * otherwise a new owner can acquire the lock (after locked=0) and write
+     * interrupts_enabled=true before we clear it to false. This would destroy
+     * the new owner's saved interrupt state.
      * interrupts_enabled is volatile - ensures visibility across CPUs
      */
-    lock->interrupts_enabled = false; /* Reset for next acquire */
+    lock->interrupts_enabled = false; /* Reset BEFORE releasing — prevents race with new owner */
+
+    /* Ensure interrupts_enabled reset is visible before lock release */
+    barrier();
+
+    /* Release the lock by setting locked to 0 */
+    lock->locked = 0;
 
     /* Full memory barrier after release */
     barrier();
