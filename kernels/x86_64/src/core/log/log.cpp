@@ -170,9 +170,11 @@ static void format_append_arg(char** buf, char fmt_spec, va_list args, const cha
         int32_t val = va_arg(args, int32_t);
         if (val < 0) {
             append_char(buf, '-', buf_end);
-            val = -val;
+            /* Safe negation: avoids INT32_MIN overflow UB */
+            append_dec(buf, (uint32_t)(-(val + 1)) + 1, buf_end);
+        } else {
+            append_dec(buf, (uint32_t)val, buf_end);
         }
-        append_dec(buf, (uint32_t) val, buf_end);
         break;
     }
     case 'u':
