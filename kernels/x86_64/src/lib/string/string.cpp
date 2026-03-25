@@ -267,7 +267,7 @@ size_t strlcpy(char* dest, const char* src, size_t destsize) {
 
     if (destsize > 0) {
         /* Copy at most destsize - 1 characters */
-        while (i < destsize - 1 && src[i] != '\0') {
+        while (i + 1 < destsize && src[i] != '\0') {
             dest[i] = src[i];
             i++;
         }
