@@ -60,6 +60,11 @@ extern "C" {
  *           - Returns empty string if bounds check fails
  */
 inline char* uint32_to_decimal_string(char* buffer, uint32_t value) {
+    /* Null pointer safety check - guard before any buffer write */
+    if (buffer == nullptr) {
+        return nullptr;
+    }
+
     /* Handle zero case */
     if (value == 0) {
         buffer[0] = '0';
@@ -87,11 +92,6 @@ inline char* uint32_to_decimal_string(char* buffer, uint32_t value) {
     if (digit_count > DECIMAL_UINT32_MAX_DIGITS) {
         buffer[0] = '\0';
         return buffer;
-    }
-
-    /* Null pointer safety check */
-    if (buffer == nullptr) {
-        return nullptr;
     }
 
     /* Start from position 11 (end of buffer), work backwards
@@ -151,6 +151,11 @@ inline char* uint32_to_decimal_string(char* buffer, uint32_t value) {
  *           - Returns empty string if bounds check fails
  */
 inline char* uint64_to_decimal_string(char* buffer, uint64_t value) {
+    /* Null pointer safety check - guard before any buffer write */
+    if (buffer == nullptr) {
+        return nullptr;
+    }
+
     /* Handle zero case */
     if (value == 0) {
         buffer[0] = '0';
@@ -178,11 +183,6 @@ inline char* uint64_to_decimal_string(char* buffer, uint64_t value) {
     if (digit_count > DECIMAL_UINT64_MAX_DIGITS) {
         buffer[0] = '\0';
         return buffer;
-    }
-
-    /* Null pointer safety check */
-    if (buffer == nullptr) {
-        return nullptr;
     }
 
     /* Start from position 21 (end of buffer), work backwards
