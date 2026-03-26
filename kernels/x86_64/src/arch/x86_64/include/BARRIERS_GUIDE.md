@@ -86,9 +86,9 @@ hw_rmb();  // Ensure read completes before using value
 
 ```cpp
 // Spinlock already provides memory barriers
-spinlock_acquire(&lock);
+spinlock_token_t tok = spinlock_acquire(&lock);
 // ... critical section ...
-spinlock_release(&lock);
+spinlock_release(&lock, tok);
 // No additional barriers needed for normal RAM access
 ```
 

@@ -28,13 +28,14 @@ void spinlock_init(spinlock_t* lock) {
 }
 
 spinlock_token_t spinlock_acquire(spinlock_t* lock) {
+    if (lock == nullptr) {
+        spinlock_token_t empty = {0};
+        return empty;
+    }
+
     spinlock_token_t tok;
     tok.rflags = read_rflags();
     __asm__ volatile("cli" ::: "memory");
-
-    if (lock == nullptr) {
-        return tok;
-    }
 
     while (1) {
         uint64_t expected = 0;

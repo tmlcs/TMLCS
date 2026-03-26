@@ -53,7 +53,16 @@ static volatile size_t cursor_row = 0;
 static uint8_t current_color = 0;
 
 /* Token saved by vga_begin_atomic() and consumed by vga_end_atomic().
- * Safe on single-CPU since the VGA lock is non-reentrant. */
+ *
+ * Single-CPU safety: the VGA lock is non-reentrant, so once CPU 0 holds it
+ * (between vga_begin_atomic and vga_end_atomic) no second acquisition on the
+ * same CPU can succeed and overwrite the token.
+ *
+ * NOTE (SMP): On a multi-CPU system a second CPU calling vga_try_begin_atomic
+ * could win the CAS and overwrite g_vga_atomic_tok while CPU 0 is still inside
+ * its atomic section, corrupting the saved RFLAGS/IF state.  Until a per-CPU
+ * token or a caller-supplied token is used, vga_try_begin_atomic must not be
+ * called concurrently with vga_begin_atomic on a different CPU. */
 static spinlock_token_t g_vga_atomic_tok;
 
 /* =============================================================================

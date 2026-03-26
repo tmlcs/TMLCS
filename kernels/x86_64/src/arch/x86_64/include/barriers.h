@@ -125,11 +125,11 @@ extern "C" {
  *
  * @example
  *   // ✅ CORRECT: barrier() for local optimization
- *   spinlock_acquire(&lock);  // Lock provides SMP safety
+ *   spinlock_token_t tok = spinlock_acquire(&lock);  // Lock provides SMP safety
  *   local_var = compute();    // No mb() needed - lock is barrier
  *   barrier();                // Prevent compiler reordering only
  *   use(local_var);
- *   spinlock_release(&lock);
+ *   spinlock_release(&lock, tok);
  *
  * @example
  *   // ❌ WRONG: barrier() for SMP shared variable
