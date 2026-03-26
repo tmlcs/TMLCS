@@ -22,12 +22,13 @@ bits 64
 ; C prototype:
 ;   void gdt_load(gdt_pointer_t* gdtp);
 ;
-; In 64-bit long mode, segment registers (except FS/GS) are largely ignored.
-; We only need to load the GDTR for:
+; In 64-bit long mode, data segment registers (DS/ES/SS) are ignored.
+; We load the GDTR for:
 ;   - TSS descriptor (used for IST and RSP switching on interrupts)
 ;   - User/kernel mode separation (DPL checks)
 ;
-; No need to reload CS/DS/ES/SS in long mode - they are ignored.
+; CS must be explicitly reloaded after LGDT to flush the hardware CS
+; descriptor cache; we do this via a far return (retfq) below.
 ; =============================================================================
 gdt_load:
     lgdt [rdi]              ; Load GDTR from memory location pointed by RDI
