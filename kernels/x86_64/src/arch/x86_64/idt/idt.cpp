@@ -14,7 +14,8 @@
 #include "serial.h"
 #include "gdt.h" /* For GDT_SELECTOR_KERNEL_CODE */
 #include "constants.h" /* For IDT_, PIC_, EXCEPTION_, IRQ_ constants */
-#include "log.h" /* For LOG_PANIC macro */
+#include "log.h"   /* For LOG_PANIC macro */
+#include "panic.h" /* For panic_simple fallback when LOG_PANIC is compiled out */
 
 /* =============================================================================
  * IDT Table - Static storage
@@ -182,6 +183,7 @@ void idt_set_gate(uint8_t vector, handler_addr_t handler, type_attr_t type_attr,
     /* HIGH-004 FIX: Validate handler address */
     if (handler.value < VALID_HANDLER_MIN || handler.value >= VALID_HANDLER_MAX) {
         LOG_PANIC("idt_set_gate: invalid handler for vector %u", (uint32_t)vector);
+        panic_simple("idt_set_gate: invalid handler address"); /* unconditional halt if LOG_PANIC compiled out */
     }
 
     idt_table[vector].offset_low = handler.value & IDT_OFFSET_LOW_MASK;
