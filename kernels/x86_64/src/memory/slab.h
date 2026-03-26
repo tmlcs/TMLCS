@@ -27,7 +27,7 @@ extern "C" {
  *
  * Memory Layout (per slab):
  *   +------------------+
- *   | Slab Metadata    |  64 bytes
+ *   | Slab Metadata    |  72 bytes
  *   +------------------+
  *   | Object 0         |  N bytes
  *   +------------------+
@@ -109,7 +109,7 @@ typedef struct slab_free_node {
  * @brief Which linked list a slab currently resides in
  */
 typedef enum : uint8_t {
-    SLAB_LIST_FREE    = 0,
+    SLAB_LIST_FREE    = 0,  /* transient init state; overwritten by add_slab_to_list */
     SLAB_LIST_PARTIAL = 1,
     SLAB_LIST_FULL    = 2,
 } slab_list_state_t;

@@ -7,6 +7,7 @@
 #include "spinlock.h"
 #include "barriers.h"
 #include "early_alloc.h"
+#include "panic.h"
 
 /* =============================================================================
  * Low-level I/O Port Access
@@ -744,9 +745,7 @@ void kmem_free(void* ptr, size_t size) {
          * Previously slabs were never freed, causing permanent memory loss
          * proportional to peak live-slab count.
          *
-         * Transition source:
-         *   num_objects == 1 (2048-byte cache): 0→1 means slab was in full.
-         *   num_objects  > 1 (all other caches): came from partial.
+         * list_state is authoritative: remove from the correct list regardless of num_objects.
          *
          * Lock-order protocol to prevent g_slab_lock → g_heap_lock deadlock:
          *   1. Remove slab from list while holding g_slab_lock.
@@ -767,6 +766,7 @@ void kmem_free(void* ptr, size_t size) {
         return;
     } else if (slab->num_free == 1) {
         /* Was full (0 free → 1 free) — move to partial */
+        PANIC_IF_FALSE(slab->list_state == SLAB_LIST_FULL, "slab num_free==1 but list_state is not FULL");
         remove_slab_from_list(slab, &target_cache->full);
         add_slab_to_list(slab, &target_cache->partial, SLAB_LIST_PARTIAL);
         SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
