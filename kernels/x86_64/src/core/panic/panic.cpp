@@ -67,20 +67,20 @@ void panic(const char* message, uint32_t error_code) {
      * on VGA (if available) or just halt.
      */
     if (serial_is_initialized()) {
-        serial_write_str("\r\n\r\n");
-        serial_write_str("!!! KERNEL PANIC !!!\r\n");
-        serial_write_str("\r\n");
+        serial_write_unsafe("\r\n\r\n");
+        serial_write_unsafe("!!! KERNEL PANIC !!!\r\n");
+        serial_write_unsafe("\r\n");
 
         if (message != nullptr) {
-            serial_write_str("Error: ");
-            serial_write_str(message);
-            serial_write_str("\r\n");
+            serial_write_unsafe("Error: ");
+            serial_write_unsafe(message);
+            serial_write_unsafe("\r\n");
         }
 
-        serial_write_str("Error Code: 0x");
+        serial_write_unsafe("Error Code: 0x");
         serial_write_hex(error_code);
-        serial_write_str("\r\n");
-        serial_write_str("\r\nSystem halted.\r\n");
+        serial_write_unsafe("\r\n");
+        serial_write_unsafe("\r\nSystem halted.\r\n");
     }
 
     /* ==========================================

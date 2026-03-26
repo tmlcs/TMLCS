@@ -76,6 +76,10 @@ void             serial_unlock(spinlock_token_t tok);
 bool             serial_try_lock(spinlock_token_t* out_tok);
 void             serial_force_unlock(void);
 
+/** Reset g_vga_lock to unlocked state without restoring IF.
+ *  For use ONLY at the top of default_exception_handler(). */
+void vga_force_unlock(void);
+
 #ifdef __cplusplus
 }
 #endif

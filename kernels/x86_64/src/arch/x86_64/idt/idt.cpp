@@ -12,6 +12,7 @@
 #include "stddef.h"
 #include "print.h"
 #include "serial.h"
+#include "spinlock.h"
 #include "gdt.h" /* For GDT_SELECTOR_KERNEL_CODE */
 #include "constants.h" /* For IDT_, PIC_, EXCEPTION_, IRQ_ constants */
 #include "log.h"   /* For LOG_PANIC macro */
@@ -243,9 +244,9 @@ void default_exception_handler(interrupt_frame_t* frame) {
      * serial_force_unlock is intentionally NOT called here: we are not
      * halting, so mutual exclusion must be preserved. */
     if (frame->int_num == 3) {
-        serial_write_str("[IDT] Breakpoint (#BP) at RIP=0x");
+        serial_write_unsafe("[IDT] Breakpoint (#BP) at RIP=0x");
         serial_write_hex64(frame->rip);
-        serial_write_str("\r\n");
+        serial_write_unsafe("\r\n");
         return;
     }
 
@@ -260,58 +261,59 @@ void default_exception_handler(interrupt_frame_t* frame) {
     serial_force_unlock();
 
     /* Output to serial */
-    serial_write_str("\r\n\r\n!!! EXCEPTION !!!\r\n");
+    serial_write_unsafe("\r\n\r\n!!! EXCEPTION !!!\r\n");
 
     if (frame->int_num < EXCEPTION_MESSAGE_COUNT) {
-        serial_write_str(exception_messages[frame->int_num]);
+        serial_write_unsafe(exception_messages[frame->int_num]);
     } else {
-        serial_write_str("Unknown Exception");
+        serial_write_unsafe("Unknown Exception");
     }
 
-    serial_write_str("\r\n");
+    serial_write_unsafe("\r\n");
 
     /* Per Intel SDM Vol 3A Table 6-1, these vectors push an error code */
     bool has_errcode = (frame->int_num == 8  ||
                         (frame->int_num >= 10 && frame->int_num <= 14) ||
                         frame->int_num == 17);
     if (has_errcode) {
-        serial_write_str("Error Code: 0x");
+        serial_write_unsafe("Error Code: 0x");
         serial_write_hex((uint32_t) frame->err_code);
-        serial_write_str("\r\n");
+        serial_write_unsafe("\r\n");
     }
 
     /* Output register state */
-    serial_write_str("RIP: 0x");
+    serial_write_unsafe("RIP: 0x");
     serial_write_hex64(frame->rip);
-    serial_write_str("  CS: 0x");
+    serial_write_unsafe("  CS: 0x");
     serial_write_hex((uint32_t) frame->cs);
-    serial_write_str("  RFLAGS: 0x");
+    serial_write_unsafe("  RFLAGS: 0x");
     serial_write_hex64(frame->rflags);
-    serial_write_str("\r\n");
+    serial_write_unsafe("\r\n");
 
-    serial_write_str("RSP: 0x");
+    serial_write_unsafe("RSP: 0x");
     serial_write_hex64(frame->rsp);
-    serial_write_str("  SS: 0x");
+    serial_write_unsafe("  SS: 0x");
     serial_write_hex((uint32_t) frame->ss);
-    serial_write_str("\r\n");
+    serial_write_unsafe("\r\n");
 
-    serial_write_str("RAX: 0x");
+    serial_write_unsafe("RAX: 0x");
     serial_write_hex64(frame->rax);
-    serial_write_str("  RBX: 0x");
+    serial_write_unsafe("  RBX: 0x");
     serial_write_hex64(frame->rbx);
-    serial_write_str("  RCX: 0x");
+    serial_write_unsafe("  RCX: 0x");
     serial_write_hex64(frame->rcx);
-    serial_write_str("\r\n");
+    serial_write_unsafe("\r\n");
 
-    serial_write_str("RDX: 0x");
+    serial_write_unsafe("RDX: 0x");
     serial_write_hex64(frame->rdx);
-    serial_write_str("  RSI: 0x");
+    serial_write_unsafe("  RSI: 0x");
     serial_write_hex64(frame->rsi);
-    serial_write_str("  RDI: 0x");
+    serial_write_unsafe("  RDI: 0x");
     serial_write_hex64(frame->rdi);
-    serial_write_str("\r\n");
+    serial_write_unsafe("\r\n");
 
     /* Output to VGA if available */
+    vga_force_unlock();
     if (print_is_initialized() != 0) {
         print_set_color(PRINT_COLOR_WHITE, PRINT_COLOR_RED);
         print_str("\r\n\r\n!!! EXCEPTION !!!\r\n");

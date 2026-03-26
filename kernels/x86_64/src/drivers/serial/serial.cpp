@@ -721,6 +721,18 @@ int serial_reinit_default(void) {
     return serial_reinit(SERIAL_DEFAULT_PORT, SERIAL_DEFAULT_BAUD);
 }
 
+void serial_write_unsafe(const char* str) {
+    if (!str) {
+        return;
+    }
+    while (*str) {
+        /* Wait for Transmitter Holding Register Empty (THRE) bit */
+        while (!(inb(0x3F8 + 5) & 0x20)) {
+        }
+        outb(0x3F8, (uint8_t)*str++);
+    }
+}
+
 /**
  * @brief Get a human-readable error message
  * @return Static string describing the error

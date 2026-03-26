@@ -400,6 +400,15 @@ bool serial_try_lock(spinlock_token_t* out_tok);
  */
 void serial_force_unlock(void);
 
+/**
+ * @brief Lock-free direct UART write for use ONLY in panic/exception handlers.
+ *
+ * Polls the UART 0x3F8 THRE bit directly. No spinlock, no state mutation.
+ * Safe to call when g_serial_lock may be held (fault during serial_write_str).
+ * Do NOT call from normal kernel paths.
+ */
+void serial_write_unsafe(const char* str);
+
 #ifdef __cplusplus
 }
 #endif

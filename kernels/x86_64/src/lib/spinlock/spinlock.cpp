@@ -140,3 +140,11 @@ void serial_force_unlock(void) {
     __asm__ volatile("" ::: "memory");
     g_serial_lock.locked = 0;
 }
+
+void vga_force_unlock(void) {
+    /* Mirrors serial_force_unlock contract:
+     * Interrupts MUST be disabled. Caller MUST NOT return (lock is invalid after this).
+     * Compiler barrier prevents reordering of prior writes past this store. */
+    __asm__ volatile("" ::: "memory");
+    g_vga_lock.locked = 0;
+}
