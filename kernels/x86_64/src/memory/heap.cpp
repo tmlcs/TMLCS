@@ -206,7 +206,7 @@ void* krealloc(void* ptr, size_t new_size) {
      * causing a use-after-free.  Holding the lock prevents that recycling
      * (kmem_free clears magic and calls kmem_free_auto only after releasing
      * g_slab_lock, so the page cannot disappear while we hold it). */
-    size_t old_size;
+    size_t old_size = 0;
     {
         spinlock_token_t slab_tok = spinlock_acquire(&g_slab_lock);
         bool is_slab = is_slab_address(ptr);
@@ -320,8 +320,20 @@ void kmem_free_auto(void* ptr) {
         return;
     }
     
-    /* Check if this is a slab allocation */
-    if (is_slab_address(ptr)) {
+    /* Check if this is a slab allocation.
+     * HIGH-2 FIX (kmem_free_auto): Hold g_slab_lock across is_slab_address to
+     * prevent a concurrent kmem_free() from clearing magic between the check
+     * and the dispatch, which would cause bitmap_free_contiguous to be called
+     * on a slab-owned pointer (bitmap corruption).  Release BEFORE calling
+     * kmem_free() — kmem_free internally acquires g_slab_lock (deadlock guard).
+     * NOTE: A window exists between release and kmem_free re-acquiring the lock.
+     * On this uniprocessor kernel (interrupts disabled by spinlock_acquire), this
+     * is safe.  A fully race-free SMP solution requires an internal locked-dispatch
+     * path — deferred until SMP support is added. */
+    spinlock_token_t slab_tok = spinlock_acquire(&g_slab_lock);
+    bool is_slab = is_slab_address(ptr);
+    spinlock_release(&g_slab_lock, slab_tok);
+    if (is_slab) {
         /* Slab allocation - use slab free with size=0 (ignored) */
         kmem_free(ptr, 0);
     } else {
