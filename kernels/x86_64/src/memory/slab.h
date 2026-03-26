@@ -79,7 +79,7 @@ extern "C" {
 
 /** Reserved space for slab_t header at start of each slab page.
  * static_assert in slab.cpp verifies sizeof(slab_t) <= SLAB_HEADER_SIZE. */
-#define SLAB_HEADER_SIZE 64
+#define SLAB_HEADER_SIZE 72
 
 /** Objects per slab (excluding metadata) */
 #define OBJECTS_PER_SLAB_32   ((SLAB_SIZE - SLAB_HEADER_SIZE) / 32)
@@ -106,6 +106,15 @@ typedef struct slab_free_node {
 } slab_free_node_t;
 
 /**
+ * @brief Which linked list a slab currently resides in
+ */
+typedef enum : uint8_t {
+    SLAB_LIST_FREE    = 0,
+    SLAB_LIST_PARTIAL = 1,
+    SLAB_LIST_FULL    = 2,
+} slab_list_state_t;
+
+/**
  * @brief Slab metadata (stored at beginning of each slab)
  */
 typedef struct slab slab_t;  /* Forward declaration */
@@ -118,6 +127,7 @@ struct slab {
     struct slab_cache* cache;     /**< Back pointer to cache */
     slab_t* next;                 /**< Next slab in list */
     slab_t* prev;                 /**< Previous slab in list */
+    slab_list_state_t list_state; /**< Which list this slab is currently in */
     uint64_t magic;               /**< Magic number for validation */
 };
 

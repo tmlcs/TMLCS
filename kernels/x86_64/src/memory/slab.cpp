@@ -499,16 +499,17 @@ static void remove_slab_from_list(slab_t* slab, slab_t** list) {
 }
 
 /**
- * Add slab to the beginning of a list
+ * Add slab to the beginning of a list and record which list it is in
  */
-static void add_slab_to_list(slab_t* slab, slab_t** list) {
+static void add_slab_to_list(slab_t* slab, slab_t** list, slab_list_state_t state) {
+    slab->list_state = state;
     slab->next = *list;
     slab->prev = 0;
-    
+
     if (*list) {
         (*list)->prev = slab;
     }
-    
+
     *list = slab;
 }
 
@@ -548,7 +549,7 @@ void* kmem_alloc(size_t size) {
         /* Move slab to full list if exhausted */
         if (slab->num_free == 0) {
             remove_slab_from_list(slab, &cache->partial);
-            add_slab_to_list(slab, &cache->full);
+            add_slab_to_list(slab, &cache->full, SLAB_LIST_FULL);
         }
 
         spinlock_release(&g_slab_lock, tok);
@@ -571,6 +572,7 @@ void* kmem_alloc(size_t size) {
     slab->next = 0;
     slab->prev = 0;
     slab->magic = SLAB_MAGIC;
+    slab->list_state = SLAB_LIST_FREE;
 
     SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
 
@@ -597,9 +599,9 @@ void* kmem_alloc(size_t size) {
 
     /* Add slab to appropriate list — full if no free objects remain */
     if (slab->num_free == 0) {
-        add_slab_to_list(slab, &cache->full);
+        add_slab_to_list(slab, &cache->full, SLAB_LIST_FULL);
     } else {
-        add_slab_to_list(slab, &cache->partial);
+        add_slab_to_list(slab, &cache->partial, SLAB_LIST_PARTIAL);
     }
 
     SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
@@ -752,7 +754,7 @@ void kmem_free(void* ptr, size_t size) {
          *      NOT back into kmem_free() which would re-acquire g_slab_lock.
          *   3. Release g_slab_lock.
          *   4. Call kmem_free_auto() — acquires g_heap_lock only. */
-        if (slab->num_objects == 1) {
+        if (slab->list_state == SLAB_LIST_FULL) {
             remove_slab_from_list(slab, &target_cache->full);
         } else {
             remove_slab_from_list(slab, &target_cache->partial);
@@ -766,7 +768,7 @@ void kmem_free(void* ptr, size_t size) {
     } else if (slab->num_free == 1) {
         /* Was full (0 free → 1 free) — move to partial */
         remove_slab_from_list(slab, &target_cache->full);
-        add_slab_to_list(slab, &target_cache->partial);
+        add_slab_to_list(slab, &target_cache->partial, SLAB_LIST_PARTIAL);
         SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
     }
 
