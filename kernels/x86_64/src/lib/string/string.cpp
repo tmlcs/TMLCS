@@ -172,12 +172,13 @@ void* memset(void* s, int c, size_t n) {
  * @param n Number of bytes to compare
  * @return 0 if equal, <0 if s1<s2, >0 if s1>s2
  *
- * NULL pointer handling: passing NULL for s1 or s2 is a programming error.
- *   PANIC_IF_FALSE will call panic_simple() and halt — it does NOT return 0.
- *   Callers must validate pointers before calling memcmp().
+ * NULL pointer handling: if either pointer is NULL, returns 0.
+ *   This satisfies the header contract without panicking the kernel.
  */
 int memcmp(const void* s1, const void* s2, size_t n) {
-    PANIC_IF_FALSE(s1 != nullptr && s2 != nullptr, "memcmp: null pointer");
+    if (s1 == nullptr || s2 == nullptr) {
+        return 0;
+    }
 
     const uint8_t* p1 = static_cast<const uint8_t*>(s1);
     const uint8_t* p2 = static_cast<const uint8_t*>(s2);

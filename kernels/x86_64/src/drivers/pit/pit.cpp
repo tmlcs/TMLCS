@@ -85,8 +85,8 @@ int pit_init_frequency(uint32_t frequency_hz) {
     g_pit_state.initialized = 0;  /* Not yet ready */
     g_pit_state.ticks = 0;
     g_pit_state.milliseconds = 0;
-    g_pit_state.frequency_hz = frequency_hz;
-    g_pit_state.divisor = divisor;
+    g_pit_state.divisor       = divisor;
+    g_pit_state.frequency_hz  = PIT_BASE_FREQUENCY / divisor;  /* actual hardware frequency */
     /* MED-001 NOTE: The ms_remainder accumulator in pit_irq_handler() is a
      * static local bounded by modulo(frequency_hz) each tick. After a frequency
      * change the accumulator self-corrects within one tick. */

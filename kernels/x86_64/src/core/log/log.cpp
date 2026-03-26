@@ -534,7 +534,7 @@ void log_hex_dump(const char* label, const void* addr, size_t len) {
 
         /* Offset */
         append_string(&out, "  ", out_end);
-        append_hex(&out, (uint32_t) (i + (size_t) bytes), out_end);
+        append_hex64(&out, (uint64_t)((uintptr_t)bytes + i), out_end);
         append_string(&out, ":  ", out_end);
 
         /* Hex bytes */

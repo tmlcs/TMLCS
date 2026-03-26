@@ -138,7 +138,16 @@ To add a test: create `tests/test_foo.{h,cpp}`, add `#include` and a call in `ke
 
 - **No stdlib** — use `src/core/stdint/` types (`uint32_t`, `size_t`, etc.). No `<stdio.h>`, `<string.h>`, or `<stdlib.h>`. Use the kernel's own `string.h` / `string.cpp`.
 - **`strcpy` is `[[deprecated]]`** — use `strlcpy(dest, src, sizeof(dest))` instead. Test files that exercise `strcpy` must suppress with `#pragma GCC diagnostic ignored "-Wdeprecated-declarations"`.
-- **Format specifiers** — the kernel's `log.cpp` printf-like formatter does not support `%p` or `%zu`. Use `%s` + manual hex conversion or `%u` / `%lu`.
+- **Format specifiers** — the kernel's `log.cpp` printf-like formatter supports the following specifiers:
+
+  | Specifier | Status |
+  |-----------|--------|
+  | `%u`, `%d` | supported |
+  | `%llu`, `%lld` | supported (64-bit) |
+  | `%p` | supported |
+  | `%zu` | supported |
+  | `%s`, `%x`, `%X` | supported |
+  | `%lu` | **NOT supported** — produces incorrect output silently |
 - **Type-safe wrappers** — `idt_set_gate`, `gdt_set_entry`, and VGA functions use strong typedefs (`handler_addr_t`, `type_attr_t`, `vga_col_t`, etc.) to prevent parameter-swap bugs. Always use the wrapper constructors (e.g., `handler_addr((uint64_t)isr0)`).
 - **`slab_t` detection** — to distinguish slab from page allocations, align the pointer down to `SLAB_SIZE` (4 KB) and check `slab_t.magic == SLAB_MAGIC`. Read `slab_t.object_size` for the actual allocation size, not the page size.
 - **No SSE/AVX** — compiler flags disable vector registers. Do not write code that requires them.
