@@ -250,6 +250,13 @@ void default_exception_handler(interrupt_frame_t* frame) {
         return;
     }
 
+    if (frame->int_num == 2) {
+        /* NMI handler: must return (not halt) so iretq executes and re-arms
+         * NMI delivery on x86_64. Uses serial_write_unsafe — no lock. */
+        serial_write_unsafe("[NMI] Non-maskable interrupt received\r\n");
+        return;
+    }
+
     /* Disable interrupts to prevent further exceptions */
     interrupts_disable();
 

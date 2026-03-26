@@ -31,11 +31,11 @@ bits 64
 ; =============================================================================
 gdt_load:
     lgdt [rdi]              ; Load GDTR from memory location pointed by RDI
-    
-    ; In long mode, segment registers are cached and not reloaded from GDT
-    ; unless explicitly needed. For our purposes (TSS loading), just LGDT
-    ; is sufficient. No need for far return or segment reload.
-    
+    push qword 0x08         ; kernel code selector
+    lea  rax, [rel .cs_flush]
+    push rax
+    retfq                   ; far return: reloads CS = 0x08, flushes descriptor cache
+.cs_flush:
     ret
 
 ; =============================================================================

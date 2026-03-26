@@ -298,6 +298,30 @@ void irq_disable_all(void) {
  * =============================================================================
  */
 
+/**
+ * Check if IRQ is spurious by reading the PIC In-Service Register.
+ * For spurious IRQ15: still sends EOI to master (for the cascade line).
+ * Returns true if spurious (caller must skip handler and normal EOI).
+ */
+static bool irq_is_spurious(uint8_t irq) {
+    if (irq == 7) {
+        /* Read master PIC ISR */
+        outb(PIC1_COMMAND, 0x0B);              /* OCW3: read ISR */
+        return (inb(PIC1_COMMAND) & 0x80) == 0; /* bit 7 = IRQ7 in service */
+    }
+    if (irq == 15) {
+        /* Read slave PIC ISR */
+        outb(PIC2_COMMAND, 0x0B);
+        if (inb(PIC2_COMMAND) & 0x80) {
+            return false;  /* Real IRQ15 — proceed normally */
+        }
+        /* Spurious IRQ15: send EOI only to master for the cascade line */
+        outb(PIC1_COMMAND, PIC_EOI);
+        return true;
+    }
+    return false;
+}
+
 void irq_dispatch(uint8_t irq) {
     /* CRIT-002 FIX: Check for excessive nesting to prevent stack overflow */
     uint32_t current_depth = atomic_inc32(&g_irq_stack_depth);
@@ -318,6 +342,11 @@ void irq_dispatch(uint8_t irq) {
         return;
     }
     
+    if (irq_is_spurious(irq)) {
+        atomic_dec32(&g_irq_stack_depth);
+        return;  /* EOI already handled for cascade case; skip handler */
+    }
+
     /* MED-003 FIX: Use atomic increment — irq_dispatch() can be called
      * concurrently on multiple CPUs; plain ++ is not atomic. Relaxed
      * ordering is sufficient for a statistics counter. */
