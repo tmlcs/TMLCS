@@ -437,7 +437,7 @@ void log_output(int level, const char* module, const char* file, int line, const
     }
 
     /* Acquire lock for thread safety */
-    spinlock_acquire(&g_log_lock);
+    spinlock_token_t tok = spinlock_acquire(&g_log_lock);
 
     /* Build formatted message */
     char message[LOG_BUFFER_SIZE];
@@ -456,7 +456,7 @@ void log_output(int level, const char* module, const char* file, int line, const
     /* Write to serial and VGA */
     write_output(output, true);
 
-    spinlock_release(&g_log_lock);
+    spinlock_release(&g_log_lock, tok);
 
     /* Handle PANIC level - halt system */
     if (level == LOG_LEVEL_PANIC) {
@@ -488,7 +488,7 @@ void log_output_simple(int level, const char* fmt, ...) {
     }
 
     /* Acquire lock for thread safety */
-    spinlock_acquire(&g_log_lock);
+    spinlock_token_t tok = spinlock_acquire(&g_log_lock);
 
     /* Build formatted message */
     char message[LOG_BUFFER_SIZE];
@@ -504,7 +504,7 @@ void log_output_simple(int level, const char* fmt, ...) {
     /* Write to serial and VGA (no cursor management needed) */
     write_output(output, true);
 
-    spinlock_release(&g_log_lock);
+    spinlock_release(&g_log_lock, tok);
 }
 
 /* =============================================================================
@@ -522,7 +522,7 @@ void log_hex_dump(const char* label, const void* addr, size_t len) {
     LOG_DEBUG("%s (%u bytes):", label, (uint32_t)len);
     (void)label;  /* Suppress unused-parameter warning when LOG_DEBUG is compiled out */
 
-    spinlock_acquire(&g_log_lock);
+    spinlock_token_t tok = spinlock_acquire(&g_log_lock);
 
     const uint8_t* bytes = reinterpret_cast<const uint8_t*>(addr);
 
@@ -584,5 +584,5 @@ void log_hex_dump(const char* label, const void* addr, size_t len) {
 #endif
     }
 
-    spinlock_release(&g_log_lock);
+    spinlock_release(&g_log_lock, tok);
 }

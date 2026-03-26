@@ -99,9 +99,9 @@ void test_smp_data_integrity(void) {
 
     /* Single CPU test - verifies spinlock correctness */
     for (int i = 0; i < SMP_TEST_ITERATIONS; i++) {
-        spinlock_acquire(&smp_test_lock);
+        spinlock_token_t tok = spinlock_acquire(&smp_test_lock);
         smp_shared_counter++;
-        spinlock_release(&smp_test_lock);
+        spinlock_release(&smp_test_lock, tok);
     }
 
     serial_write_str("[DATA INTEGRITY] Verifying counter...\r\n");
@@ -130,9 +130,9 @@ void test_smp_fairness(void) {
 
     /* Test that lock can be acquired fairly in sequence */
     for (int i = 0; i < SMP_TEST_ITERATIONS; i++) {
-        spinlock_acquire(&smp_test_lock);
+        spinlock_token_t tok = spinlock_acquire(&smp_test_lock);
         acquisitions++;
-        spinlock_release(&smp_test_lock);
+        spinlock_release(&smp_test_lock, tok);
     }
 
     serial_write_str("[FAIRNESS] Lock acquisition test...\r\n");
@@ -160,13 +160,13 @@ void test_smp_nested_locks(void) {
 
     /* Test acquiring two locks in sequence */
     for (int i = 0; i < SMP_TEST_ITERATIONS / 10; i++) {
-        spinlock_acquire(&smp_lock_a);
-        spinlock_acquire(&smp_lock_b);
+        spinlock_token_t tok_a = spinlock_acquire(&smp_lock_a);
+        spinlock_token_t tok_b = spinlock_acquire(&smp_lock_b);
 
         atomic_inc32(&smp_nested_success);
 
-        spinlock_release(&smp_lock_b);
-        spinlock_release(&smp_lock_a);
+        spinlock_release(&smp_lock_b, tok_b);
+        spinlock_release(&smp_lock_a, tok_a);
     }
 
     uint32_t expected = SMP_TEST_ITERATIONS / 10;
@@ -225,13 +225,13 @@ void test_smp_contention(void) {
 
     /* Simulate contention with many quick acquire/release cycles */
     for (int i = 0; i < SMP_TEST_ITERATIONS * 2; i++) {
-        spinlock_acquire(&smp_test_lock);
+        spinlock_token_t tok = spinlock_acquire(&smp_test_lock);
         counter++;
         /* Small delay to simulate work */
         for (volatile int j = 0; j < 10; j++) {
             __asm__ volatile("nop");
         }
-        spinlock_release(&smp_test_lock);
+        spinlock_release(&smp_test_lock, tok);
     }
 
     serial_write_str("Operations completed: ");

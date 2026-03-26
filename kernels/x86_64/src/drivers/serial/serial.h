@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "spinlock.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -362,24 +363,27 @@ const char* serial_get_error_string(uint32_t error_code);
 
 /**
  * @brief Acquire serial lock for multi-operation atomicity
+ * @return Token capturing pre-acquire RFLAGS; pass to serial_unlock()
  * @note Disables interrupts on local CPU to prevent deadlock
  * @see spinlock.h for full documentation
  */
-void serial_lock(void);
+spinlock_token_t serial_lock(void);
 
 /**
  * @brief Release serial lock
- * @note Restores interrupt state to what it was before acquire
+ * @param tok Token returned by serial_lock()
+ * @note Restores interrupt state captured in tok
  * @see spinlock.h for full documentation
  */
-void serial_unlock(void);
+void serial_unlock(spinlock_token_t tok);
 
 /**
  * @brief Try to acquire serial lock (non-blocking)
+ * @param out_tok Output token; valid only if returns true
  * @return true if acquired, false if already locked
  * @see spinlock.h for full documentation
  */
-bool serial_try_lock(void);
+bool serial_try_lock(spinlock_token_t* out_tok);
 
 /**
  * @brief Force-release the serial spinlock from a fatal exception handler.

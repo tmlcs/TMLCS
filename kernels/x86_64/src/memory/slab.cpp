@@ -517,17 +517,17 @@ void* kmem_alloc(size_t size) {
         return 0;
     }
 
-    spinlock_acquire(&g_slab_lock);
+    spinlock_token_t tok = spinlock_acquire(&g_slab_lock);
 
     int idx = get_cache_index(size);
     if (idx < 0) {
-        spinlock_release(&g_slab_lock);
+        spinlock_release(&g_slab_lock, tok);
         return 0;
     }
 
     slab_cache_t* cache = get_cache(idx);
     if (cache == 0) {
-        spinlock_release(&g_slab_lock);
+        spinlock_release(&g_slab_lock, tok);
         return 0;
     }
 
@@ -551,14 +551,14 @@ void* kmem_alloc(size_t size) {
             add_slab_to_list(slab, &cache->full);
         }
 
-        spinlock_release(&g_slab_lock);
+        spinlock_release(&g_slab_lock, tok);
         return obj;
     }
 
     /* No partial slabs, allocate a new slab */
     slab_t* slab = (slab_t*)kmalloc(SLAB_SIZE);
     if (slab == 0) {
-        spinlock_release(&g_slab_lock);
+        spinlock_release(&g_slab_lock, tok);
         return 0;
     }
 
@@ -616,7 +616,7 @@ void* kmem_alloc(size_t size) {
     g_slab_total_allocs++;
     SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
 
-    spinlock_release(&g_slab_lock);
+    spinlock_release(&g_slab_lock, tok);
 
     return obj;
 }
@@ -650,7 +650,7 @@ void kmem_free(void* ptr, size_t size) {
         return;
     }
 
-    spinlock_acquire(&g_slab_lock);
+    spinlock_token_t tok = spinlock_acquire(&g_slab_lock);
 
     /* MED-001 FIX: O(1) slab lookup.
      * Each slab occupies exactly one SLAB_SIZE-aligned page with the
@@ -662,13 +662,13 @@ void kmem_free(void* ptr, size_t size) {
     /* Validate slab magic before dereferencing any other field */
     if (slab->magic != SLAB_MAGIC) {
         /* Not a live slab page - invalid free */
-        spinlock_release(&g_slab_lock);
+        spinlock_release(&g_slab_lock, tok);
         return;
     }
 
     slab_cache_t* target_cache = slab->cache;
     if (!target_cache) {
-        spinlock_release(&g_slab_lock);
+        spinlock_release(&g_slab_lock, tok);
         return;
     }
 
@@ -680,7 +680,7 @@ void kmem_free(void* ptr, size_t size) {
     uint8_t* obj_area_start = (uint8_t*)slab + SLAB_HEADER_SIZE;
     uint8_t* obj_area_end   = (uint8_t*)slab + SLAB_SIZE;
     if ((uint8_t*)ptr < obj_area_start || (uint8_t*)ptr >= obj_area_end) {
-        spinlock_release(&g_slab_lock);
+        spinlock_release(&g_slab_lock, tok);
         return;
     }
 
@@ -688,7 +688,7 @@ void kmem_free(void* ptr, size_t size) {
     uintptr_t obj_offset = (uintptr_t)ptr - (uintptr_t)obj_area_start;
     if (obj_offset % target_cache->object_size != 0) {
         /* Invalid pointer - not aligned to object boundary */
-        spinlock_release(&g_slab_lock);
+        spinlock_release(&g_slab_lock, tok);
         return;
     }
 
@@ -699,7 +699,7 @@ void kmem_free(void* ptr, size_t size) {
         if (check == ptr) {
             /* Double free detected! */
             g_slab_double_frees++;
-            spinlock_release(&g_slab_lock);
+            spinlock_release(&g_slab_lock, tok);
             return;
         }
         check = check->next;
@@ -760,7 +760,7 @@ void kmem_free(void* ptr, size_t size) {
         target_cache->num_slabs--;
         g_slab_total_slabs--;
         slab->magic = 0;
-        spinlock_release(&g_slab_lock);
+        spinlock_release(&g_slab_lock, tok);
         kmem_free_auto((void*)slab);
         return;
     } else if (slab->num_free == 1) {
@@ -770,7 +770,7 @@ void kmem_free(void* ptr, size_t size) {
         SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
     }
 
-    spinlock_release(&g_slab_lock);
+    spinlock_release(&g_slab_lock, tok);
 }
 
 /* =============================================================================

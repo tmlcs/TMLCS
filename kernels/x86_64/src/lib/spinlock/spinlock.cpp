@@ -3,99 +3,16 @@
 #include "constants.h"
 #include "serial.h"
 
-/* Use centralized barriers from barriers.h
- * Previous: Local #define barrier()
- * Now: #include "barriers.h" provides consistent barriers
- * @see src/arch/x86_64/include/barriers.h
- */
-
 /* =============================================================================
- * x86_64 Spinlock Implementation
- * =============================================================================
- *
- * Uses LOCK CMPXCHG for atomic compare-and-swap operation.
- * The LOCK prefix ensures the operation is atomic across all CPUs.
- *
- * Memory ordering:
- *   - Acquire: Uses LOCK which acts as a full memory barrier
- *   - Release: Uses volatile write with memory barrier
- *
- * Interrupt handling:
- *   - Disables interrupts during spin to prevent deadlock
- *     (if interrupt handler tried to acquire same lock)
- *   - Re-enables interrupts after release
- *
- *   - interrupts_enabled field is now volatile in spinlock_t
- *   - Ensures compiler doesn't cache the value across CPUs
- *   - Critical for correct interrupt state restoration in SMP
+ * Internal helpers
  * =============================================================================
  */
 
-/* Flag to track interrupt state */
-typedef struct {
-    bool interrupts_enabled;
-} interrupt_state_t;
-
-/* Save and disable interrupts
- * Uses volatile read to ensure fresh value from spinlock_t
- *
- * @assembly
- *   Instruction 1: pushfq; pop %0
- *     - pushfq: Push RFLAGS register onto stack
- *     - pop %0: Pop into output operand (rflags)
- *     - Purpose: Read current interrupt state
- *     - Effects: Copies RFLAGS to C++ variable
- *     - Cycles: ~3-5
- *
- *   Instruction 2: cli
- *     - Purpose: Clear Interrupt Flag (disable interrupts)
- *     - Effects: IF bit in RFLAGS = 0
- *     - Cycles: ~3
- *     - Barriers: Implicit (privileged instruction)
- *
- * @note RFLAGS bit 9 (IF - Interrupt Flag) controls maskable interrupts
- * @note If IF=1, interrupts enabled; if IF=0, disabled
- * @note 0x200 = bit 9 = Interrupt Flag in RFLAGS
- *
- * @param state Struct to save interrupt state
- *
- * @see sti_restore() to restore state
- */
-static inline void cli_save(interrupt_state_t* state) {
-    /* Check if interrupts are enabled by reading RFLAGS */
+static inline uint64_t read_rflags(void) {
     uint64_t rflags;
     __asm__ volatile("pushfq; pop %0" : "=r"(rflags));
-    state->interrupts_enabled = (rflags & 0x200) != 0; /* Interrupt flag bit */
-
-    /* Disable interrupts */
-    __asm__ volatile("cli" ::: "memory");
+    return rflags;
 }
-
-/**
- * Restore interrupt state
- * Uses volatile read to ensure correct state restoration
- *
- * @assembly
- *   Instruction: sti
- *     - Purpose: Set Interrupt Flag (enable interrupts)
- *     - Effects: IF bit in RFLAGS = 1
- *     - Cycles: ~3
- *     - Barriers: Implicit (privileged instruction)
- *
- * @note Only executes sti if interrupts were enabled
- * @note Do nothing if they were disabled (correct state)
- *
- * @param state State saved by cli_save()
- *
- * @see cli_save() to save state
- */
-static inline void sti_restore(const interrupt_state_t* state) {
-    if (state->interrupts_enabled) {
-        __asm__ volatile("sti" ::: "memory");
-    }
-}
-
-/* barrier() now provided by barriers.h */
 
 /* =============================================================================
  * Spinlock Implementation
@@ -107,329 +24,118 @@ void spinlock_init(spinlock_t* lock) {
         return;
     }
     lock->locked = 0;
-    lock->interrupts_enabled = false;
     barrier();
 }
 
-void spinlock_acquire(spinlock_t* lock) {
+spinlock_token_t spinlock_acquire(spinlock_t* lock) {
+    spinlock_token_t tok;
+    tok.rflags = read_rflags();
+    __asm__ volatile("cli" ::: "memory");
+
     if (lock == nullptr) {
-        return;
+        return tok;
     }
 
-    /* =======================================================================
-     * Always disable interrupts for SMP safety
-     * =======================================================================
-     * The previous fast path (try acquire without disabling interrupts)
-     * could cause deadlock in nested interrupt context:
-     *
-     * DEADLOCK SCENARIO (fast path removed):
-     *   1. CPU 0 acquires lock via fast path (interrupts still enabled)
-     *   2. Interrupt occurs on CPU 0
-     *   3. Interrupt handler tries to acquire same lock
-     *   4. Interrupt handler takes slow path (lock is held)
-     *   5. Interrupt handler spins forever (interrupts disabled in slow path)
-     *   6. Original code never resumes to release lock -> DEADLOCK
-     *
-     * SOLUTION: Always disable interrupts to prevent this scenario.
-     * This ensures:
-     *   1. No interrupt can preempt while holding lock
-     *   2. Interrupt handlers can safely acquire locks (no nested deadlock)
-     *   3. Interrupt state is properly restored on release
-     *
-     * Performance note: The cli/sti overhead is negligible compared to
-     * the cost of a cache line bounce in SMP systems.
-     * =======================================================================
-     */
-
-    /* Disable interrupts and save state BEFORE attempting to acquire */
-    interrupt_state_t int_state;
-    cli_save(&int_state);
-
-    /*
-     * Spin until we can atomically set locked from 0 to 1
-     * Using LOCK CMPXCHG ensures atomicity across all CPUs
-     *
-     * ALGORITHM:
-     *   1. We wait for locked == 0 (unlocked)
-     *   2. We try to change locked from 0 to 1 atomically
-     *   3. If another CPU won, we wait with PAUSE
-     *   4. We repeat until we get the lock
-     */
     while (1) {
-        uint64_t expected = 0; /* We expect unlocked state */
-        uint64_t desired = 1;  /* We want to lock it */
-
-        /*
-         * LOCK CMPXCHG: Atomic compare-and-swap
-         *
-         * @assembly
-         *   Instruction: lock cmpxchg %2, %1
-         *   Operands:
-         *     - %0 (output, "=a"): result - value returned in RAX
-         *     - %1 (input/output, "+m"): lock->locked - memory to modify
-         *     - %2 (input, "r"): desired - value to write (1)
-         *     - %3 (input, "a"): expected - expected value (0)
-         *
-         *   Operation:
-         *     IF [lock->locked] == expected (0):
-         *       [lock->locked] ← desired (1)
-         *       ZF ← 1 (zero flag set)
-         *       result ← expected (0)
-         *     ELSE:
-         *       result ← [lock->locked] (current value)
-         *       ZF ← 0 (zero flag clear)
-         *
-         *   LOCK prefix:
-         *     - Locks the memory bus during the operation
-         *     - Prevents other CPUs from accessing the same address
-         *     - Acts as a full memory barrier (implicit mfence)
-         *
-         *   Effects:
-         *     - Atomicity guaranteed across the entire system (all CPUs)
-         *     - Memory ordering: all previous operations
-         *       complete before, all subsequent ones wait
-         *
-         *   Cycles:
-         *     - Without contention: ~20-50 cycles
-         *     - With contention: variable (depends on wait)
-         *
-         *   Barriers: LOCK acts as a full barrier (load + store)
-         *
-         * @note RAX register must contain 'expected' before the instruction
-         * @note If ZF=1 (zero flag), lock was acquired (result == 0)
-         * @note If ZF=0, another CPU has the lock (result != 0)
-         *
-         * @see https://www.felixcloutier.com/x86/cmpxchg
-         * @see https://www.felixcloutier.com/x86/lock
-         */
+        uint64_t expected = 0;
+        uint64_t desired  = 1;
         uint64_t result;
         __asm__ volatile("lock cmpxchg %2, %1"
                          : "=a"(result), "+m"(lock->locked)
                          : "r"(desired), "a"(expected)
                          : "memory");
-
-        /* If result == 0, we successfully acquired the lock */
         if (result == 0) {
-            /* Save interrupt state in lock for restore on release
-             * interrupts_enabled is volatile, ensuring visibility across CPUs
-             */
-            lock->interrupts_enabled = int_state.interrupts_enabled;
             barrier();
-            break;
+            return tok;
         }
-
-        /*
-         * Spin with PAUSE instruction to reduce power consumption
-         * and improve hyperthreading performance
-         *
-         * @assembly
-         *   Instruction: pause (SSE2)
-         *   Operands: None
-         *   Effects:
-         *     - Prevents erroneous detection of memory dependencies
-         *     - Reduces power consumption during spin loops
-         *     - Improves hyperthreading performance (prevents starvation of other thread)
-         *   Cycles: ~10-20 (varies by implementation)
-         *   Barriers: Soft - does not reorder but gives opportunity to other threads
-         *
-         * @note Without PAUSE, the spinlock loop can cause:
-         *   - Pipeline stalls due to false dependency detection
-         *   - Higher power consumption
-         *   - Starvation of sibling hyperthread
-         *
-         * @see https://www.felixcloutier.com/x86/pause
-         */
         __asm__ volatile("pause" ::: "memory");
     }
-
-    barrier();
 }
 
-bool spinlock_try_acquire(spinlock_t* lock) {
-    if (lock == nullptr) {
+bool spinlock_try_acquire(spinlock_t* lock, spinlock_token_t* out_tok) {
+    if (lock == nullptr || out_tok == nullptr) {
         return false;
     }
 
-    /* Disable interrupts and save state */
-    interrupt_state_t int_state;
-    cli_save(&int_state);
+    spinlock_token_t tok;
+    tok.rflags = read_rflags();
+    __asm__ volatile("cli" ::: "memory");
 
     uint64_t expected = 0;
-    uint64_t desired = 1;
-
-    /*
-     * LOCK CMPXCHG - See full documentation in spinlock_acquire()
-     *
-     * @assembly
-     *   Instruction: lock cmpxchg
-     *   Difference with acquire(): No spin loop - tries once
-     *   If fails, restores interrupts and returns false immediately
-     */
+    uint64_t desired  = 1;
     uint64_t result;
     __asm__ volatile("lock cmpxchg %2, %1"
                      : "=a"(result), "+m"(lock->locked)
                      : "r"(desired), "a"(expected)
                      : "memory");
-
     barrier();
 
-    /* Return true if we acquired the lock (result == 0) */
     if (result == 0) {
-        /* Save interrupt state in lock for restore on release
-         * interrupts_enabled is volatile, ensuring visibility across CPUs
-         */
-        lock->interrupts_enabled = int_state.interrupts_enabled;
-        barrier();
+        *out_tok = tok;
         return true;
     }
 
-    /* Failed to acquire - restore interrupt state */
-    sti_restore(&int_state);
+    /* Failed — restore IF if it was enabled before our cli */
+    if (tok.rflags & 0x200) {
+        __asm__ volatile("sti" ::: "memory");
+    }
     return false;
 }
 
-void spinlock_release(spinlock_t* lock) {
+void spinlock_release(spinlock_t* lock, spinlock_token_t tok) {
     if (lock == nullptr) {
         return;
     }
-
-    /* Memory barrier before release */
     barrier();
-
-    /*
-     * CRITICAL: Restore interrupt state to what it was before acquire
-     *
-     * spinlock_acquire() ALWAYS calls cli_save() before the CAS loop,
-     * regardless of the lock's initial state. The saved interrupt state
-     * (whether interrupts were enabled or disabled at acquire time) is
-     * stored in lock->interrupts_enabled and must be restored here.
-     *
-     * was_enabled == true  => Interrupts were enabled at acquire time, restore them
-     * was_enabled == false => Interrupts were disabled at acquire time, keep them disabled
-     *
-     * This ensures we return to the exact interrupt state the caller had
-     * before acquiring the lock (nested spinlock correctness).
-     */
-    bool was_enabled = lock->interrupts_enabled;
-
-    /*
-     * Reset interrupt state flag BEFORE releasing the lock.
-     * CRITICAL: We must clear interrupts_enabled while still holding the lock,
-     * otherwise a new owner can acquire the lock (after locked=0) and write
-     * interrupts_enabled=true before we clear it to false. This would destroy
-     * the new owner's saved interrupt state.
-     * interrupts_enabled is volatile - ensures visibility across CPUs
-     */
-    lock->interrupts_enabled = false; /* Reset BEFORE releasing — prevents race with new owner */
-
-    /* Ensure interrupts_enabled reset is visible before lock release */
-    barrier();
-
-    /* Release the lock by setting locked to 0 */
     lock->locked = 0;
-
-    /* Full memory barrier after release */
     barrier();
-
-    /*
-     * Restore the interrupt state that was saved during spinlock_acquire().
-     * spinlock_acquire() always disables interrupts via cli_save() before
-     * the CAS loop, so we must always restore based on the saved state.
-     */
-    if (was_enabled) {
+    if (tok.rflags & 0x200) {
         __asm__ volatile("sti" ::: "memory");
     }
 }
 
 /* =============================================================================
- * VGA Spinlock Instance
- * =============================================================================
- * Global spinlock for protecting VGA text mode operations.
- * This lock must be held when accessing:
- *   - cursor_col, cursor_row
- *   - current_color
- *   - vga_buffer[]
+ * VGA Spinlock Instance and Wrappers
  * =============================================================================
  */
 
-/* Global VGA lock - initialized to unlocked state */
 spinlock_t g_vga_lock = SPINLOCK_INIT;
 
-/* =============================================================================
- * Lock/Unlock helpers for VGA driver
- * =============================================================================
- */
-
-void vga_lock(void) {
-    spinlock_acquire(&g_vga_lock);
+spinlock_token_t vga_lock(void) {
+    return spinlock_acquire(&g_vga_lock);
 }
 
-void vga_unlock(void) {
-    spinlock_release(&g_vga_lock);
+void vga_unlock(spinlock_token_t tok) {
+    spinlock_release(&g_vga_lock, tok);
 }
 
-bool vga_try_lock(void) {
-    return spinlock_try_acquire(&g_vga_lock);
+bool vga_try_lock(spinlock_token_t* out_tok) {
+    return spinlock_try_acquire(&g_vga_lock, out_tok);
 }
 
 /* =============================================================================
- * Serial Spinlock Instance
- * =============================================================================
- * Global spinlock for protecting serial port operations in SMP environments.
- * This lock must be held when accessing:
- *   - UART registers (THR, RBR, LSR, etc.)
- *   - Serial driver state (g_serial_state)
- *
- * Benefits:
- *   - Prevents character interleaving from multiple CPUs
- *   - Ensures atomic multi-character output
- *   - SMP-safe with interrupt handling (same as VGA lock)
- *
- * Usage:
- *   - Internal: All serial_write_* functions acquire lock automatically
- *   - External: Use serial_lock()/serial_unlock() for multi-operation atomicity
- *
- * Tracking issue: #SMP-002 (Serial driver SMP safety)
+ * Serial Spinlock Instance and Wrappers
  * =============================================================================
  */
 
-/* Global serial lock - initialized to unlocked state */
 spinlock_t g_serial_lock = SPINLOCK_INIT;
 
-/* =============================================================================
- * Lock/Unlock helpers for serial driver
- * =============================================================================
- */
-
-void serial_lock(void) {
-    spinlock_acquire(&g_serial_lock);
+spinlock_token_t serial_lock(void) {
+    return spinlock_acquire(&g_serial_lock);
 }
 
-void serial_unlock(void) {
-    spinlock_release(&g_serial_lock);
+void serial_unlock(spinlock_token_t tok) {
+    spinlock_release(&g_serial_lock, tok);
 }
 
-bool serial_try_lock(void) {
-    return spinlock_try_acquire(&g_serial_lock);
+bool serial_try_lock(spinlock_token_t* out_tok) {
+    return spinlock_try_acquire(&g_serial_lock, out_tok);
 }
 
 void serial_force_unlock(void) {
-    /* HIGH-002 FIX: Reset the serial spinlock for use in exception handlers.
-     *
-     * If a CPU exception fires while g_serial_lock is held (e.g., a fault
-     * inside serial_write_str()), the exception handler cannot call any
-     * serial_write_* function — spinlock_acquire() would spin forever.
-     *
-     * PRECONDITIONS (both must be true before calling this):
-     *   1. Interrupts MUST be disabled (cli) — prevents a second CPU or IRQ
-     *      from acquiring the lock between the reset and the next acquire.
-     *   2. The caller MUST NOT return — this path is for fatal halt sequences
-     *      only. Forcing the lock open breaks the mutual exclusion guarantee,
-     *      so the lock is permanently invalid after this call.
-     *
-     * LOW-NEW-001 FIX: Compiler barrier before the store prevents the
-     * compiler from reordering prior writes past this unlock under -O2.
-     */
+    /* Reset serial lock for use in exception handlers.
+     * PRECONDITIONS: interrupts must be disabled; caller must not return.
+     * Compiler barrier prevents reordering of prior writes past this store. */
     __asm__ volatile("" ::: "memory");
     g_serial_lock.locked = 0;
 }

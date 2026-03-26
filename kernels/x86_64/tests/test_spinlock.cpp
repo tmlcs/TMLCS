@@ -15,7 +15,7 @@
  *   - Basic acquire/release cycle
  *   - Try acquire (non-blocking)
  *   - NULL pointer safety
- *   - Interrupt state preservation
+ *   - Interrupt state preservation (via token rflags)
  * ========================================== */
 
 /* ==========================================
@@ -24,7 +24,7 @@
  * Verifies:
  *   - SPINLOCK_INIT macro initializes correctly
  *   - spinlock_init() function works
- *   - Initial state: locked=0, interrupts_enabled=false
+ *   - Initial state: locked=0
  * ========================================== */
 void test_spinlock_initialization(void) {
     serial_write_str("\r\n=== Spinlock Initialization Test ===\r\n");
@@ -32,18 +32,13 @@ void test_spinlock_initialization(void) {
     /* Test 1: Static initialization with SPINLOCK_INIT */
     spinlock_t static_lock = SPINLOCK_INIT;
     TEST_ASSERT(static_lock.locked == 0, "SPINLOCK_INIT: locked == 0");
-    TEST_ASSERT(static_lock.interrupts_enabled == false,
-                "SPINLOCK_INIT: interrupts_enabled == false");
 
     /* Test 2: Dynamic initialization with spinlock_init() */
     spinlock_t dynamic_lock;
-    dynamic_lock.locked = 0xFFFFFFFF;              /* Dirty value */
-    dynamic_lock.interrupts_enabled = true;        /* Dirty value */
+    dynamic_lock.locked = 0xFFFFFFFF;  /* Dirty value */
     spinlock_init(&dynamic_lock);
 
     TEST_ASSERT(dynamic_lock.locked == 0, "spinlock_init(): locked == 0");
-    TEST_ASSERT(dynamic_lock.interrupts_enabled == false,
-                "spinlock_init(): interrupts_enabled == false");
 
     /* Test 3: Re-initialization is safe */
     spinlock_init(&dynamic_lock);
@@ -72,23 +67,23 @@ void test_spinlock_acquire_release(void) {
     TEST_ASSERT(lock.locked == 0, "Initial state: unlocked");
 
     /* Test 2: Acquire sets locked to 1 */
-    spinlock_acquire(&lock);
+    spinlock_token_t tok = spinlock_acquire(&lock);
     TEST_ASSERT(lock.locked == 1, "After acquire: locked == 1");
 
     /* Test 3: Release sets locked to 0 */
-    spinlock_release(&lock);
+    spinlock_release(&lock, tok);
     TEST_ASSERT(lock.locked == 0, "After release: locked == 0");
 
     /* Test 4: Multiple acquire/release cycles */
     for (int i = 0; i < 5; i++) {
-        spinlock_acquire(&lock);
+        spinlock_token_t ctok = spinlock_acquire(&lock);
         TEST_ASSERT(lock.locked == 1, "Cycle %d: acquire sets locked == 1");
 
         /* Critical section simulation */
         volatile uint32_t dummy = lock.locked;
         (void)dummy;
 
-        spinlock_release(&lock);
+        spinlock_release(&lock, ctok);
         TEST_ASSERT(lock.locked == 0, "Cycle %d: release sets locked == 0");
     }
 
@@ -110,25 +105,28 @@ void test_spinlock_try_acquire(void) {
     bool result;
 
     /* Test 1: try_acquire on unlocked spinlock should succeed */
-    result = spinlock_try_acquire(&lock);
+    spinlock_token_t try_tok;
+    result = spinlock_try_acquire(&lock, &try_tok);
     TEST_ASSERT(result == true, "try_acquire(unlocked) returns true");
     TEST_ASSERT(lock.locked == 1, "try_acquire(unlocked) sets locked == 1");
 
     /* Test 2: try_acquire on locked spinlock should fail */
-    result = spinlock_try_acquire(&lock);
+    spinlock_token_t try_tok2;
+    result = spinlock_try_acquire(&lock, &try_tok2);
     TEST_ASSERT(result == false, "try_acquire(locked) returns false");
     TEST_ASSERT(lock.locked == 1, "try_acquire(locked) preserves locked == 1");
 
     /* Test 3: Release and try again */
-    spinlock_release(&lock);
+    spinlock_release(&lock, try_tok);
     TEST_ASSERT(lock.locked == 0, "After release: locked == 0");
 
-    result = spinlock_try_acquire(&lock);
+    spinlock_token_t try_tok3;
+    result = spinlock_try_acquire(&lock, &try_tok3);
     TEST_ASSERT(result == true, "try_acquire after release returns true");
     TEST_ASSERT(lock.locked == 1, "try_acquire after release sets locked == 1");
 
     /* Cleanup: release the lock */
-    spinlock_release(&lock);
+    spinlock_release(&lock, try_tok3);
 
     serial_write_str("[SPINLOCK TRY_ACQUIRE] All try_acquire tests passed\r\n");
 }
@@ -149,22 +147,26 @@ void test_spinlock_null_pointer_safety(void) {
     TEST_PASS("spinlock_init(nullptr) handled safely");
 
     /* Test 2: spinlock_acquire(NULL) should not crash */
-    spinlock_acquire(nullptr);
+    spinlock_token_t null_tok = spinlock_acquire(nullptr);
+    (void)null_tok;
     TEST_PASS("spinlock_acquire(nullptr) handled safely");
 
     /* Test 3: spinlock_release(NULL) should not crash */
-    spinlock_release(nullptr);
+    spinlock_token_t dummy_tok;
+    dummy_tok.rflags = 0;
+    spinlock_release(nullptr, dummy_tok);
     TEST_PASS("spinlock_release(nullptr) handled safely");
 
     /* Test 4: spinlock_try_acquire(NULL) should return false */
-    bool result = spinlock_try_acquire(nullptr);
+    spinlock_token_t try_tok;
+    bool result = spinlock_try_acquire(nullptr, &try_tok);
     TEST_ASSERT(result == false, "spinlock_try_acquire(nullptr) returns false");
 
     /* Test 5: Verify valid lock still works after NULL calls */
     spinlock_t lock = SPINLOCK_INIT;
-    spinlock_acquire(&lock);
+    spinlock_token_t tok = spinlock_acquire(&lock);
     TEST_ASSERT(lock.locked == 1, "Valid lock works after NULL calls");
-    spinlock_release(&lock);
+    spinlock_release(&lock, tok);
     TEST_ASSERT(lock.locked == 0, "Valid release works after NULL calls");
 
     serial_write_str("[SPINLOCK NULL SAFETY] All NULL pointer tests passed\r\n");
@@ -174,18 +176,9 @@ void test_spinlock_null_pointer_safety(void) {
  * Test: Interrupt State Preservation
  * ==========================================
  * Verifies:
- *   - Interrupts are disabled during acquire
- *   - Interrupt state is restored on release
- *   - interrupts_enabled field is properly managed
- *
- *   The previous "fast path" (acquire without disabling interrupts)
- *   was removed to prevent nested interrupt deadlock.
- *   Now ALL acquires disable interrupts unconditionally.
- *
- *   This test verifies that:
- *   - interrupts_enabled starts as false (SPINLOCK_INIT)
- *   - After acquire/release cycle, it returns to false
- *   - The lock remains functional throughout
+ *   - Interrupt state is captured into token before cli
+ *   - Token rflags reflects pre-acquire interrupt state
+ *   - Lock is functional throughout
  *
  * Note: This test is limited on single-CPU QEMU.
  *       Full SMP testing would require multi-processor setup.
@@ -195,38 +188,28 @@ void test_spinlock_interrupt_state(void) {
 
     spinlock_t lock = SPINLOCK_INIT;
 
-    /* Test 1: Initial state */
-    TEST_ASSERT(lock.interrupts_enabled == false,
-                "Initial state: interrupts_enabled == false");
+    /* Test 1: Initial state is locked=0 */
+    TEST_ASSERT(lock.locked == 0, "Initial state: locked == 0");
 
-    /* Test 2: Acquire (no fast path since
-     * 
-     * The fast path was removed. Now acquire ALWAYS
-     * disables interrupts to prevent nested interrupt deadlock:
-     *   1. CPU acquires lock (interrupts disabled)
-     *   2. Interrupt occurs on same CPU
-     *   3. Interrupt handler tries to acquire same lock
-     *   4. Without fix: DEADLOCK (handler spins forever)
-     *   5. With fix: interrupts already disabled, no deadlock
-     *
-     * After release, interrupts_enabled is reset to false.
+    /* Test 2: Acquire returns a token capturing pre-acquire RFLAGS.
+     * The token rflags bit 9 (IF) reflects whether interrupts were enabled
+     * before the acquire. We just verify the acquire/release cycle works
+     * correctly and the token is a valid struct.
      */
-    spinlock_acquire(&lock);
-    /* 
-     * Note: interrupts_enabled may be true or false after acquire,
-     * depending on the interrupt state at time of acquire.
-     * The important thing is that release() restores it to false.
-     */
-    spinlock_release(&lock);
+    spinlock_token_t tok = spinlock_acquire(&lock);
+    TEST_ASSERT(lock.locked == 1, "After acquire: locked == 1");
 
-    /* Test 3: After release, interrupts_enabled is reset to false */
-    TEST_ASSERT(lock.interrupts_enabled == false,
-                "After release: interrupts_enabled reset to false");
+    /* Verify token captured RFLAGS (rflags should be non-zero on x86_64
+     * since reserved bits are always set, e.g. bit 1 = always 1) */
+    TEST_ASSERT(tok.rflags != 0, "Token rflags non-zero (reserved bits always set)");
 
-    /* Test 4: Lock is usable after interrupt state test */
-    spinlock_acquire(&lock);
+    spinlock_release(&lock, tok);
+    TEST_ASSERT(lock.locked == 0, "After release: locked == 0");
+
+    /* Test 3: Lock is usable after interrupt state test */
+    spinlock_token_t tok2 = spinlock_acquire(&lock);
     TEST_ASSERT(lock.locked == 1, "Lock functional after interrupt test");
-    spinlock_release(&lock);
+    spinlock_release(&lock, tok2);
     TEST_ASSERT(lock.locked == 0, "Release functional after interrupt test");
 
     serial_write_str("[SPINLOCK INTERRUPT STATE] All interrupt state tests passed\r\n");

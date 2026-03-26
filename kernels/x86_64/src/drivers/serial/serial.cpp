@@ -383,26 +383,26 @@ int serial_write_char(char data) {
      * The lock also disables interrupts to prevent deadlock
      * if an interrupt handler also tries to write to serial.
      * ========================================== */
-    serial_lock();
+    spinlock_token_t tok = serial_lock();
 
     /* Check if serial is initialized */
     if (!g_serial_state.initialized) {
-        serial_unlock(); /* Release lock before returning */
-        return 0;        /* Serial not initialized */
+        serial_unlock(tok); /* Release lock before returning */
+        return 0;           /* Serial not initialized */
     }
 
     /* Wait until transmitter holding register is empty */
     if (!serial_wait_transmit_empty_timeout(SERIAL_MAX_WAIT)) {
         /* Timeout occurred - hardware may have failed */
-        serial_unlock(); /* Release lock before returning */
-        return 0;        /* Return failure status */
+        serial_unlock(tok); /* Release lock before returning */
+        return 0;           /* Return failure status */
     }
 
     /* Write the character */
     outb(g_serial_state.port + SERIAL_THR, (uint8_t) data);
 
     /* Release lock after operation complete */
-    serial_unlock();
+    serial_unlock(tok);
 
     return 1; /* Return success status */
 }
@@ -445,19 +445,19 @@ int serial_write_str(const char* str) {
      * This is more efficient than acquiring/releasing per character.
      * Ensures the entire string is output atomically without interleaving.
      * ========================================== */
-    serial_lock();
+    spinlock_token_t tok = serial_lock();
 
     int chars_written = 0; /* HIGH-002 FIX: Track partial writes */
 
     while (*str) {
         /* Inline character output for efficiency (lock already held) */
         if (!g_serial_state.initialized) {
-            serial_unlock();
+            serial_unlock(tok);
             return chars_written; /* Return partial count */
         }
 
         if (!serial_wait_transmit_empty_timeout(SERIAL_MAX_WAIT)) {
-            serial_unlock();
+            serial_unlock(tok);
             return chars_written; /* HIGH-002 FIX: Return partial count on timeout */
         }
 
@@ -466,7 +466,7 @@ int serial_write_str(const char* str) {
         chars_written++; /* HIGH-002 FIX: Increment count */
     }
 
-    serial_unlock();
+    serial_unlock(tok);
 
     return chars_written; /* HIGH-002 FIX: Return total characters written */
 }

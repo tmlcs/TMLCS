@@ -52,6 +52,10 @@ static volatile size_t cursor_row = 0;
 /* Current color attribute */
 static uint8_t current_color = 0;
 
+/* Token saved by vga_begin_atomic() and consumed by vga_end_atomic().
+ * Safe on single-CPU since the VGA lock is non-reentrant. */
+static spinlock_token_t g_vga_atomic_tok;
+
 /* =============================================================================
  * Internal Helper Functions (lock must be held)
  * =============================================================================
@@ -483,15 +487,15 @@ void vga_newline(void) {
  */
 
 void vga_begin_atomic(void) {
-    vga_lock();
+    g_vga_atomic_tok = vga_lock();
 }
 
 void vga_end_atomic(void) {
-    vga_unlock();
+    vga_unlock(g_vga_atomic_tok);
 }
 
 bool vga_try_begin_atomic(void) {
-    return vga_try_lock();
+    return vga_try_lock(&g_vga_atomic_tok);
 }
 
 /* =============================================================================

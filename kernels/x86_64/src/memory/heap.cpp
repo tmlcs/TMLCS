@@ -120,7 +120,7 @@ void* kmalloc(size_t size) {
     }
 
     /* Acquire lock for thread safety */
-    spinlock_acquire(&g_heap_lock);
+    spinlock_token_t tok = spinlock_acquire(&g_heap_lock);
 
     /* Calculate pages needed */
     size_t pages = size_to_pages(size);
@@ -137,7 +137,7 @@ void* kmalloc(size_t size) {
     }
 
     /* Release lock */
-    spinlock_release(&g_heap_lock);
+    spinlock_release(&g_heap_lock, tok);
 
     if (start_page == (size_t)-1) {
         return NULL;  /* Out of memory */
@@ -334,7 +334,7 @@ void kmem_free_auto(void* ptr) {
         }
 
         /* Acquire lock */
-        spinlock_acquire(&g_heap_lock);
+        spinlock_token_t tok = spinlock_acquire(&g_heap_lock);
 
         /* MED-001 FIX: Read page count from metadata instead of scanning the
          * bitmap forward.  The forward scan merged adjacent allocations into
@@ -347,7 +347,7 @@ void kmem_free_auto(void* ptr) {
         }
 
         /* Release lock */
-        spinlock_release(&g_heap_lock);
+        spinlock_release(&g_heap_lock, tok);
     }
 }
 

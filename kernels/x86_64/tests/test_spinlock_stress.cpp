@@ -74,7 +74,7 @@ void test_spinlock_rapid_acquire_release(void) {
 
     /* Stress test: rapid acquire/release */
     for (uint32_t i = 0; i < STRESS_ITERATIONS; i++) {
-        spinlock_acquire(&lock);
+        spinlock_token_t tok = spinlock_acquire(&lock);
 
         /* Verify lock state */
         if (lock.locked != 1) {
@@ -82,10 +82,11 @@ void test_spinlock_rapid_acquire_release(void) {
             print_dec(i);
             serial_write_str(")\r\n");
             test_failed = true;
+            spinlock_release(&lock, tok);
             break;
         }
 
-        spinlock_release(&lock);
+        spinlock_release(&lock, tok);
 
         /* Verify lock state */
         if (lock.locked != 0) {
@@ -104,8 +105,6 @@ void test_spinlock_rapid_acquire_release(void) {
         TEST_ASSERT(iterations == STRESS_ITERATIONS,
                     "Completed all iterations");
         TEST_ASSERT(lock.locked == 0, "Final state: unlocked");
-        TEST_ASSERT(lock.interrupts_enabled == false,
-                    "Final state: interrupts_enabled == false");
 
         serial_write_str("[RAPID ACQUIRE/RELEASE] PASSED - ");
         print_dec(iterations);
@@ -146,12 +145,12 @@ void test_spinlock_data_integrity(void) {
 
     /* Increment counter in critical section */
     for (uint32_t i = 0; i < STRESS_ITERATIONS; i++) {
-        spinlock_acquire(&lock);
+        spinlock_token_t tok = spinlock_acquire(&lock);
 
         /* Critical section: increment shared counter */
         shared_counter += TEST_INCREMENT;
 
-        spinlock_release(&lock);
+        spinlock_release(&lock, tok);
     }
 
     /* Verify final counter value */
@@ -208,24 +207,28 @@ void test_spinlock_try_acquire_under_load(void) {
 
     for (uint32_t i = 0; i < STRESS_ITERATIONS; i++) {
         /* Phase 1: Acquire lock normally */
-        spinlock_acquire(&lock);
+        spinlock_token_t tok = spinlock_acquire(&lock);
 
         /* Phase 2: try_acquire should fail */
-        bool result = spinlock_try_acquire(&lock);
+        spinlock_token_t try_tok;
+        bool result = spinlock_try_acquire(&lock, &try_tok);
+        (void)try_tok;
         if (result != false) {
             serial_write_str("[FAIL] try_acquire should fail when locked (iteration: ");
             print_dec(i);
             serial_write_str(")\r\n");
             test_failed = true;
+            spinlock_release(&lock, tok);
             break;
         }
         fail_count++;
 
         /* Phase 3: Release lock */
-        spinlock_release(&lock);
+        spinlock_release(&lock, tok);
 
         /* Phase 4: try_acquire should succeed */
-        result = spinlock_try_acquire(&lock);
+        spinlock_token_t try_tok2;
+        result = spinlock_try_acquire(&lock, &try_tok2);
         if (result != true) {
             serial_write_str("[FAIL] try_acquire should succeed when unlocked (iteration: ");
             print_dec(i);
@@ -236,7 +239,7 @@ void test_spinlock_try_acquire_under_load(void) {
         success_count++;
 
         /* Phase 5: Release for next iteration */
-        spinlock_release(&lock);
+        spinlock_release(&lock, try_tok2);
     }
 
     /* Verify counts */
@@ -296,24 +299,24 @@ void test_spinlock_multiple_locks(void) {
     /* Interleaved lock operations */
     for (uint32_t i = 0; i < iterations; i++) {
         /* Lock 1 */
-        spinlock_acquire(&lock1);
+        spinlock_token_t t1 = spinlock_acquire(&lock1);
         counter1++;
-        spinlock_release(&lock1);
+        spinlock_release(&lock1, t1);
 
         /* Lock 2 */
-        spinlock_acquire(&lock2);
+        spinlock_token_t t2 = spinlock_acquire(&lock2);
         counter2++;
-        spinlock_release(&lock2);
+        spinlock_release(&lock2, t2);
 
         /* Lock 3 */
-        spinlock_acquire(&lock3);
+        spinlock_token_t t3 = spinlock_acquire(&lock3);
         counter3++;
-        spinlock_release(&lock3);
+        spinlock_release(&lock3, t3);
 
         /* Lock 4 */
-        spinlock_acquire(&lock4);
+        spinlock_token_t t4 = spinlock_acquire(&lock4);
         counter4++;
-        spinlock_release(&lock4);
+        spinlock_release(&lock4, t4);
     }
 
     /* Verify each counter */
@@ -368,7 +371,7 @@ void test_spinlock_critical_section_work(void) {
     uint32_t iterations = STRESS_ITERATIONS / 10;
 
     for (uint32_t i = 0; i < iterations; i++) {
-        spinlock_acquire(&lock);
+        spinlock_token_t tok = spinlock_acquire(&lock);
 
         /* Simulated work: update multiple fields */
         uint64_t value = i + 1;
@@ -382,7 +385,7 @@ void test_spinlock_critical_section_work(void) {
             shared_data.max = value;
         }
 
-        spinlock_release(&lock);
+        spinlock_release(&lock, tok);
     }
 
     /* Verify results */
@@ -434,9 +437,9 @@ void test_spinlock_extended_stress(void) {
     bool test_failed = false;
 
     for (uint32_t i = 0; i < EXTENDED_STRESS_ITERATIONS; i++) {
-        spinlock_acquire(&lock);
+        spinlock_token_t tok = spinlock_acquire(&lock);
         counter++;
-        spinlock_release(&lock);
+        spinlock_release(&lock, tok);
 
         /* Periodic verification - only print at checkpoints */
         if ((i + 1) % check_interval == 0) {
@@ -463,8 +466,6 @@ void test_spinlock_extended_stress(void) {
         TEST_ASSERT(counter == EXTENDED_STRESS_ITERATIONS,
                     "Counter matches iterations");
         TEST_ASSERT(lock.locked == 0, "Final state: unlocked");
-        TEST_ASSERT(lock.interrupts_enabled == false,
-                    "Final state: interrupts_enabled == false");
 
         serial_write_str("[EXTENDED STRESS] PASSED - ");
         print_dec(EXTENDED_STRESS_ITERATIONS);
@@ -498,34 +499,34 @@ void test_spinlock_pattern_variations(void) {
 
     /* Pattern 1: Back-to-back acquire/release */
     for (uint32_t i = 0; i < 1000; i++) {
-        spinlock_acquire(&lock);
-        spinlock_release(&lock);
-        spinlock_acquire(&lock);
-        spinlock_release(&lock);
+        spinlock_token_t t1 = spinlock_acquire(&lock);
+        spinlock_release(&lock, t1);
+        spinlock_token_t t2 = spinlock_acquire(&lock);
+        spinlock_release(&lock, t2);
         counter += 2;
     }
     TEST_ASSERT(counter == 2000, "Pattern 1: back-to-back OK");
 
     /* Pattern 2: Alternating with work */
     for (uint32_t i = 0; i < 1000; i++) {
-        spinlock_acquire(&lock);
+        spinlock_token_t ta = spinlock_acquire(&lock);
         counter++;
-        spinlock_release(&lock);
+        spinlock_release(&lock, ta);
 
         /* Small "work" outside lock */
         volatile uint64_t dummy = counter * 2;
         (void)dummy;
 
-        spinlock_acquire(&lock);
+        spinlock_token_t tb = spinlock_acquire(&lock);
         counter++;
-        spinlock_release(&lock);
+        spinlock_release(&lock, tb);
     }
     TEST_ASSERT(counter == 4000, "Pattern 2: alternating OK");
 
     /* Pattern 3: Multiple releases after single acquire (should fail gracefully) */
-    spinlock_acquire(&lock);
+    spinlock_token_t tc = spinlock_acquire(&lock);
     counter++;
-    spinlock_release(&lock);
+    spinlock_release(&lock, tc);
     /* Don't double-release - that would corrupt state */
 
     /* Final state check */
