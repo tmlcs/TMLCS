@@ -3,6 +3,7 @@
 
 #include "stddef.h"
 #include "stdint.h"
+#include "spinlock.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -235,6 +236,9 @@ extern slab_state_t g_slab_state;
 /* Slab pool (allocated from early_alloc) */
 extern uint8_t* g_slab_pool;
 extern size_t g_slab_pool_size;
+
+/** Global slab lock — exposed for krealloc in heap.cpp only. */
+extern spinlock_t g_slab_lock;
 
 #ifdef __cplusplus
 }

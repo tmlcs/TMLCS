@@ -397,6 +397,16 @@ size_t bitmap_count_free_pages(void) {
         uint64_t word = g_page_bitmap.words[word_idx];
         /* MED-001 FIX: popcount64(~word) counts free (zero) bits in O(1)
          * using the parallel bit-count method (no libgcc dependency). */
+        /* M-01 FIX: Mask out phantom bits in the last word if TOTAL_PAGES is
+         * not a multiple of 64.  Unused high bits are zero (free), which
+         * popcount64(~word) would incorrectly count as free pages. */
+        if (word_idx == BITMAP_WORDS - 1) {
+            size_t used_bits = TOTAL_PAGES % 64;
+            if (used_bits != 0) {
+                uint64_t mask = (((uint64_t)1ULL) << used_bits) - 1;
+                word |= ~mask;  /* set unused high bits to 1 (allocated) */
+            }
+        }
         count += popcount64(~word);
     }
 

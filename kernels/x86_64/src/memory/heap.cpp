@@ -34,6 +34,11 @@ static int g_slab_available = 0;
  */
 static uint16_t g_page_alloc_count[TOTAL_PAGES];
 
+/* HIGH-3 FIX: Guard against silent truncation if HEAP_MAX_ALLOC ever grows
+ * beyond what uint16_t can represent in page units. */
+static_assert(HEAP_MAX_ALLOC / PAGE_SIZE <= 65535,
+    "HEAP_MAX_ALLOC exceeds uint16_t capacity in g_page_alloc_count");
+
 /* =============================================================================
  * Helper Functions
  * =============================================================================
@@ -195,19 +200,25 @@ void* krealloc(void* ptr, size_t new_size) {
      * object fits when it does not.  Read object_size from the slab header
      * directly for slab pointers.
      *
-     * MED-NEW-002: slab->object_size is read here WITHOUT holding
-     * g_slab_lock.  This is safe because slab_cache_t.object_size is
-     * written exactly once in init_cache() during slab_init(), before any
-     * allocations are possible, and is never modified afterwards.  It is
-     * therefore effectively immutable at this point and can be read
-     * lock-free by any CPU. */
+     * HIGH-2 FIX: Hold g_slab_lock across is_slab_address + object_size read.
+     * A concurrent kmem_free() can recycle the slab page between the magic
+     * check inside is_slab_address and the subsequent object_size read,
+     * causing a use-after-free.  Holding the lock prevents that recycling
+     * (kmem_free clears magic and calls kmem_free_auto only after releasing
+     * g_slab_lock, so the page cannot disappear while we hold it). */
     size_t old_size;
-    if (is_slab_address(ptr)) {
-        uintptr_t page_start = (uintptr_t)ptr & ~((uintptr_t)(SLAB_SIZE - 1));
-        const slab_t* slab = reinterpret_cast<const slab_t*>(page_start);
-        old_size = slab->object_size;
-    } else {
-        old_size = kmalloc_size(ptr);
+    {
+        spinlock_token_t slab_tok = spinlock_acquire(&g_slab_lock);
+        bool is_slab = is_slab_address(ptr);
+        if (is_slab) {
+            uintptr_t page_start = (uintptr_t)ptr & ~((uintptr_t)(SLAB_SIZE - 1));
+            const slab_t* s = reinterpret_cast<const slab_t*>(page_start);
+            old_size = s->object_size;
+        }
+        spinlock_release(&g_slab_lock, slab_tok);
+        if (!is_slab) {
+            old_size = kmalloc_size(ptr);
+        }
     }
 
     /* Case 3: new size fits in old allocation */

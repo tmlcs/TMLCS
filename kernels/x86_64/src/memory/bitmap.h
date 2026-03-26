@@ -65,8 +65,9 @@ extern "C" {
 /** Bitmap size in bytes (1 bit per page) */
 #define BITMAP_SIZE_BYTES ((TOTAL_PAGES + 7) / 8)
 
-/** Number of 64-bit words in bitmap */
-#define BITMAP_WORDS ((BITMAP_SIZE_BYTES + 7) / 8)
+/** Number of 64-bit words in bitmap.
+ *  Direct formula avoids phantom extra word when TOTAL_PAGES is divisible by 64. */
+#define BITMAP_WORDS ((TOTAL_PAGES + 63) / 64)
 
 /* =============================================================================
  * Bitmap Data Structure
