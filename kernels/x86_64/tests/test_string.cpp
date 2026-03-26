@@ -1,6 +1,7 @@
 #include "test_string.h"
 #include "serial.h"
 #include "string.h"
+#include "test_framework.h"
 
 /* This file intentionally tests the deprecated strcpy() function. */
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
@@ -214,10 +215,11 @@ void test_string_null_pointer_safety() {
         }
     }
 
-    // memcmp with NULL now panics (PANIC_IF_FALSE) — cannot test directly.
-    // Correctness is verified by code inspection: the call is removed here
-    // to avoid triggering a kernel panic during the test suite.
-    serial_write_str("memcmp NULL handling: OK - panics on NULL (correct)\r\n");
+    /* memcmp returns 0 when either pointer is NULL (header-documented contract) */
+    TEST_ASSERT(memcmp(nullptr, nullptr, 0) == 0, "memcmp(null, null, 0) must return 0");
+    const char* valid = "x";
+    TEST_ASSERT(memcmp(nullptr, valid, 1) == 0, "memcmp(null, ptr, n) must return 0");
+    TEST_ASSERT(memcmp(valid, nullptr, 1) == 0, "memcmp(ptr, null, n) must return 0");
 
     serial_write_str("[STRING NULL SAFETY] All tests passed\r\n");
 }

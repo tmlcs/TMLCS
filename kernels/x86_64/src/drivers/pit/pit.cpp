@@ -106,7 +106,7 @@ int pit_init_frequency(uint32_t frequency_hz) {
     mb();
 
     serial_write_str("[PIT] Initialized at ");
-    serial_write_dec(frequency_hz);
+    serial_write_dec(g_pit_state.frequency_hz);
     serial_write_str(" Hz\r\n");
 
     return 1;
