@@ -337,7 +337,6 @@ void kmem_free_auto(void* ptr) {
         /* Slab allocation - use slab free with size=0 (ignored) */
         kmem_free(ptr, 0);
     } else {
-        /* Not slab - must be bitmap allocation, free directly */
         /* Not slab — bitmap allocation; free pages directly */
         if (!g_heap_initialized) {
             return;
