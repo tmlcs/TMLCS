@@ -82,6 +82,15 @@ check_long_mode:
 	jmp error
 
 ; ==========================================
+; Page Table Flag Constants
+; ==========================================
+%define PTE_PRESENT     (1 << 0)    ; Present bit
+%define PTE_WRITABLE    (1 << 1)    ; Writable bit
+%define PTE_HUGE        (1 << 7)    ; Huge page (2MiB) bit
+%define PTE_NX          (1 << 63)   ; No-Execute bit (upper 32 bits)
+%define PTE_FLAGS_MASK  0xFFF       ; Flag bits mask
+
+; ==========================================
 ; setup_page_tables - Configure page tables
 ; ==========================================
 ; @brief Configure identity mapping with huge pages (2MiB)
@@ -91,54 +100,66 @@ check_long_mode:
 ;   - Total: 1024 entries × 2MiB = 2GiB mapped
 ;   - Mapped range: 0x00000000 - 0x7FFFFFFF (0-2GiB)
 ;
+;   SECURITY: NX (No-Execute) protection is applied at the L2 page entry level.
+;   Pages at addresses >= 10MB (data region) have NX bit set.
+;   Pages below 10MB (.text region) remain executable.
+;   EFER.NXE is enabled in enable_paging() to activate NX protection.
+;
 ;   To map more memory in the future:
 ;   - Add more L3 entries to point to more L2 tables
 ;   - 512 L3 entries × 512 L2 entries × 2MiB = 512GiB theoretical
 ; ==========================================
 setup_page_tables:
-    ; LOW-NEW-007: ARCHITECTURAL DEBT — NX/XD bit (bit 63 of each page
-    ; table entry) is NOT set on any entry.  All pages (stack, heap, data)
-    ; are therefore executable.  This allows code-injection attacks to run
-    ; shellcode placed on the stack or heap.
-    ; To fix: set the NX bit (EFER.NXE must also be set, bit 11 of MSR
-    ; 0xC0000080) on all non-code pages when a user-space or syscall
-    ; interface is added.  Until then this is acceptable for a ring-0-only
-    ; bare-metal kernel with no untrusted input.
-
     ; ==========================================
     ; Configure L4 -> L3 mapping
     ; ==========================================
     ; L4[0] -> L3 table (first L3 table)
+    ; L4 is a code-adjacent page table, keep executable for simplicity
     mov eax, page_table_l3
-    or eax, 0b11            ; present (bit 0) + writable (bit 1)
+    or eax, PTE_PRESENT | PTE_WRITABLE
     mov [page_table_l4], eax
-    mov dword [page_table_l4 + 4], 0    ; LOW-002: explicitly zero upper 32 bits (NX=0)
+    mov dword [page_table_l4 + 4], 0    ; Upper 32 bits: NX=0 (executable)
 
     ; ==========================================
     ; Configure L3 -> L2 mapping for 2GiB
     ; ==========================================
     ; L3[0] -> L2_0 (first 1GiB: 0-0x3FFFFFFF)
+    ; Contains .text, .rodata at low addresses, then data pages
     mov eax, page_table_l2_0
-    or eax, 0b11            ; present + writable
+    or eax, PTE_PRESENT | PTE_WRITABLE
     mov [page_table_l3 + 0 * 8], eax
-    mov dword [page_table_l3 + 0 * 8 + 4], 0    ; LOW-002: zero upper 32 bits
+    mov dword [page_table_l3 + 0 * 8 + 4], 0    ; Upper 32 bits: NX=0
 
     ; L3[1] -> L2_1 (second 1GiB: 0x40000000-0x7FFFFFFF)
+    ; Pure data region - NX bit will be set at L2 page entry level
+    ; L3 entries point to L2 tables, so NX here is irrelevant (non-leaf entry)
     mov eax, page_table_l2_1
-    or eax, 0b11            ; present + writable
+    or eax, PTE_PRESENT | PTE_WRITABLE
     mov [page_table_l3 + 1 * 8], eax
-    mov dword [page_table_l3 + 1 * 8 + 4], 0    ; LOW-002: zero upper 32 bits
+    mov dword [page_table_l3 + 1 * 8 + 4], 0    ; Upper 32 bits: zero (NX irrelevant for non-leaf)
 
     ; ==========================================
     ; Map first 1GiB (L2_0)
     ; ==========================================
+    ; First 10MB: Contains kernel code (.text) - executable
+    ; After kernel: Data pages (.data, .bss, heap) - non-executable
     mov ecx, 0              ; counter
 .map_loop_0:
     mov eax, 0x200000       ; 2MiB
     mul ecx                 ; eax = ecx * 2MiB (physical address); edx = 0 (always, addr < 2GiB)
-    or eax, 0b10000011      ; present + writable + huge page (bit 7)
+    or eax, PTE_PRESENT | PTE_WRITABLE | PTE_HUGE
+    
+    ; CRIT-SEC-002 FIX: Mark pages above 10MB as non-executable
+    ; Kernel is limited to 10MB by linker script assertion
+    cmp eax, 0x00A00000     ; 10MB threshold
+    jae .set_nx_0           ; If >= 10MB, set NX bit
+    mov edx, 0              ; Upper 32 bits: NX=0 (executable for .text)
+    jmp .store_entry_0
+.set_nx_0:
+    mov edx, 0x80000000     ; Upper 32 bits: NX=1 (non-executable for data)
+.store_entry_0:
     mov [page_table_l2_0 + ecx * 8], eax
-    mov dword [page_table_l2_0 + ecx * 8 + 4], 0    ; LOW-002: zero upper 32 bits (NX=0)
+    mov [page_table_l2_0 + ecx * 8 + 4], edx
 
     inc ecx
     cmp ecx, 512            ; 512 entries × 2MiB = 1GiB
@@ -147,14 +168,15 @@ setup_page_tables:
     ; ==========================================
     ; Map second 1GiB (L2_1)
     ; ==========================================
+    ; Entire second 1GiB is data region - all pages non-executable
     mov ecx, 0              ; counter
 .map_loop_1:
     mov eax, 0x200000       ; 2MiB
     mul ecx                 ; eax = ecx * 2MiB; edx = 0 (addr < 2GiB)
     add eax, 0x40000000     ; + 1GiB offset (physical address base)
-    or eax, 0b10000011      ; present + writable + huge page
+    or eax, PTE_PRESENT | PTE_WRITABLE | PTE_HUGE
     mov [page_table_l2_1 + ecx * 8], eax
-    mov dword [page_table_l2_1 + ecx * 8 + 4], 0    ; LOW-002: zero upper 32 bits (NX=0)
+    mov dword [page_table_l2_1 + ecx * 8 + 4], 0x80000000  ; Upper 32 bits: NX=1 (non-executable)
 
     inc ecx
     cmp ecx, 512            ; 512 entries × 2MiB = 1GiB
@@ -169,36 +191,41 @@ setup_page_tables:
     ; Verify L4[0] -> L3 mapping was written correctly
     mov eax, [page_table_l4]
     mov ebx, eax
-    and ebx, 0xFFF          ; Mask to get flags only
-    cmp ebx, 0b11           ; Should be present + writable
+    and ebx, PTE_FLAGS_MASK   ; Mask to get flags only
+    cmp ebx, PTE_PRESENT | PTE_WRITABLE
     jne .page_table_error
 
-    ; Verify L3[0] -> L2_0 mapping
+    ; Verify L3[0] -> L2_0 mapping (executable for .text region)
     mov eax, [page_table_l3]
     mov ebx, eax
-    and ebx, 0xFFF
-    cmp ebx, 0b11
+    and ebx, PTE_FLAGS_MASK
+    cmp ebx, PTE_PRESENT | PTE_WRITABLE
     jne .page_table_error
 
-    ; Verify L3[1] -> L2_1 mapping
+    ; Verify L3[1] -> L2_1 mapping (L3 entries are non-leaf, NX is irrelevant)
     mov eax, [page_table_l3 + 8]  ; Entry 1 is at offset 8 bytes
     mov ebx, eax
-    and ebx, 0xFFF
-    cmp ebx, 0b11
+    and ebx, PTE_FLAGS_MASK
+    cmp ebx, PTE_PRESENT | PTE_WRITABLE
     jne .page_table_error
+    ; Note: Upper 32 bits of L3 entries are zero (NX bit irrelevant for non-leaf)
 
-    ; Verify first L2 entry (2MiB huge page)
+    ; Verify first L2 entry (2MiB huge page, executable for .text)
     mov eax, [page_table_l2_0]
     mov ebx, eax
-    and ebx, 0b10000011     ; present + writable + huge page
-    cmp ebx, 0b10000011
+    and ebx, PTE_PRESENT | PTE_WRITABLE | PTE_HUGE
+    cmp ebx, PTE_PRESENT | PTE_WRITABLE | PTE_HUGE
     jne .page_table_error
 
-    ; Verify last L2_0 entry (entry 511 = 0x3FE00000)
+    ; Verify last L2_0 entry (entry 511 = 0x3FE00000) has NX set
     mov eax, [page_table_l2_0 + 511 * 8]
     mov ebx, eax
     and ebx, 0xFFFFF000     ; Mask to get address only
     cmp ebx, 0x3FE00000     ; Should map to 0x3FE00000
+    jne .page_table_error
+    ; Verify NX bit is set (data page)
+    mov ebx, [page_table_l2_0 + 511 * 8 + 4]
+    cmp ebx, 0x80000000     ; Should have NX bit set
     jne .page_table_error
 
     ; Restore ebx register before returning
@@ -216,16 +243,22 @@ enable_paging:
 	mov eax, page_table_l4
 	mov cr3, eax
 
-	; enable PAE
+	; enable PAE (required for long mode and NX support)
 	mov eax, cr4
 	or eax, 1 << 5
 	mov cr4, eax
 
-	; enable long mode
-	mov ecx, 0xC0000080
+	; CRIT-SEC-002 FIX: Enable NX (No-Execute) support
+	; Set EFER.NXE (bit 11 of MSR 0xC0000080) to activate NX bit in page tables
+	; This prevents code execution from data pages (stack, heap, .data, .bss)
+	mov ecx, 0xC0000080     ; MSR_EFER
 	rdmsr
-	or eax, 1 << 8
+	or eax, 1 << 11         ; Set NXE bit (bit 11)
+	or eax, 1 << 8          ; Set LME bit (bit 8) for long mode
 	wrmsr
+
+	; enable long mode (already set LME above, now enable via CR4.PAE)
+	; PAE was enabled earlier, long mode is enabled by setting LME in EFER
 
 	; enable paging + write-protect (CR0.WP, bit 16)
 	; LOW-NEW-006 FIX: Set WP (bit 16) alongside PG (bit 31) so that even

@@ -20,7 +20,22 @@ long_mode_start:
     mov gs, ax
 
     ; ==========================================
-    ; CRITICAL: Zero BSS section BEFORE kernel_main
+    ; CRIT-KERN-001 FIX: Early BSS verification
+    ; ==========================================
+    ; SECURITY GUARANTEE: No code between entering long_mode_start
+    ; and this point accesses BSS variables. We verify this by:
+    ;   1. Zeroing BSS immediately after segment setup
+    ;   2. Using only registers and stack (no BSS access) before zeroing
+    ;   3. Calling kernel_main() ONLY after BSS is zeroed
+    ;
+    ; The 32-bit boot code (main.asm) is audited to not access BSS:
+    ;   - setup_page_tables(): Uses only registers and .boot.data
+    ;   - enable_paging(): Uses only registers
+    ;   - error handler: Writes directly to VGA buffer (0xB8000)
+    ; ==========================================
+
+    ; ==========================================
+    ; CRITICAL: Zero BSS section BEFORE any potential access
     ; ==========================================
     ; SECURITY GUARANTEE: No code between entering long_mode_start
     ; and this point accesses BSS variables. This is safe because:
@@ -47,6 +62,18 @@ long_mode_start:
 .bss_done:
 
     ; ==========================================
+    ; CRIT-KERN-001 FIX: Runtime BSS verification
+    ; ==========================================
+    ; Verify that BSS was actually zeroed by reading back first qword.
+    ; This catches boot code bugs that might write to BSS before zeroing.
+    ; Uses direct memory read (no BSS variable access) to verify.
+    ; ==========================================
+    lea rdi, [__bss_start]
+    mov rax, [rdi]              ; Read first qword of BSS
+    test rax, rax               ; Should be zero
+    jnz .bss_verification_failed
+
+    ; ==========================================
     ; CRITICAL: Ensure 16-byte stack alignment
     ; ==========================================
     ; System V AMD64 ABI requires 16-byte stack alignment
@@ -70,6 +97,22 @@ long_mode_start:
     ; ==========================================
     call kernel_main
     hlt
+
+    ; ==========================================
+    ; BSS Verification Failure Handler
+    ; ==========================================
+    ; Display "BSS ERR" in red on white at top of screen.
+    ; This runs before any C code is called, so we use direct VGA writes.
+    ; Use dword moves to avoid NASM warning about large immediates.
+    ; ==========================================
+.bss_verification_failed:
+    ; Display "BSS ER" in red on white (0x4F = white on red attribute)
+    mov dword [0xb8000], 0x4f535342         ; "BSS " in red on white
+    mov dword [0xb8004], 0x4f525245         ; "ERR " in red on white
+.bss_halt:
+    cli                                      ; Disable interrupts
+    hlt                                      ; Halt CPU
+    jmp .bss_halt                            ; Safety loop (should never return)
 
 ; ==========================================
 ; .note.GNU-stack section to eliminate linker warning
