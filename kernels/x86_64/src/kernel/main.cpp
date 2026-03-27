@@ -1,17 +1,17 @@
 #include "constants.h"
+#include "early_alloc.h"
+#include "gdt.h"
+#include "guard.h"
+#include "heap.h"
+#include "idt.h"
+#include "irq.h"
+#include "log.h"
 #include "panic.h"
+#include "pit.h"
 #include "print.h"
 #include "serial.h"
 #include "string.h"
 #include "vga.h"
-#include "heap.h"
-#include "early_alloc.h"
-#include "guard.h"
-#include "gdt.h"
-#include "idt.h"
-#include "irq.h"
-#include "pit.h"
-#include "log.h"
 
 // Enable debug macros for testing
 #define DEBUG_ENABLE 1
@@ -23,22 +23,22 @@
 #include "../../tests/test_debug.h"
 #include "../../tests/test_gdt_idt.h"
 #include "../../tests/test_hardware.h"
+#include "../../tests/test_log.h"
 #include "../../tests/test_memory.h"
+#include "../../tests/test_memory_manager.h"
+#include "../../tests/test_pit.h"
 #include "../../tests/test_print.h"
 #include "../../tests/test_query.h"
 #include "../../tests/test_serial.h"
 #include "../../tests/test_serial_signed.h"
 #include "../../tests/test_slab.h"
-#include "../../tests/test_pit.h"
+#include "../../tests/test_slab_debug.h"
 #include "../../tests/test_spinlock.h"
 #include "../../tests/test_spinlock_smp.h"
-#include "../../tests/test_string.h"
-#include "../../tests/test_strlcpy.h"
-#include "../../tests/test_log.h"
-#include "../../tests/test_memory_manager.h"
 #include "../../tests/test_spinlock_stress.h"
-#include "../../tests/test_slab_debug.h"
+#include "../../tests/test_string.h"
 #include "../../tests/test_string_boundaries.h"
+#include "../../tests/test_strlcpy.h"
 
 // Centralized version constant
 static constexpr const char* OS_VERSION = "GLOBEX_OS v0.015_x64";
@@ -86,15 +86,15 @@ uint8_t test_fg, test_bg;
 static void early_panic(const char* msg) {
     // CRIT-001 FIX: Validate VGA memory accessibility before writing
     volatile uint16_t* vga = reinterpret_cast<volatile uint16_t*>(VGA_BUFFER_ADDRESS);
-    
+
     // Test if VGA memory is accessible by reading first
     // This prevents triple-fault if memory region is unmapped
     uint16_t test_read = vga[0];
-    
+
     // Write test pattern
     vga[0] = (VGA_COLOR_WHITE_ON_RED << 8) | ' ';
     __asm__ volatile("" ::: "memory");  // Prevent optimization
-    
+
     // Verify write succeeded
     if (vga[0] != ((VGA_COLOR_WHITE_ON_RED << 8) | ' ')) {
         // VGA not accessible - just halt
@@ -102,14 +102,13 @@ static void early_panic(const char* msg) {
             __asm__ volatile("hlt");
         }
     }
-    
+
     // VGA is accessible - restore and display error
     vga[0] = test_read;  // Restore original value
 
     // Use vga_put_string_early for interrupt-safe output
     // This function does NOT acquire locks, preventing deadlock
-    vga_put_string_early("ERROR: ", vga_make_pos(vga_col(0), vga_row(0)),
-                         VGA_COLOR_WHITE_ON_RED);
+    vga_put_string_early("ERROR: ", vga_make_pos(vga_col(0), vga_row(0)), VGA_COLOR_WHITE_ON_RED);
     vga_put_string_early(msg, vga_make_pos(vga_col(7), vga_row(0)), VGA_COLOR_WHITE_ON_RED);
 
     // Fill rest of first row with spaces for clarity
@@ -254,34 +253,34 @@ extern "C" [[noreturn]] void kernel_main() {
     LOG_INFO("Initializing GDT...");
     gdt_init();
     LOG_INFO("GDT initialized");
-    
+
     uint64_t rsp;
     __asm__ volatile("mov %%rsp, %0" : "=r"(rsp));
-    
+
     LOG_INFO("Initializing TSS...");
     tss_init(rsp);
     LOG_INFO("TSS initialized with IST1/IST2/IST3 stacks (#DF/NMI/#MC protection)");
-    
+
     LOG_INFO("Initializing IDT...");
     idt_init();
     LOG_INFO("IDT initialized with 32 exception vectors (0-31)");
-    
+
     LOG_INFO("Initializing IRQ system...");
     irq_init();
     LOG_INFO("IRQ system initialized (PIC remapped to IDT 32-47)");
-    
+
     LOG_INFO("Initializing PIT at 100 Hz...");
     pit_init();
     irq_register_handler(0, pit_irq_handler);
     irq_enable(0);
     LOG_INFO("PIT IRQ0 handler registered");
-    
+
     LOG_INFO("Initializing stack guard page...");
-    stack_guard_init();   /* HIGH-005: guard page + IST1 active */
+    stack_guard_init(); /* HIGH-005: guard page + IST1 active */
     LOG_INFO("Stack guard page active");
-    
+
     LOG_INFO("Enabling hardware interrupts (sti)...");
-    interrupts_enable();   /* sti: enable hardware interrupts */
+    interrupts_enable(); /* sti: enable hardware interrupts */
     LOG_INFO("Interrupts enabled - hardware timer active");
 
     // ==========================================
@@ -291,17 +290,17 @@ extern "C" [[noreturn]] void kernel_main() {
     test_memory_mapping();
     test_color_validation();
     test_debug_macros();
-    test_gdt_initialization();        // Test GDT initialization
-    test_idt_initialization();        // Test IDT initialization (all vectors 0-31)
-    test_breakpoint_exception();      // Test #BP trap returns (LOW-004 fix)
+    test_gdt_initialization();    // Test GDT initialization
+    test_idt_initialization();    // Test IDT initialization (all vectors 0-31)
+    test_breakpoint_exception();  // Test #BP trap returns (LOW-004 fix)
 
     /* Initialize early allocator before heap and slab */
     early_alloc_init_default();
 
     /* Initialize heap and slab allocator before memory tests */
     heap_init();
-    test_pit_all();                   // Test PIT timer: IRQ0, ticks, wait functions
-    
+    test_pit_all();  // Test PIT timer: IRQ0, ticks, wait functions
+
     test_print_functions();
     test_decimal_boundary_values();  // Buffer overflow tests
     test_query_functions();
@@ -313,15 +312,15 @@ extern "C" [[noreturn]] void kernel_main() {
     test_strlcpy_vs_strcpy_overflow();  // Overflow prevention demo
     test_memcpy_overlap_detection();    // Overlap detection in DEBUG mode
     test_serial_signed_numbers();
-    test_spinlock();            // Spinlock tests (initialization, acquire/release, SMP safety)
-    test_spinlock_smp();        // SMP spinlock stress tests
-    test_spinlock_stress();     // Spinlock stress tests (HIGH-9)
-    test_slab_debug_all();      // Slab allocator debug checks (HIGH-10)
-    test_string_boundaries();   // String boundary checks (HIGH-10)
-    test_buffer_overflow_prevention(); // Buffer overflow prevention (HIGH-10)
-    test_slab_allocator();  // Slab allocator tests (FEAT-MEM-003: memory leak fix)
-    test_kmem_free_auto();      // Unified memory free API test [FIX-MEM-001]
-    test_memory_manager();      // Full kmalloc/krealloc/kcalloc/kmem_free_auto suite
+    test_spinlock();           // Spinlock tests (initialization, acquire/release, SMP safety)
+    test_spinlock_smp();       // SMP spinlock stress tests
+    test_spinlock_stress();    // Spinlock stress tests (HIGH-9)
+    test_slab_debug_all();     // Slab allocator debug checks (HIGH-10)
+    test_string_boundaries();  // String boundary checks (HIGH-10)
+    test_buffer_overflow_prevention();  // Buffer overflow prevention (HIGH-10)
+    test_slab_allocator();              // Slab allocator tests (FEAT-MEM-003: memory leak fix)
+    test_kmem_free_auto();              // Unified memory free API test [FIX-MEM-001]
+    test_memory_manager();              // Full kmalloc/krealloc/kcalloc/kmem_free_auto suite
     test_hardware_info();
     test_log_truncation();
 
