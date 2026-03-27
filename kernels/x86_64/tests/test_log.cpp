@@ -5,18 +5,14 @@
 /* ==========================================
  * Log Truncation Test
  * ==========================================
- * LOG_BUFFER_SIZE = 256. A format string that expands to > 255 chars
- * triggers the truncation marker in build_message().
+ * Uses log_format_to_buf() to programmatically verify that build_message()
+ * appends "..." when the format string is not fully consumed.
  *
- * 30 repetitions of %u with value 1234567890 (10 digits each) plus
- * spaces = ~330 chars expanded — well over 255.
+ * A 16-byte buffer with a 36-character literal format string triggers
+ * truncation: 15 chars written, last 3 replaced with "...".
  *
- * After the fix (buf_end-3), the truncated line in serial_output.log
- * must end with "..." (three dots). Before the fix it ends with "..".
- *
- * Verification (run after make run-serial):
- *   grep "TRUNCATION-TEST" serial_output.log
- *   -> line must end in "..."
+ * Both truncated and non-truncated cases are verified. PASSED is only
+ * printed if both programmatic assertions hold.
  * ==========================================
  */
 void test_log_truncation(void) {

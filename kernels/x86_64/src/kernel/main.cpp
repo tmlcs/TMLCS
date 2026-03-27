@@ -376,6 +376,7 @@ extern "C" [[noreturn]] void kernel_main() {
     LOG_INFO("  - Spinlock stress test: PASSED");
     LOG_INFO("  - Slab debug checks: PASSED");
     LOG_INFO("  - String boundary checks: PASSED");
+    LOG_INFO("  - Buffer overflow prevention: PASSED");
     LOG_INFO("  - kmem_free_auto() unified API: PASSED");
     LOG_INFO("  - Memory manager (kmalloc/krealloc/kcalloc): PASSED");
     LOG_INFO("  - Hardware info (CPUID): PASSED");
