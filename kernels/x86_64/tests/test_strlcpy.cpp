@@ -133,16 +133,21 @@ void test_strlcpy_safe_copy() {
 }
 
 /* ==========================================
- * strlcpy vs strcpy Buffer Overflow Demo
+ * strlcpy Buffer Overflow Prevention Demo
  * ==========================================
  * Demonstrates how strlcpy prevents buffer overflow
- * that would occur with strcpy.
+ * by truncating safely and null-terminating.
+ *
+ * NOTE: strcpy() has been removed from the kernel
+ * because it has no bounds checking and can cause
+ * buffer overflows. This test shows how strlcpy
+ * safely handles the same scenario.
  * ========================================== */
 void test_strlcpy_vs_strcpy_overflow() {
-    serial_write_str("\r\n=== strlcpy vs strcpy Overflow Demo ===\r\n");
+    serial_write_str("\r\n=== strlcpy Overflow Prevention Demo ===\r\n");
 
     // Case: Small buffer, large source
-    // strcpy would overflow, strlcpy truncates safely
+    // strlcpy truncates safely with null-termination
 
     // Test with strlcpy (SAFE)
     {
@@ -171,5 +176,5 @@ void test_strlcpy_vs_strcpy_overflow() {
         }
     }
 
-    serial_write_str("[STRLCPY VS STRCPY] Demo complete\r\n");
+    serial_write_str("[STRLCPY OVERFLOW PREVENTION] Demo complete\r\n");
 }

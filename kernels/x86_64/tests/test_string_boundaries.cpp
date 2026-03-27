@@ -4,14 +4,16 @@
 #include "string.h"
 #include "test_framework.h"
 
-/* This file intentionally tests the deprecated strcpy() function. */
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-
 /* ==========================================
- * Helper Functions
+ * String Boundary Tests
+ * ==========================================
+ * Tests edge cases at buffer limits
+ *
+ * NOTE: strcpy() has been removed for security (no bounds checking).
+ * Use strlcpy() for safe bounded string copying.
  * ========================================== */
 
-// Simple string comparison for tests
+/* Helper function for string comparison */
 static bool streq(const char* s1, const char* s2) {
     if (s1 == nullptr || s2 == nullptr) {
         return s1 == s2;
@@ -23,11 +25,6 @@ static bool streq(const char* s1, const char* s2) {
     return *s1 == *s2;
 }
 
-/* ==========================================
- * String Boundary Tests
- * ==========================================
- * Tests edge cases at buffer limits
- * ========================================== */
 void test_string_boundaries(void) {
     serial_write_str("\r\n=== String Boundary Tests ===\r\n");
 
@@ -201,20 +198,6 @@ void test_string_boundaries(void) {
             serial_write_str("memcmp last byte diff: OK\r\n");
         } else {
             serial_write_str("memcmp last byte diff: FAILED\r\n");
-        }
-    }
-
-    // Test 12: strcpy with buffer exactly full
-    {
-        const char src[] = "Hello";  // 5 chars + null = 6 bytes
-        char dest[6];
-
-        strcpy(dest, src);
-
-        if (streq(dest, "Hello")) {
-            serial_write_str("strcpy exact fit: OK\r\n");
-        } else {
-            serial_write_str("strcpy exact fit: FAILED\r\n");
         }
     }
 

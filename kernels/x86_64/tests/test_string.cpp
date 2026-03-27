@@ -3,15 +3,16 @@
 #include "string.h"
 #include "test_framework.h"
 
-/* This file intentionally tests the deprecated strcpy() function. */
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-
 /* ==========================================
  * String Functions Test
  * ==========================================
- * Tests memcpy, memmove, strcpy, and strlen functions.
+ * Tests memcpy, memmove, strlcpy, and strlen functions.
  * Includes edge cases like overlapping regions, empty strings,
  * and null pointer safety [SEC-001].
+ *
+ * NOTE: strcpy() has been removed from the kernel (previously deprecated)
+ * because it has no bounds checking and can cause buffer overflows.
+ * Use strlcpy() for safe bounded string copying.
  * ========================================== */
 
 void test_string_functions() {
@@ -54,43 +55,6 @@ void test_string_functions() {
             serial_write_str("memmove overlapping: OK\r\n");
         } else {
             serial_write_str("memmove overlapping: FAILED\r\n");
-        }
-    }
-
-    // Test strcpy - basic copy
-    {
-        char src[] = "Hello, World!";
-        char dest[20];
-
-        strcpy(dest, src);
-
-        bool match = true;
-        for (int i = 0; i <= 13; i++) {
-            if (dest[i] != src[i]) {
-                match = false;
-                break;
-            }
-        }
-
-        if (match && dest[13] == '\0') {
-            serial_write_str("strcpy basic: OK\r\n");
-        } else {
-            serial_write_str("strcpy basic: FAILED\r\n");
-        }
-    }
-
-    // Test strcpy - empty string
-    {
-        char src[] = "";
-        char dest[10];
-        dest[0] = 'X';  // Initialize with known value
-
-        strcpy(dest, src);
-
-        if (dest[0] == '\0') {
-            serial_write_str("strcpy empty string: OK\r\n");
-        } else {
-            serial_write_str("strcpy empty string: FAILED\r\n");
         }
     }
 
@@ -186,21 +150,6 @@ void test_string_null_pointer_safety() {
             serial_write_str("memmove NULL handling: OK\r\n");
         } else {
             serial_write_str("memmove NULL handling: FAILED\r\n");
-        }
-    }
-
-    // Test strcpy with NULL pointers
-    {
-        char src[] = "Hello";
-        char dest[10];
-        
-        char* r1 = strcpy(nullptr, src);
-        char* r2 = strcpy(dest, nullptr);
-        
-        if (r1 == nullptr && r2 == dest) {
-            serial_write_str("strcpy NULL handling: OK\r\n");
-        } else {
-            serial_write_str("strcpy NULL handling: FAILED\r\n");
         }
     }
 
