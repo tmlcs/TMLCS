@@ -62,25 +62,7 @@ void* memset(void* s, int c, size_t n);
 int memcmp(const void* s1, const void* s2, size_t n);
 
 /**
- * @brief Copy string with null terminator
- * @param dest Destination buffer (must be large enough)
- * @param src Source null-terminated string
- * @return Pointer to dest, or NULL if dest is NULL
- *
- * NULL pointer handling standardized.
- *   - If dest is NULL: returns NULL (no-op)
- *   - If src is NULL: returns dest (no-op, avoids crash)
- *
- * @warning Destination buffer must be large enough to hold the source string
- *          including the null terminator. No bounds checking is performed.
- * @warning This function is UNSAFE for untrusted input.
- *          Use strlcpy() for safe bounded copying.
- */
-[[deprecated("unsafe: no bounds checking — use strlcpy instead")]]
-char* strcpy(char* dest, const char* src);
-
-/**
- * @brief Copy string with size limit (SAFE alternative to strcpy)
+ * @brief Copy string with size limit (SAFE bounded copy)
  * @param dest Destination buffer
  * @param src Source null-terminated string
  * @param destsize Size of destination buffer in bytes
@@ -99,6 +81,9 @@ char* strcpy(char* dest, const char* src);
  *
  * @note If return value >= destsize, truncation occurred
  * @note If return value < destsize, copy was complete
+ *
+ * SECURITY NOTE: This is the ONLY safe string copy function.
+ * The deprecated strcpy() has been removed to prevent buffer overflows.
  */
 size_t strlcpy(char* dest, const char* src, size_t destsize);
 

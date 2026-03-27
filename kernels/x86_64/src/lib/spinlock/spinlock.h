@@ -45,17 +45,18 @@ typedef struct {
 } spinlock_t;
 
 /** Static initializer — compatible with C and C++ aggregate init. */
-#define SPINLOCK_INIT {0}
+#define SPINLOCK_INIT                                                                              \
+    { 0 }
 
 /* =============================================================================
  * Core API
  * =============================================================================
  */
 
-void             spinlock_init(spinlock_t* lock);
+void spinlock_init(spinlock_t* lock);
 spinlock_token_t spinlock_acquire(spinlock_t* lock);
-bool             spinlock_try_acquire(spinlock_t* lock, spinlock_token_t* out_tok);
-void             spinlock_release(spinlock_t* lock, spinlock_token_t tok);
+bool spinlock_try_acquire(spinlock_t* lock, spinlock_token_t* out_tok);
+void spinlock_release(spinlock_t* lock, spinlock_token_t tok);
 
 /* =============================================================================
  * VGA Driver Lock (global instance lives in spinlock.cpp)
@@ -63,8 +64,8 @@ void             spinlock_release(spinlock_t* lock, spinlock_token_t tok);
  */
 
 spinlock_token_t vga_lock(void);
-void             vga_unlock(spinlock_token_t tok);
-bool             vga_try_lock(spinlock_token_t* out_tok);
+void vga_unlock(spinlock_token_t tok);
+bool vga_try_lock(spinlock_token_t* out_tok);
 
 /* =============================================================================
  * Serial Driver Lock (global instance lives in spinlock.cpp)
@@ -72,9 +73,9 @@ bool             vga_try_lock(spinlock_token_t* out_tok);
  */
 
 spinlock_token_t serial_lock(void);
-void             serial_unlock(spinlock_token_t tok);
-bool             serial_try_lock(spinlock_token_t* out_tok);
-void             serial_force_unlock(void);
+void serial_unlock(spinlock_token_t tok);
+bool serial_try_lock(spinlock_token_t* out_tok);
+void serial_force_unlock(void);
 
 /** Reset g_vga_lock to unlocked state without restoring IF.
  *  For use ONLY at the top of default_exception_handler(). */

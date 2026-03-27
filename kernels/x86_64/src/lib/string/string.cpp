@@ -194,40 +194,6 @@ int memcmp(const void* s1, const void* s2, size_t n) {
 }
 
 /* ==========================================
- * strcpy() - Copy string with null terminator
- * ==========================================
- * Copies the null-terminated string from src to dest.
- *
- * @param dest Destination buffer (must be large enough)
- * @param src Source null-terminated string
- * @return Pointer to dest, or NULL if dest is NULL
- *
- * NULL pointer handling standardized.
- *   - If dest is NULL: returns NULL (no-op, avoids triple fault)
- *   - If src is NULL: returns dest (no-op, avoids crash)
- *   - Behavior is consistent: always return first parameter (dest)
- *
- * @warning UNSAFE - No bounds checking. Use strlcpy() instead.
- * @warning Destination buffer must be large enough to hold the source string
- *          including the null terminator.
- */
-char* strcpy(char* dest, const char* src) {
-    /* NULL pointer validation */
-    if (dest == nullptr || src == nullptr) {
-        return dest; /* Return dest for consistency */
-    }
-
-    char* original_dest = dest;
-
-    // Copy characters including null terminator
-    while ((*dest++ = *src++) != '\0') {
-        // Empty body - copy happens in condition
-    }
-
-    return original_dest;
-}
-
-/* ==========================================
  * strlcpy() - Copy string with size limit
  * ==========================================
  * Safe bounded string copy that prevents buffer overflow.

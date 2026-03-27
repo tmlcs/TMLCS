@@ -39,7 +39,7 @@ spinlock_token_t spinlock_acquire(spinlock_t* lock) {
 
     while (1) {
         uint64_t expected = 0;
-        uint64_t desired  = 1;
+        uint64_t desired = 1;
         uint64_t result;
         __asm__ volatile("lock cmpxchg %2, %1"
                          : "=a"(result), "+m"(lock->locked)
@@ -63,7 +63,7 @@ bool spinlock_try_acquire(spinlock_t* lock, spinlock_token_t* out_tok) {
     __asm__ volatile("cli" ::: "memory");
 
     uint64_t expected = 0;
-    uint64_t desired  = 1;
+    uint64_t desired = 1;
     uint64_t result;
     __asm__ volatile("lock cmpxchg %2, %1"
                      : "=a"(result), "+m"(lock->locked)
