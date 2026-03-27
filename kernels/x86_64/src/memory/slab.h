@@ -1,9 +1,9 @@
 #ifndef SLAB_H
 #define SLAB_H
 
+#include "spinlock.h"
 #include "stddef.h"
 #include "stdint.h"
-#include "spinlock.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -70,11 +70,11 @@ extern "C" {
 #define SLAB_SIZE 0x1000
 
 /** Cache sizes (power of 2 for alignment) */
-#define CACHE_SIZE_32   32
-#define CACHE_SIZE_64   64
-#define CACHE_SIZE_128  128
-#define CACHE_SIZE_256  256
-#define CACHE_SIZE_512  512
+#define CACHE_SIZE_32 32
+#define CACHE_SIZE_64 64
+#define CACHE_SIZE_128 128
+#define CACHE_SIZE_256 256
+#define CACHE_SIZE_512 512
 #define CACHE_SIZE_1024 1024
 #define CACHE_SIZE_2048 2048
 
@@ -83,11 +83,11 @@ extern "C" {
 #define SLAB_HEADER_SIZE 72
 
 /** Objects per slab (excluding metadata) */
-#define OBJECTS_PER_SLAB_32   ((SLAB_SIZE - SLAB_HEADER_SIZE) / 32)
-#define OBJECTS_PER_SLAB_64   ((SLAB_SIZE - SLAB_HEADER_SIZE) / 64)
-#define OBJECTS_PER_SLAB_128  ((SLAB_SIZE - SLAB_HEADER_SIZE) / 128)
-#define OBJECTS_PER_SLAB_256  ((SLAB_SIZE - SLAB_HEADER_SIZE) / 256)
-#define OBJECTS_PER_SLAB_512  ((SLAB_SIZE - SLAB_HEADER_SIZE) / 512)
+#define OBJECTS_PER_SLAB_32 ((SLAB_SIZE - SLAB_HEADER_SIZE) / 32)
+#define OBJECTS_PER_SLAB_64 ((SLAB_SIZE - SLAB_HEADER_SIZE) / 64)
+#define OBJECTS_PER_SLAB_128 ((SLAB_SIZE - SLAB_HEADER_SIZE) / 128)
+#define OBJECTS_PER_SLAB_256 ((SLAB_SIZE - SLAB_HEADER_SIZE) / 256)
+#define OBJECTS_PER_SLAB_512 ((SLAB_SIZE - SLAB_HEADER_SIZE) / 512)
 #define OBJECTS_PER_SLAB_1024 ((SLAB_SIZE - SLAB_HEADER_SIZE) / 1024)
 #define OBJECTS_PER_SLAB_2048 ((SLAB_SIZE - SLAB_HEADER_SIZE) / 2048)
 
@@ -103,22 +103,22 @@ extern "C" {
  * This uses the object's own memory (no extra overhead).
  */
 typedef struct slab_free_node {
-    struct slab_free_node* next;  /**< Next free object in list */
+    struct slab_free_node* next; /**< Next free object in list */
 } slab_free_node_t;
 
 /**
  * @brief Which linked list a slab currently resides in
  */
 typedef enum : uint8_t {
-    SLAB_LIST_FREE    = 0,  /* transient init state; overwritten by add_slab_to_list */
+    SLAB_LIST_FREE = 0, /* transient init state; overwritten by add_slab_to_list */
     SLAB_LIST_PARTIAL = 1,
-    SLAB_LIST_FULL    = 2,
+    SLAB_LIST_FULL = 2,
 } slab_list_state_t;
 
 /**
  * @brief Slab metadata (stored at beginning of each slab)
  */
-typedef struct slab slab_t;  /* Forward declaration */
+typedef struct slab slab_t; /* Forward declaration */
 
 struct slab {
     slab_free_node_t* free_list;  /**< List of free objects */
@@ -140,14 +140,14 @@ struct slab {
  * Note: Using fixed-size types for stability
  */
 typedef struct slab_cache {
-    uint32_t object_size;         /**< Size of objects in this cache */
-    uint32_t objects_per_slab;    /**< Objects per slab */
-    slab_t* partial;              /**< Slabs with some free objects */
-    slab_t* full;                 /**< Slabs with no free objects */
-    slab_t* empty;                /**< Completely empty slabs (cached) */
-    uint32_t num_slabs;           /**< Total slabs in cache */
-    uint32_t num_allocations;     /**< Total allocations from this cache */
-    uint32_t num_frees;           /**< Total frees to this cache */
+    uint32_t object_size;      /**< Size of objects in this cache */
+    uint32_t objects_per_slab; /**< Objects per slab */
+    slab_t* partial;           /**< Slabs with some free objects */
+    slab_t* full;              /**< Slabs with no free objects */
+    slab_t* empty;             /**< Completely empty slabs (cached) */
+    uint32_t num_slabs;        /**< Total slabs in cache */
+    uint32_t num_allocations;  /**< Total allocations from this cache */
+    uint32_t num_frees;        /**< Total frees to this cache */
 } slab_cache_t;
 
 /**
@@ -155,10 +155,10 @@ typedef struct slab_cache {
  * Note: Made smaller for stability
  */
 typedef struct {
-    int initialized;              /**< 1 if initialized */
-    size_t total_allocations;     /**< Total allocations */
-    size_t total_frees;           /**< Total frees */
-    size_t total_slabs;           /**< Total slabs allocated */
+    int initialized;          /**< 1 if initialized */
+    size_t total_allocations; /**< Total allocations */
+    size_t total_frees;       /**< Total frees */
+    size_t total_slabs;       /**< Total slabs allocated */
 } slab_state_t;
 
 /* Caches are now separate static arrays in slab.cpp */

@@ -17,8 +17,8 @@
  */
 
 #include "guard.h"
-#include "serial.h"
 #include "constants.h"
+#include "serial.h"
 #include "stddef.h"
 
 /* -------------------------------------------------------------------------
@@ -47,10 +47,10 @@ static uint64_t g_guard_l1_table[512] __attribute__((aligned(4096)));
  * stack_guard_init
  * ------------------------------------------------------------------------- */
 void stack_guard_init(void) {
-    uint64_t guard_addr = (uint64_t)&stack_guard;
+    uint64_t guard_addr = (uint64_t) &stack_guard;
 
     /* 2MiB-aligned base of the huge page that contains the guard page */
-    uint64_t huge_base = guard_addr & ~(uint64_t)(0x1FFFFF);
+    uint64_t huge_base = guard_addr & ~(uint64_t) (0x1FFFFF);
 
     /* HIGH-NEW-002: IDENTITY-MAPPING ASSUMPTION — This code writes physical
      * addresses directly into the L1 page table entries
@@ -82,7 +82,7 @@ void stack_guard_init(void) {
 
     /* Fill L1: map every 4KiB page in this 2MiB region as present + writable */
     for (size_t i = 0; i < 512; i++) {
-        g_guard_l1_table[i] = (huge_base + (uint64_t)i * PAGE_SIZE) | 0x3;
+        g_guard_l1_table[i] = (huge_base + (uint64_t) i * PAGE_SIZE) | 0x3;
     }
 
     /* Mark the guard page not-present (entry = 0) */
@@ -91,10 +91,10 @@ void stack_guard_init(void) {
     /* Replace the 2MiB huge-page L2 entry with a pointer to the L1 table.
      * Bit 7 (PS/huge) is NOT set, so the CPU treats it as a normal L2 entry
      * pointing to a 4KiB page table. */
-    page_table_l2_0[l2_idx] = (uint64_t)g_guard_l1_table | 0x3;
+    page_table_l2_0[l2_idx] = (uint64_t) g_guard_l1_table | 0x3;
 
     /* Flush the TLB entry for the guard page */
-    __asm__ volatile("invlpg (%0)" :: "r"(guard_addr) : "memory");
+    __asm__ volatile("invlpg (%0)" ::"r"(guard_addr) : "memory");
 
     serial_write_str("[GUARD] Stack guard page at 0x");
     serial_write_hex64(guard_addr);

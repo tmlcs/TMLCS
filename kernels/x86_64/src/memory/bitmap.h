@@ -85,7 +85,7 @@ extern "C" {
  * Size: ~64KB for 2GiB of physical memory.
  */
 typedef struct {
-    uint64_t words[BITMAP_WORDS];  /**< Bitmap words (524288 bits = 64KB) */
+    uint64_t words[BITMAP_WORDS]; /**< Bitmap words (524288 bits = 64KB) */
 } bitmap_t;
 
 /**
@@ -250,7 +250,7 @@ size_t bitmap_largest_free_region(void);
  *   void* addr = page_to_addr(page);  // 0x100000 + 100*0x1000
  */
 static inline void* page_to_addr(size_t page) {
-    return (void*)(PHYSICAL_MEMORY_START + page * PAGE_SIZE);
+    return (void*) (PHYSICAL_MEMORY_START + page * PAGE_SIZE);
 }
 
 /**
@@ -263,9 +263,9 @@ static inline void* page_to_addr(size_t page) {
  *   size_t page = addr_to_page(addr);  // 4096 (5MB / 4KB)
  */
 static inline size_t addr_to_page(void* addr) {
-    uintptr_t phys = (uintptr_t)addr;
+    uintptr_t phys = (uintptr_t) addr;
     if (phys < PHYSICAL_MEMORY_START || phys >= PHYSICAL_MEMORY_END) {
-        return (size_t)-1;
+        return (size_t) -1;
     }
     return (phys - PHYSICAL_MEMORY_START) / PAGE_SIZE;
 }

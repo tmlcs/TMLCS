@@ -1,13 +1,13 @@
 #include "slab.h"
-#include "heap.h"
-#include "bitmap.h"
-#include "serial.h"
-#include "print.h"
-#include "string.h"
-#include "spinlock.h"
 #include "barriers.h"
+#include "bitmap.h"
 #include "early_alloc.h"
+#include "heap.h"
 #include "panic.h"
+#include "print.h"
+#include "serial.h"
+#include "spinlock.h"
+#include "string.h"
 
 /* =============================================================================
  * Low-level I/O Port Access
@@ -34,7 +34,7 @@
  * For more details, see: SLAB_CORRUPTION_INVESTIGATION.md
  * =============================================================================
  */
-#define SLAB_DEBUG 0  /* Not needed - slab is verified correct */
+#define SLAB_DEBUG 0 /* Not needed - slab is verified correct */
 
 /* Sentinel byte written beyond each allocation when SLAB_DEBUG=1.
  * If this byte is overwritten, a buffer overflow is detected. */
@@ -54,21 +54,28 @@ static_assert(sizeof(slab_t) <= SLAB_HEADER_SIZE,
  * For production builds or real hardware, set to 0.
  * =============================================================================
  */
-#define SLAB_DEBUG_TIMING 0  /* Set to 1 only when debugging QEMU UART */
+#define SLAB_DEBUG_TIMING 0 /* Set to 1 only when debugging QEMU UART */
 
 #if SLAB_DEBUG_TIMING
-    #define SLAB_TIMING_DELAY() do { serial_write_str("."); mb(); } while(0)
+#define SLAB_TIMING_DELAY()                                                                        \
+    do {                                                                                           \
+        serial_write_str(".");                                                                     \
+        mb();                                                                                      \
+    } while (0)
 #else
-    #define SLAB_TIMING_DELAY() do { mb(); } while(0)
+#define SLAB_TIMING_DELAY()                                                                        \
+    do {                                                                                           \
+        mb();                                                                                      \
+    } while (0)
 #endif
 
 #if SLAB_DEBUG
-    #define SLAB_GUARD_PATTERN  0xDEADBEEF
-    #define SLAB_FREE_PATTERN   0xCC
-    #define SLAB_ALLOC_PATTERN  0xAA
-    #define GUARD_SIZE          8  /* 8 bytes before and after object */
+#define SLAB_GUARD_PATTERN 0xDEADBEEF
+#define SLAB_FREE_PATTERN 0xCC
+#define SLAB_ALLOC_PATTERN 0xAA
+#define GUARD_SIZE 8 /* 8 bytes before and after object */
 #else
-    #define GUARD_SIZE          0
+#define GUARD_SIZE 0
 #endif
 
 /* =============================================================================
@@ -148,11 +155,11 @@ slab_state_t* slab_get_state(void) {
  */
 
 /* Cache sizes (power of 2 for alignment) */
-#define CACHE_32_SIZE   32
-#define CACHE_64_SIZE   64
-#define CACHE_128_SIZE  128
-#define CACHE_256_SIZE  256
-#define CACHE_512_SIZE  512
+#define CACHE_32_SIZE 32
+#define CACHE_64_SIZE 64
+#define CACHE_128_SIZE 128
+#define CACHE_256_SIZE 256
+#define CACHE_512_SIZE 512
 #define CACHE_1024_SIZE 1024
 #define CACHE_2048_SIZE 2048
 
@@ -187,7 +194,7 @@ static int get_cache_index(size_t size) {
     } else if (size <= CACHE_2048_SIZE) {
         return 6;
     }
-    return -1;  /* Too large for slab, use kmalloc */
+    return -1; /* Too large for slab, use kmalloc */
 }
 
 /**
@@ -214,9 +221,9 @@ static slab_cache_t* get_cache(int idx) {
  * @param size Object size
  */
 static void write_guards(void* ptr, size_t size) {
-    uint32_t* before_guard = (uint32_t*)((uint8_t*)ptr - GUARD_SIZE);
-    uint32_t* after_guard = (uint32_t*)((uint8_t*)ptr + size);
-    
+    uint32_t* before_guard = (uint32_t*) ((uint8_t*) ptr - GUARD_SIZE);
+    uint32_t* after_guard = (uint32_t*) ((uint8_t*) ptr + size);
+
     before_guard[0] = SLAB_GUARD_PATTERN;
     before_guard[1] = SLAB_GUARD_PATTERN;
     after_guard[0] = SLAB_GUARD_PATTERN;
@@ -230,23 +237,23 @@ static void write_guards(void* ptr, size_t size) {
  * @return true if guards are intact, false if corruption detected
  */
 static bool validate_guards(void* ptr, size_t size) {
-    uint32_t* before_guard = (uint32_t*)((uint8_t*)ptr - GUARD_SIZE);
-    uint32_t* after_guard = (uint32_t*)((uint8_t*)ptr + size);
-    
+    uint32_t* before_guard = (uint32_t*) ((uint8_t*) ptr - GUARD_SIZE);
+    uint32_t* after_guard = (uint32_t*) ((uint8_t*) ptr + size);
+
     if (before_guard[0] != SLAB_GUARD_PATTERN || before_guard[1] != SLAB_GUARD_PATTERN) {
         serial_write_str("[SLAB] GUARD CORRUPTION (before)! ptr=0x");
-        serial_write_hex64((uint64_t)ptr);
+        serial_write_hex64((uint64_t) ptr);
         serial_write_str("\r\n");
         return false;
     }
-    
+
     if (after_guard[0] != SLAB_GUARD_PATTERN || after_guard[1] != SLAB_GUARD_PATTERN) {
         serial_write_str("[SLAB] GUARD CORRUPTION (after)! ptr=0x");
-        serial_write_hex64((uint64_t)ptr);
+        serial_write_hex64((uint64_t) ptr);
         serial_write_str("\r\n");
         return false;
     }
-    
+
     return true;
 }
 
@@ -257,7 +264,7 @@ static bool validate_guards(void* ptr, size_t size) {
  * @param pattern Pattern to fill
  */
 static void fill_pattern(void* ptr, size_t size, uint8_t pattern) {
-    uint8_t* bytes = (uint8_t*)ptr;
+    uint8_t* bytes = (uint8_t*) ptr;
     for (size_t i = 0; i < size; i++) {
         bytes[i] = pattern;
     }
@@ -305,7 +312,7 @@ static void clear_tracked_frees(void) {
  * MED-001 FIX (2026-03-23): Timing delays now conditional via SLAB_DEBUG_TIMING.
  * Root cause: Memory timing requires ~15-110μs between pointer writes.
  * This is a known QEMU emulation timing issue.
- * 
+ *
  * Use SLAB_DEBUG_TIMING=1 only when debugging QEMU UART timing.
  * For production/real hardware, SLAB_DEBUG_TIMING=0 (no overhead).
  */
@@ -331,7 +338,7 @@ static int init_cache(int idx, size_t size) {
      * deadlock, because spinlocks are non-reentrant and interrupt-disabling. */
 
     /* Allocate cache structure from early heap pool */
-    slab_cache_t* cache = (slab_cache_t*)(g_slab_pool + g_slab_memory_used);
+    slab_cache_t* cache = (slab_cache_t*) (g_slab_pool + g_slab_memory_used);
 
     /* Initialize cache struct */
     cache->object_size = size;
@@ -339,13 +346,13 @@ static int init_cache(int idx, size_t size) {
 
     /* Use 0 instead of nullptr for freestanding compatibility */
     cache->partial = 0;
-    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
+    SLAB_TIMING_DELAY(); /* MED-001 FIX: Conditional timing delay */
 
     cache->full = 0;
-    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
-    
+    SLAB_TIMING_DELAY(); /* MED-001 FIX: Conditional timing delay */
+
     cache->empty = 0;
-    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
+    SLAB_TIMING_DELAY(); /* MED-001 FIX: Conditional timing delay */
 
     cache->num_slabs = 0;
     cache->num_allocations = 0;
@@ -370,19 +377,19 @@ int slab_init(void) {
     }
 
     /* Allocate pool from early heap (4KB is plenty for cache structs) */
-    g_slab_pool_size = 4096;  /* 4KB for ~64 cache structures */
-    g_slab_pool = (uint8_t*)early_alloc(g_slab_pool_size);
-    
+    g_slab_pool_size = 4096; /* 4KB for ~64 cache structures */
+    g_slab_pool = (uint8_t*) early_alloc(g_slab_pool_size);
+
     if (!g_slab_pool) {
         serial_write_str("[SLAB] ERROR: early_alloc failed\r\n");
         return 0;
     }
-    
+
     serial_write_str("[SLAB] Allocated ");
     serial_write_dec(g_slab_pool_size);
     serial_write_str(" bytes from early heap\r\n");
     serial_write_str("[SLAB] Pool address: 0x");
-    serial_write_hex64((uint64_t)(uintptr_t)g_slab_pool);
+    serial_write_hex64((uint64_t) (uintptr_t) g_slab_pool);
     serial_write_str("\r\n");
 
     /* SLAB-LOW-001 FIX: Removed redundant field-by-field reset.
@@ -492,11 +499,11 @@ static void remove_slab_from_list(slab_t* slab, slab_t** list) {
     } else {
         *list = slab->next;
     }
-    
+
     if (slab->next) {
         slab->next->prev = slab->prev;
     }
-    
+
     slab->next = 0;
     slab->prev = 0;
 }
@@ -545,9 +552,9 @@ void* kmem_alloc(size_t size) {
         slab->num_free--;
 
         cache->num_allocations++;
-        SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
+        SLAB_TIMING_DELAY(); /* MED-001 FIX: Conditional timing delay */
         g_slab_total_allocs++;
-        SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
+        SLAB_TIMING_DELAY(); /* MED-001 FIX: Conditional timing delay */
 
         /* Move slab to full list if exhausted */
         if (slab->num_free == 0) {
@@ -560,7 +567,7 @@ void* kmem_alloc(size_t size) {
     }
 
     /* No partial slabs, allocate a new slab */
-    slab_t* slab = (slab_t*)kmalloc(SLAB_SIZE);
+    slab_t* slab = (slab_t*) kmalloc(SLAB_SIZE);
     if (slab == 0) {
         spinlock_release(&g_slab_lock, tok);
         return 0;
@@ -577,28 +584,28 @@ void* kmem_alloc(size_t size) {
     slab->magic = SLAB_MAGIC;
     slab->list_state = SLAB_LIST_FREE;
 
-    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
+    SLAB_TIMING_DELAY(); /* MED-001 FIX: Conditional timing delay */
 
     /* Build free list - optimized with single delay at end */
-    uint8_t* objects = (uint8_t*)slab + SLAB_HEADER_SIZE;
-    slab->free_list = (slab_free_node_t*)objects;
+    uint8_t* objects = (uint8_t*) slab + SLAB_HEADER_SIZE;
+    slab->free_list = (slab_free_node_t*) objects;
 
     slab_free_node_t* current = slab->free_list;
     for (size_t i = 0; i < cache->objects_per_slab - 1; i++) {
-        current->next = (slab_free_node_t*)((uint8_t*)current + cache->object_size);
+        current->next = (slab_free_node_t*) ((uint8_t*) current + cache->object_size);
         current = current->next;
     }
     current->next = 0;
 
     /* Single timing delay after loop */
-    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
+    SLAB_TIMING_DELAY(); /* MED-001 FIX: Conditional timing delay */
 
     /* Allocate first object */
     void* obj = slab->free_list;
     slab->free_list = slab->free_list->next;
     slab->num_free--;
 
-    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
+    SLAB_TIMING_DELAY(); /* MED-001 FIX: Conditional timing delay */
 
     /* Add slab to appropriate list — full if no free objects remain */
     if (slab->num_free == 0) {
@@ -607,19 +614,19 @@ void* kmem_alloc(size_t size) {
         add_slab_to_list(slab, &cache->partial, SLAB_LIST_PARTIAL);
     }
 
-    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
+    SLAB_TIMING_DELAY(); /* MED-001 FIX: Conditional timing delay */
 
     cache->num_slabs++;
-    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
+    SLAB_TIMING_DELAY(); /* MED-001 FIX: Conditional timing delay */
 
     cache->num_allocations++;
-    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
-    
+    SLAB_TIMING_DELAY(); /* MED-001 FIX: Conditional timing delay */
+
     g_slab_total_slabs++;
-    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
-    
+    SLAB_TIMING_DELAY(); /* MED-001 FIX: Conditional timing delay */
+
     g_slab_total_allocs++;
-    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
+    SLAB_TIMING_DELAY(); /* MED-001 FIX: Conditional timing delay */
 
     spinlock_release(&g_slab_lock, tok);
 
@@ -628,10 +635,10 @@ void* kmem_alloc(size_t size) {
 
 /**
  * Free memory allocated by kmem_alloc() - PROPER IMPLEMENTATION
- * 
+ *
  * FIX (FEAT-MEM-003): Previously a no-op causing memory leak.
  * Now properly returns objects to slab free lists for reuse.
- * 
+ *
  * Algorithm:
  *   1. Find the slab containing this object
  *   2. Validate the object pointer alignment
@@ -644,7 +651,7 @@ void* kmem_alloc(size_t size) {
  * NOTE: No timing delays needed - only pointer write is to free_list
  */
 void kmem_free(void* ptr, size_t size) {
-    (void)size;
+    (void) size;
 
     if (!g_slab_initialized) {
         return;
@@ -662,7 +669,7 @@ void kmem_free(void* ptr, size_t size) {
      * slab_t header at the page base.  Aligning ptr down to SLAB_SIZE
      * gives the owning slab directly, replacing the previous O(N*M) scan
      * over all caches and all their partial/full slab lists. */
-    slab_t* slab = (slab_t*)((uintptr_t)ptr & ~((uintptr_t)(SLAB_SIZE - 1)));
+    slab_t* slab = (slab_t*) ((uintptr_t) ptr & ~((uintptr_t) (SLAB_SIZE - 1)));
 
     /* Validate slab magic before dereferencing any other field */
     if (slab->magic != SLAB_MAGIC) {
@@ -682,15 +689,15 @@ void kmem_free(void* ptr, size_t size) {
      * below obj_area_start causes uintptr_t underflow, producing a large
      * positive offset that passes the alignment check and corrupts memory.
      * obj_area_end is the first byte past the slab page. */
-    uint8_t* obj_area_start = (uint8_t*)slab + SLAB_HEADER_SIZE;
-    uint8_t* obj_area_end   = (uint8_t*)slab + SLAB_SIZE;
-    if ((uint8_t*)ptr < obj_area_start || (uint8_t*)ptr >= obj_area_end) {
+    uint8_t* obj_area_start = (uint8_t*) slab + SLAB_HEADER_SIZE;
+    uint8_t* obj_area_end = (uint8_t*) slab + SLAB_SIZE;
+    if ((uint8_t*) ptr < obj_area_start || (uint8_t*) ptr >= obj_area_end) {
         spinlock_release(&g_slab_lock, tok);
         return;
     }
 
     /* Validate object alignment */
-    uintptr_t obj_offset = (uintptr_t)ptr - (uintptr_t)obj_area_start;
+    uintptr_t obj_offset = (uintptr_t) ptr - (uintptr_t) obj_area_start;
     if (obj_offset % target_cache->object_size != 0) {
         /* Invalid pointer - not aligned to object boundary */
         spinlock_release(&g_slab_lock, tok);
@@ -711,7 +718,7 @@ void kmem_free(void* ptr, size_t size) {
     }
 
     /* Check guard bytes */
-    uint8_t* obj = (uint8_t*)ptr;
+    uint8_t* obj = (uint8_t*) ptr;
     uint8_t* guard_before = obj - GUARD_SIZE;
     uint8_t* guard_after = obj + target_cache->object_size;
 
@@ -725,20 +732,20 @@ void kmem_free(void* ptr, size_t size) {
 #endif
 
     /* Return object to free list - SINGLE POINTER WRITE (needs delay) */
-    slab_free_node_t* node = (slab_free_node_t*)ptr;
+    slab_free_node_t* node = (slab_free_node_t*) ptr;
     node->next = slab->free_list;
-    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
+    SLAB_TIMING_DELAY(); /* MED-001 FIX: Conditional timing delay */
 
     slab->free_list = node;
     slab->num_free++;
 
-    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
+    SLAB_TIMING_DELAY(); /* MED-001 FIX: Conditional timing delay */
 
     target_cache->num_frees++;
-    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
+    SLAB_TIMING_DELAY(); /* MED-001 FIX: Conditional timing delay */
 
     g_slab_total_frees++;
-    SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
+    SLAB_TIMING_DELAY(); /* MED-001 FIX: Conditional timing delay */
 
     /* Move slab between lists as needed */
     if (slab->num_free == slab->num_objects) {
@@ -764,14 +771,15 @@ void kmem_free(void* ptr, size_t size) {
         g_slab_total_slabs--;
         slab->magic = 0;
         spinlock_release(&g_slab_lock, tok);
-        kmem_free_auto((void*)slab);
+        kmem_free_auto((void*) slab);
         return;
     } else if (slab->num_free == 1) {
         /* Was full (0 free → 1 free) — move to partial */
-        PANIC_IF_FALSE(slab->list_state == SLAB_LIST_FULL, "slab num_free==1 but list_state is not FULL");
+        PANIC_IF_FALSE(slab->list_state == SLAB_LIST_FULL,
+                       "slab num_free==1 but list_state is not FULL");
         remove_slab_from_list(slab, &target_cache->full);
         add_slab_to_list(slab, &target_cache->partial, SLAB_LIST_PARTIAL);
-        SLAB_TIMING_DELAY();  /* MED-001 FIX: Conditional timing delay */
+        SLAB_TIMING_DELAY(); /* MED-001 FIX: Conditional timing delay */
     }
 
     spinlock_release(&g_slab_lock, tok);
@@ -782,26 +790,54 @@ void kmem_free(void* ptr, size_t size) {
  * =============================================================================
  */
 
-void* slab_alloc_32(void) { return kmem_alloc(32); }
-void slab_free_32(void* ptr) { kmem_free(ptr, 32); }
+void* slab_alloc_32(void) {
+    return kmem_alloc(32);
+}
+void slab_free_32(void* ptr) {
+    kmem_free(ptr, 32);
+}
 
-void* slab_alloc_64(void) { return kmem_alloc(64); }
-void slab_free_64(void* ptr) { kmem_free(ptr, 64); }
+void* slab_alloc_64(void) {
+    return kmem_alloc(64);
+}
+void slab_free_64(void* ptr) {
+    kmem_free(ptr, 64);
+}
 
-void* slab_alloc_128(void) { return kmem_alloc(128); }
-void slab_free_128(void* ptr) { kmem_free(ptr, 128); }
+void* slab_alloc_128(void) {
+    return kmem_alloc(128);
+}
+void slab_free_128(void* ptr) {
+    kmem_free(ptr, 128);
+}
 
-void* slab_alloc_256(void) { return kmem_alloc(256); }
-void slab_free_256(void* ptr) { kmem_free(ptr, 256); }
+void* slab_alloc_256(void) {
+    return kmem_alloc(256);
+}
+void slab_free_256(void* ptr) {
+    kmem_free(ptr, 256);
+}
 
-void* slab_alloc_512(void) { return kmem_alloc(512); }
-void slab_free_512(void* ptr) { kmem_free(ptr, 512); }
+void* slab_alloc_512(void) {
+    return kmem_alloc(512);
+}
+void slab_free_512(void* ptr) {
+    kmem_free(ptr, 512);
+}
 
-void* slab_alloc_1024(void) { return kmem_alloc(1024); }
-void slab_free_1024(void* ptr) { kmem_free(ptr, 1024); }
+void* slab_alloc_1024(void) {
+    return kmem_alloc(1024);
+}
+void slab_free_1024(void* ptr) {
+    kmem_free(ptr, 1024);
+}
 
-void* slab_alloc_2048(void) { return kmem_alloc(2048); }
-void slab_free_2048(void* ptr) { kmem_free(ptr, 2048); }
+void* slab_alloc_2048(void) {
+    return kmem_alloc(2048);
+}
+void slab_free_2048(void* ptr) {
+    kmem_free(ptr, 2048);
+}
 
 /* =============================================================================
  * Query Functions
