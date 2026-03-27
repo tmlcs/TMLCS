@@ -308,6 +308,22 @@ void log_output_simple(int level, const char* fmt, ...);
  */
 void log_hex_dump(const char* label, const void* addr, size_t len);
 
+/**
+ * @brief Format into caller-supplied buffer using the same formatter as log_output.
+ *
+ * Truncates output longer than cap-1 characters by replacing the last three
+ * characters with "...". Returns the number of characters written (excluding null).
+ * Safe to call with cap == 0 (writes nothing, returns 0).
+ *
+ * For use in tests that verify truncation behavior without intercepting serial output.
+ *
+ * @param dst  Destination buffer
+ * @param cap  Buffer capacity in bytes (including space for null terminator)
+ * @param fmt  Format string (same specifiers as log_output)
+ * @return     Number of characters written (excluding null terminator)
+ */
+size_t log_format_to_buf(char* dst, size_t cap, const char* fmt, ...);
+
 #ifdef __cplusplus
 }
 #endif

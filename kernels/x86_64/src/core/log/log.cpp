@@ -586,3 +586,22 @@ void log_hex_dump(const char* label, const void* addr, size_t len) {
 
     spinlock_release(&g_log_lock, tok);
 }
+
+/* =============================================================================
+ * log_format_to_buf — public test helper
+ * Wraps build_message so tests can verify truncation without serial interception.
+ * ============================================================================= */
+size_t log_format_to_buf(char* dst, size_t cap, const char* fmt, ...) {
+    if (!dst || cap == 0) {
+        return 0;
+    }
+    if (cap == 1) {
+        dst[0] = '\0';
+        return 0;
+    }
+    va_list args;
+    va_start(args, fmt);
+    build_message(dst, cap, fmt, args);
+    va_end(args);
+    return strlen(dst);
+}

@@ -294,15 +294,8 @@ void test_pit_all(void) {
     serial_write_str("GLOBEX_OS PIT (Timer) Test Suite\r\n");
     serial_write_str("============================================\r\n");
 
-    /* Reset PIT state (IRQ system and handler already set up by kernel_main) */
-    serial_write_str("Initializing PIT...\r\n");
-    if (!pit_init()) {
-        serial_write_str("[FAIL] pit_init() failed!\r\n");
-        return;
-    }
-    serial_write_str("IRQ0 (timer) handler active\r\n");
-
-    /* Run tests */
+    /* Run tests — pit_init() is called inside test_pit_init() only,
+     * so the tick=0 assertion there is not vacuously true. */
     test_pit_init();
     test_pit_frequency();
     test_pit_ticks();

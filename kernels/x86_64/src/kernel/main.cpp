@@ -36,6 +36,9 @@
 #include "../../tests/test_strlcpy.h"
 #include "../../tests/test_log.h"
 #include "../../tests/test_memory_manager.h"
+#include "../../tests/test_spinlock_stress.h"
+#include "../../tests/test_slab_debug.h"
+#include "../../tests/test_string_boundaries.h"
 
 // Centralized version constant
 static constexpr const char* OS_VERSION = "GLOBEX_OS v0.015_x64";
@@ -312,6 +315,10 @@ extern "C" [[noreturn]] void kernel_main() {
     test_serial_signed_numbers();
     test_spinlock();            // Spinlock tests (initialization, acquire/release, SMP safety)
     test_spinlock_smp();        // SMP spinlock stress tests
+    test_spinlock_stress();     // Spinlock stress tests (HIGH-9)
+    test_slab_debug_all();      // Slab allocator debug checks (HIGH-10)
+    test_string_boundaries();   // String boundary checks (HIGH-10)
+    test_buffer_overflow_prevention(); // Buffer overflow prevention (HIGH-10)
     test_slab_allocator();  // Slab allocator tests (FEAT-MEM-003: memory leak fix)
     test_kmem_free_auto();      // Unified memory free API test [FIX-MEM-001]
     test_memory_manager();      // Full kmalloc/krealloc/kcalloc/kmem_free_auto suite
@@ -366,6 +373,9 @@ extern "C" [[noreturn]] void kernel_main() {
     LOG_INFO("  - Serial signed numbers: PASSED");
     LOG_INFO("  - Spinlock (init, acquire/release, SMP): PASSED");
     LOG_INFO("  - Spinlock SMP stress: PASSED");
+    LOG_INFO("  - Spinlock stress test: PASSED");
+    LOG_INFO("  - Slab debug checks: PASSED");
+    LOG_INFO("  - String boundary checks: PASSED");
     LOG_INFO("  - kmem_free_auto() unified API: PASSED");
     LOG_INFO("  - Memory manager (kmalloc/krealloc/kcalloc): PASSED");
     LOG_INFO("  - Hardware info (CPUID): PASSED");

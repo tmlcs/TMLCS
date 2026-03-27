@@ -59,6 +59,7 @@ void test_spinlock_initialization(void) {
  *       (no contention from other CPUs)
  * ========================================== */
 void test_spinlock_acquire_release(void) {
+    TEST_RESET_FAILURE();
     serial_write_str("\r\n=== Spinlock Acquire/Release Test ===\r\n");
 
     spinlock_t lock = SPINLOCK_INIT;
@@ -99,6 +100,7 @@ void test_spinlock_acquire_release(void) {
  *   - Lock state is correct after try_acquire
  * ========================================== */
 void test_spinlock_try_acquire(void) {
+    TEST_RESET_FAILURE();
     serial_write_str("\r\n=== Spinlock Try Acquire Test ===\r\n");
 
     spinlock_t lock = SPINLOCK_INIT;
@@ -140,6 +142,7 @@ void test_spinlock_try_acquire(void) {
  *   - Functions return safely without side effects
  * ========================================== */
 void test_spinlock_null_pointer_safety(void) {
+    TEST_RESET_FAILURE();
     serial_write_str("\r\n=== Spinlock NULL Pointer Safety Test ===\r\n");
 
     /* Test 1: spinlock_init(NULL) should not crash */
@@ -184,6 +187,7 @@ void test_spinlock_null_pointer_safety(void) {
  *       Full SMP testing would require multi-processor setup.
  * ========================================== */
 void test_spinlock_interrupt_state(void) {
+    TEST_RESET_FAILURE();
     serial_write_str("\r\n=== Spinlock Interrupt State Test ===\r\n");
 
     spinlock_t lock = SPINLOCK_INIT;
