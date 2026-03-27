@@ -1,9 +1,9 @@
 #include "pit.h"
-#include "serial.h"
-#include "print.h"
 #include "barriers.h"
 #include "constants.h"
 #include "io.h"
+#include "print.h"
+#include "serial.h"
 
 /* =============================================================================
  * PIT Driver State
@@ -25,7 +25,7 @@ static pit_callback_t g_pit_callback = nullptr;
 /**
  * @brief Write divisor to PIT channel 0
  * @param divisor 16-bit divisor value
- * 
+ *
  * PIT calculates: output_frequency = PIT_BASE_FREQUENCY / divisor
  */
 static void pit_write_divisor(uint16_t divisor) {
@@ -72,7 +72,7 @@ int pit_init_frequency(uint32_t frequency_hz) {
      * For 100 Hz: divisor = 1193182 / 100 = 11931
      */
     uint32_t divisor = PIT_BASE_FREQUENCY / frequency_hz;
-    
+
     /* Ensure divisor is in valid range (16-bit) */
     if (divisor > 0xFFFF) {
         divisor = 0xFFFF;
@@ -82,11 +82,11 @@ int pit_init_frequency(uint32_t frequency_hz) {
     }
 
     /* Initialize state */
-    g_pit_state.initialized = 0;  /* Not yet ready */
+    g_pit_state.initialized = 0; /* Not yet ready */
     g_pit_state.ticks = 0;
     g_pit_state.milliseconds = 0;
-    g_pit_state.divisor       = divisor;
-    g_pit_state.frequency_hz  = PIT_BASE_FREQUENCY / divisor;  /* actual hardware frequency */
+    g_pit_state.divisor = divisor;
+    g_pit_state.frequency_hz = PIT_BASE_FREQUENCY / divisor; /* actual hardware frequency */
     /* MED-001 NOTE: The ms_remainder accumulator in pit_irq_handler() is a
      * static local bounded by modulo(frequency_hz) each tick. After a frequency
      * change the accumulator self-corrects within one tick. */
@@ -98,7 +98,7 @@ int pit_init_frequency(uint32_t frequency_hz) {
     pit_send_command(PIT_CHANNEL_0_SEL | PIT_ACCESS_BOTH | PIT_MODE_3 | PIT_BINARY);
 
     /* Write divisor */
-    pit_write_divisor((uint16_t)divisor);
+    pit_write_divisor((uint16_t) divisor);
 
     /* Mark as initialized with memory barrier */
     wmb();
@@ -155,7 +155,7 @@ uint64_t pit_get_milliseconds(void) {
 
 uint32_t pit_get_seconds(void) {
     rmb();
-    return (uint32_t)(g_pit_state.milliseconds / 1000);
+    return (uint32_t) (g_pit_state.milliseconds / 1000);
 }
 
 uint32_t pit_get_divisor(void) {
@@ -172,7 +172,7 @@ int pit_set_frequency(uint32_t frequency_hz) {
     if (!g_pit_state.initialized) {
         return 0;
     }
-    
+
     /* Reinitialize with new frequency */
     return pit_init_frequency(frequency_hz);
 }
@@ -196,7 +196,7 @@ void pit_wait_ms(uint32_t ms) {
 
     uint64_t start = pit_get_milliseconds();
     uint64_t end = start + ms;
-    
+
     /* Handle wraparound correctly */
     if (end < start) {
         /* Wraparound will occur - wait until counter wraps past start */
@@ -204,7 +204,7 @@ void pit_wait_ms(uint32_t ms) {
             __asm__ volatile("pause");
         }
         /* Now wait for remaining time */
-        uint64_t remaining = end;  /* end wrapped to small value */
+        uint64_t remaining = end; /* end wrapped to small value */
         while (pit_get_milliseconds() < remaining) {
             __asm__ volatile("pause");
         }
@@ -227,7 +227,7 @@ void pit_wait_us(uint32_t us) {
      * PAUSE latency varies widely (5-140 cycles) across microarchitectures.
      * For sub-millisecond precision this is acceptable; above 1ms it is not. */
     if (us >= 1000) {
-        pit_wait_ms((us + 999) / 1000);  /* Ceiling division to ms */
+        pit_wait_ms((us + 999) / 1000); /* Ceiling division to ms */
         return;
     }
 
@@ -237,7 +237,7 @@ void pit_wait_us(uint32_t us) {
     if (us > 0xFFFFFFFFU / 3U) {
         us = 0xFFFFFFFFU / 3U;
     }
-    uint32_t iterations = us * 3;  /* Rough calibration: ~3 cycles/us at 3 GHz */
+    uint32_t iterations = us * 3; /* Rough calibration: ~3 cycles/us at 3 GHz */
 
     for (uint32_t i = 0; i < iterations; i++) {
         __asm__ volatile("pause");
@@ -296,19 +296,19 @@ void pit_print_stats(void) {
     serial_write_str("Frequency: ");
     serial_write_dec(g_pit_state.frequency_hz);
     serial_write_str(" Hz\r\n");
-    
+
     serial_write_str("Divisor: ");
     serial_write_dec(g_pit_state.divisor);
     serial_write_str("\r\n");
-    
+
     serial_write_str("Ticks: ");
     serial_write_dec64(g_pit_state.ticks);
     serial_write_str("\r\n");
-    
+
     serial_write_str("Milliseconds: ");
     serial_write_dec64(g_pit_state.milliseconds);
     serial_write_str("\r\n");
-    
+
     serial_write_str("Seconds: ");
     serial_write_dec(pit_get_seconds());
     serial_write_str("\r\n");

@@ -550,9 +550,9 @@ void vga_put_char_early(char character, vga_pos_t pos, uint8_t color) {
  * @param color Color attribute byte
  *
  *   Both vga_put_string() and this function cap at VGA_ROWS * VGA_COLS.
- *   vga_put_string() previously capped at 256 (MED-004 fix); this function had no limit. A very long string
- *   could wrap around the screen multiple times, overwriting its own
- *   panic message and producing confusing output.
+ *   vga_put_string() previously capped at 256 (MED-004 fix); this function had no limit. A very
+ * long string could wrap around the screen multiple times, overwriting its own panic message and
+ * producing confusing output.
  *
  *   Now limits output to one full screen (2000 characters = 80x25).
  *   This ensures panic messages remain readable and don't self-overwrite.

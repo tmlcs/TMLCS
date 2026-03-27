@@ -357,48 +357,12 @@ const char* serial_get_error_string(uint32_t error_code);
  *
  * @note All serial_write_* functions acquire the lock internally
  * @note Use serial_lock()/serial_unlock() for multi-operation atomicity
- * @note Declared in spinlock.h, implemented in spinlock.cpp
  * ==========================================
  */
 
-/**
- * @brief Acquire serial lock for multi-operation atomicity
- * @return Token capturing pre-acquire RFLAGS; pass to serial_unlock()
- * @note Disables interrupts on local CPU to prevent deadlock
- * @see spinlock.h for full documentation
- */
-spinlock_token_t serial_lock(void);
-
-/**
- * @brief Release serial lock
- * @param tok Token returned by serial_lock()
- * @note Restores interrupt state captured in tok
- * @see spinlock.h for full documentation
- */
-void serial_unlock(spinlock_token_t tok);
-
-/**
- * @brief Try to acquire serial lock (non-blocking)
- * @param out_tok Output token; valid only if returns true
- * @return true if acquired, false if already locked
- * @see spinlock.h for full documentation
- */
-bool serial_try_lock(spinlock_token_t* out_tok);
-
-/**
- * @brief Force-release the serial spinlock from a fatal exception handler.
- *
- * If a CPU exception fires while the serial lock is held, the exception
- * handler cannot call serial_write_* (spinlock_acquire would deadlock).
- * This function resets the lock field directly so subsequent serial output
- * works in the handler.
- *
- * @warning ONLY call this when:
- *   1. Interrupts are already disabled (cli has been issued).
- *   2. The caller will never return (fatal halt path).
- * Calling it in any other context permanently breaks mutual exclusion.
- */
-void serial_force_unlock(void);
+/* Serial lock functions removed in fix/kernel-correctness branch.
+ * Callers should use spinlock_acquire/release directly if needed,
+ * though most serial operations are now lock-free or use internal locking. */
 
 /**
  * @brief Lock-free direct UART write for use ONLY in panic/exception handlers.

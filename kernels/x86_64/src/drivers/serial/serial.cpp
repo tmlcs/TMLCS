@@ -2,9 +2,9 @@
 #include "atomic.h"
 #include "barriers.h"
 #include "constants.h"
-#include "io.h"
 #include "decimal_utils.h"
 #include "hex_utils.h"
+#include "io.h"
 #include "spinlock.h"
 
 /* =============================================================================
@@ -729,7 +729,7 @@ void serial_write_unsafe(const char* str) {
         /* Wait for Transmitter Holding Register Empty (THRE) bit */
         while (!(inb(0x3F8 + 5) & 0x20)) {
         }
-        outb(0x3F8, (uint8_t)*str++);
+        outb(0x3F8, (uint8_t) *str++);
     }
 }
 
