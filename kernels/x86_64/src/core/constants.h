@@ -156,41 +156,41 @@ extern "C" {
  * @brief IDT gate types
  * @note Type field in IDT entry
  */
-#define IDT_INTERRUPT_GATE 0x8E  /**< 64-bit interrupt gate (P=1, DPL=0, type=0xE) */
-#define IDT_TRAP_GATE      0x8F  /**< 64-bit trap gate (P=1, DPL=0, type=0xF) */
+#define IDT_INTERRUPT_GATE 0x8E /**< 64-bit interrupt gate (P=1, DPL=0, type=0xE) */
+#define IDT_TRAP_GATE 0x8F      /**< 64-bit trap gate (P=1, DPL=0, type=0xF) */
 
 /**
  * @brief IDT vector offsets
  * @note Vector ranges for different interrupt types
  */
-#define IDT_VECTOR_EXCEPTIONS 0    /**< CPU exceptions (0-31) */
-#define IDT_VECTOR_IRQS 32         /**< Hardware IRQs (32-47) */
-#define IDT_VECTOR_SYSCALLS 48     /**< Software interrupts/syscalls (48+) */
+#define IDT_VECTOR_EXCEPTIONS 0 /**< CPU exceptions (0-31) */
+#define IDT_VECTOR_IRQS 32      /**< Hardware IRQs (32-47) */
+#define IDT_VECTOR_SYSCALLS 48  /**< Software interrupts/syscalls (48+) */
 
 /**
  * @brief Exception vector definitions
  * @note CPU exception vectors
  */
-#define EXCEPTION_DE 0   /**< Divide Error */
-#define EXCEPTION_DB 1   /**< Debug Exception */
-#define EXCEPTION_NMI 2  /**< Non-Maskable Interrupt */
-#define EXCEPTION_BP 3   /**< Breakpoint */
-#define EXCEPTION_OF 4   /**< Overflow */
-#define EXCEPTION_BR 5   /**< Bound Range Exceeded */
-#define EXCEPTION_UD 6   /**< Invalid Opcode */
-#define EXCEPTION_NM 7   /**< Device Not Available */
-#define EXCEPTION_DF 8   /**< Double Fault */
-#define EXCEPTION_CSF 9  /**< Coprocessor Segment Overrun (Reserved) */
-#define EXCEPTION_TS 10  /**< Invalid TSS */
-#define EXCEPTION_NP 11  /**< Segment Not Present */
-#define EXCEPTION_SS 12  /**< Stack-Segment Fault */
-#define EXCEPTION_GP 13  /**< General Protection Fault */
-#define EXCEPTION_PF 14  /**< Page Fault */
+#define EXCEPTION_DE 0     /**< Divide Error */
+#define EXCEPTION_DB 1     /**< Debug Exception */
+#define EXCEPTION_NMI 2    /**< Non-Maskable Interrupt */
+#define EXCEPTION_BP 3     /**< Breakpoint */
+#define EXCEPTION_OF 4     /**< Overflow */
+#define EXCEPTION_BR 5     /**< Bound Range Exceeded */
+#define EXCEPTION_UD 6     /**< Invalid Opcode */
+#define EXCEPTION_NM 7     /**< Device Not Available */
+#define EXCEPTION_DF 8     /**< Double Fault */
+#define EXCEPTION_CSF 9    /**< Coprocessor Segment Overrun (Reserved) */
+#define EXCEPTION_TS 10    /**< Invalid TSS */
+#define EXCEPTION_NP 11    /**< Segment Not Present */
+#define EXCEPTION_SS 12    /**< Stack-Segment Fault */
+#define EXCEPTION_GP 13    /**< General Protection Fault */
+#define EXCEPTION_PF 14    /**< Page Fault */
 #define EXCEPTION_RES15 15 /**< Reserved (Intel/AMD) */
-#define EXCEPTION_MF 16  /**< x87 FPU Error */
-#define EXCEPTION_AC 17  /**< Alignment Check */
-#define EXCEPTION_MC 18  /**< Machine Check */
-#define EXCEPTION_XM 19  /**< SIMD Floating-Point */
+#define EXCEPTION_MF 16    /**< x87 FPU Error */
+#define EXCEPTION_AC 17    /**< Alignment Check */
+#define EXCEPTION_MC 18    /**< Machine Check */
+#define EXCEPTION_XM 19    /**< SIMD Floating-Point */
 #define EXCEPTION_RES20 20 /**< Reserved (future CPU extension) */
 #define EXCEPTION_RES21 21 /**< Reserved (future CPU extension) */
 #define EXCEPTION_RES22 22 /**< Reserved (future CPU extension) */
@@ -230,8 +230,8 @@ extern "C" {
  * @brief PIC IRQ offsets (after remapping)
  * @note IRQs are remapped to vectors 0x20-0x2F
  */
-#define PIC1_OFFSET 0x20  /**< Master PIC: IRQs 0-7 -> vectors 32-39 */
-#define PIC2_OFFSET 0x28  /**< Slave PIC: IRQs 8-15 -> vectors 40-47 */
+#define PIC1_OFFSET 0x20 /**< Master PIC: IRQs 0-7 -> vectors 32-39 */
+#define PIC2_OFFSET 0x28 /**< Slave PIC: IRQs 8-15 -> vectors 40-47 */
 
 /**
  * @brief PIC EOI (End of Interrupt) command
@@ -241,20 +241,20 @@ extern "C" {
 /**
  * @brief PIC ICW1 initialization flags
  */
-#define ICW1_ICW4 0x01    /**< ICW4 present */
-#define ICW1_SINGLE 0x02  /**< Single mode */
+#define ICW1_ICW4 0x01      /**< ICW4 present */
+#define ICW1_SINGLE 0x02    /**< Single mode */
 #define ICW1_INTERVAL4 0x04 /**< Call address interval 4 */
-#define ICW1_LEVEL 0x08   /**< Level triggered */
-#define ICW1_INIT 0x10    /**< Initialization required */
+#define ICW1_LEVEL 0x08     /**< Level triggered */
+#define ICW1_INIT 0x10      /**< Initialization required */
 
 /**
  * @brief PIC ICW4 configuration flags
  */
-#define ICW4_8086 0x01    /**< 8086 mode */
-#define ICW4_AUTO 0x02    /**< Auto EOI */
-#define ICW4_BUF_SLAVE 0x08 /**< Buffered mode/slave */
+#define ICW4_8086 0x01       /**< 8086 mode */
+#define ICW4_AUTO 0x02       /**< Auto EOI */
+#define ICW4_BUF_SLAVE 0x08  /**< Buffered mode/slave */
 #define ICW4_BUF_MASTER 0x0C /**< Buffered mode/master */
-#define ICW4_SFNM 0x10    /**< Special fully nested mode */
+#define ICW4_SFNM 0x10       /**< Special fully nested mode */
 
 /* ==========================================
  * IRQ Vector Definitions
@@ -298,16 +298,16 @@ extern "C" {
  * @brief IDT offset bit masks
  * @note Used to split 64-bit handler address into IDT entry fields
  */
-#define IDT_OFFSET_LOW_MASK 0xFFFF        /**< Mask for bits 0-15 */
-#define IDT_OFFSET_MIDDLE_MASK 0xFFFF     /**< Mask for bits 16-31 */
-#define IDT_OFFSET_HIGH_MASK 0xFFFFFFFF   /**< Mask for bits 32-63 */
+#define IDT_OFFSET_LOW_MASK 0xFFFF      /**< Mask for bits 0-15 */
+#define IDT_OFFSET_MIDDLE_MASK 0xFFFF   /**< Mask for bits 16-31 */
+#define IDT_OFFSET_HIGH_MASK 0xFFFFFFFF /**< Mask for bits 32-63 */
 
 /**
  * @brief IDT offset bit shifts
  * @note Used to shift handler address for IDT entry fields
  */
-#define IDT_OFFSET_MIDDLE_SHIFT 16        /**< Shift for bits 16-31 */
-#define IDT_OFFSET_HIGH_SHIFT 32          /**< Shift for bits 32-63 */
+#define IDT_OFFSET_MIDDLE_SHIFT 16 /**< Shift for bits 16-31 */
+#define IDT_OFFSET_HIGH_SHIFT 32   /**< Shift for bits 32-63 */
 
 /* ==========================================
  * PIC ICW3 Constants
@@ -317,9 +317,9 @@ extern "C" {
  * @brief PIC ICW3 master/slave configuration constants
  * @note Used during PIC initialization
  */
-#define ICW3_MASTER_MASK 0xFF             /**< All IRQs masked initially */
-#define ICW3_MASTER_SLAVE_ON_IRQ2 0x04    /**< Master: slave connected to IRQ2 */
-#define ICW3_SLAVE_CASCADE_IDENTITY 0x02  /**< Slave: cascade identity */
+#define ICW3_MASTER_MASK 0xFF            /**< All IRQs masked initially */
+#define ICW3_MASTER_SLAVE_ON_IRQ2 0x04   /**< Master: slave connected to IRQ2 */
+#define ICW3_SLAVE_CASCADE_IDENTITY 0x02 /**< Slave: cascade identity */
 
 /* ==========================================
  * PIC IRQ Mask Constants
@@ -329,7 +329,7 @@ extern "C" {
  * @brief PIC mask all IRQs
  * @note Used to mask all interrupts
  */
-#define PIC_MASK_ALL_IRQS 0xFF            /**< Mask all 8 IRQs */
+#define PIC_MASK_ALL_IRQS 0xFF /**< Mask all 8 IRQs */
 
 #ifdef __cplusplus
 }

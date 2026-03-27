@@ -4,10 +4,10 @@
 /* =============================================================================
  * GLOBEX_OS Standard Boolean Type
  * =============================================================================
- * 
+ *
  * Freestanding implementation for C99/C11 compatibility.
  * Compliant with C99/C11 stdbool.h specification.
- * 
+ *
  * @note For C++, bool is a built-in type, so we use conditional definition
  * @note No dependencies on system headers
  * =============================================================================

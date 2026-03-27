@@ -40,9 +40,8 @@ static void print_number(int value) {
     /* MED-003 FIX: negating INT_MIN (-2147483648) directly is UB in signed
      * arithmetic.  Convert via int64_t so the negation is well-defined, then
      * store in uint32_t for the digit-extraction loop. */
-    uint32_t uval = negative ?
-        static_cast<uint32_t>(-static_cast<int64_t>(value)) :
-        static_cast<uint32_t>(value);
+    uint32_t uval = negative ? static_cast<uint32_t>(-static_cast<int64_t>(value))
+                             : static_cast<uint32_t>(value);
 
     // Convert to string
     if (uval == 0) {
@@ -185,8 +184,7 @@ void coverage_hit(const char* function, int line) {
         /* MED-002 FIX: compare string contents, not pointer addresses.
          * Checking line first (cheap int compare) short-circuits most misses
          * before the strcmp call. */
-        if (g_coverage_table[i].line == line &&
-            str_eq(g_coverage_table[i].function, function)) {
+        if (g_coverage_table[i].line == line && str_eq(g_coverage_table[i].function, function)) {
             g_coverage_table[i].hits++;
             return;
         }

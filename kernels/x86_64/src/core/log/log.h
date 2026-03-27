@@ -111,6 +111,54 @@ int log_get_level(void);
 int log_is_initialized(void);
 
 /* =============================================================================
+ * CRIT-SEC-001 FIX: Format String Security Functions
+ * =============================================================================
+ */
+
+/**
+ * @brief Sanitize a user-controlled string for safe logging
+ * @param dst Destination buffer
+ * @param dst_size Destination buffer size
+ * @param src Source string (potentially untrusted user input)
+ * @return Number of characters written (excluding null terminator)
+ *
+ * This function escapes '%' characters to prevent format string attacks
+ * when logging untrusted user input.
+ *
+ * Usage:
+ *   @code
+ *   char safe_buf[256];
+ *   log_sanitize_string(safe_buf, sizeof(safe_buf), user_input);
+ *   LOG_INFO("User provided: %s", safe_buf);  // Safe - % escaped as %%
+ *   @endcode
+ *
+ * @warning Always use this for user-controlled strings before logging
+ */
+size_t log_sanitize_string(char* dst, size_t dst_size, const char* src);
+
+/**
+ * @brief Validate a format string for security
+ * @param fmt Format string to validate
+ * @return 1 if valid/safe, 0 if suspicious/dangerous
+ *
+ * Checks for:
+ *   - %n specifier (write attack vector)
+ *   - Excessive format specifiers (stack read attack)
+ *   - Unknown/invalid specifiers
+ *
+ * Usage:
+ *   @code
+ *   if (!log_validate_format(fmt)) {
+ *       LOG_ERROR("Rejected invalid format string");
+ *       return;
+ *   }
+ *   @endcode
+ *
+ * @note This is automatically called by log_output() - use for custom validation
+ */
+int log_validate_format(const char* fmt);
+
+/* =============================================================================
  * Internal Logging Functions (do not call directly)
  * =============================================================================
  * Use LOG_* macros instead.

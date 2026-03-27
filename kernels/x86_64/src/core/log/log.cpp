@@ -10,8 +10,8 @@
 #include "print.h"
 #include "serial.h"
 #include "spinlock.h"
+#include "stdarg.h" /* For va_list, va_start, va_end (manual implementation) */
 #include "string.h"
-#include "stdarg.h"  /* For va_list, va_start, va_end (manual implementation) */
 
 /* =============================================================================
  * Configuration
@@ -20,6 +20,123 @@
 
 /* Buffer sizes */
 #define LOG_BUFFER_SIZE 256
+
+/* =============================================================================
+ * CRIT-SEC-001 FIX: Format String Validation
+ * =============================================================================
+ * Validate and sanitize format strings to prevent format string attacks.
+ * This provides defense-in-depth even if a developer accidentally passes
+ * user-controlled data as the format string.
+ * =============================================================================
+ */
+
+/**
+ * @brief Check if a character is a valid format specifier
+ * @param c Character to check
+ * @return 1 if valid format specifier, 0 otherwise
+ */
+static int is_valid_format_spec(char c) {
+    /* Supported specifiers: %d, %u, %x, %X, %s, %c, %%, %p, %lld, %llu, %llx, %zu */
+    return (c == 'd' || c == 'u' || c == 'x' || c == 'X' || c == 's' || c == 'c' || c == '%' ||
+            c == 'p');
+}
+
+/**
+ * @brief Validate format string for security
+ * @param fmt Format string to validate
+ * @return 1 if valid, 0 if suspicious/potentially dangerous
+ *
+ * Checks for:
+ * - Excessive format specifiers (potential stack read)
+ * - %n specifier (write attack)
+ * - Unbalanced format specifiers
+ */
+static int validate_format_string(const char* fmt) {
+    if (fmt == nullptr) {
+        return 0;
+    }
+
+    int format_count = 0;
+    const int MAX_FORMAT_COUNT = 20; /* Reasonable upper limit */
+
+    while (*fmt) {
+        if (*fmt == '%') {
+            fmt++;
+            if (!*fmt) {
+                return 0; /* Trailing % is invalid */
+            }
+
+            /* CRIT-SEC-001 FIX: Reject %n (write attack vector) */
+            if (*fmt == 'n') {
+                return 0; /* %n is never safe */
+            }
+
+            /* Skip length modifiers for counting */
+            if (*fmt == 'l') {
+                fmt++;
+                if (*fmt == 'l')
+                    fmt++; /* %ll */
+            } else if (*fmt == 'z') {
+                fmt++; /* %z */
+            }
+
+            if (!*fmt) {
+                return 0; /* Trailing % after modifier */
+            }
+
+            /* Count valid format specifiers */
+            if (is_valid_format_spec(*fmt)) {
+                format_count++;
+                if (format_count > MAX_FORMAT_COUNT) {
+                    return 0; /* Too many specifiers - potential attack */
+                }
+            } else {
+                /* Unknown specifier - could be %n variant or attack */
+                return 0;
+            }
+        }
+        fmt++;
+    }
+
+    return 1; /* Format string appears safe */
+}
+
+/**
+ * @brief Sanitize a string by escaping % characters
+ * @param dst Destination buffer
+ * @param dst_size Destination buffer size
+ * @param src Source string (potentially untrusted)
+ * @return Number of characters written (excluding null)
+ *
+ * This prevents user-controlled strings from being interpreted as
+ * format specifiers when logged with %s.
+ */
+static size_t sanitize_user_string(char* dst, size_t dst_size, const char* src) {
+    if (dst == nullptr || dst_size == 0 || src == nullptr) {
+        return 0;
+    }
+
+    size_t written = 0;
+    size_t i = 0;
+
+    while (src[i] != '\0' && written < dst_size - 1) {
+        if (src[i] == '%') {
+            /* Escape % as %% to prevent interpretation as format specifier */
+            /* Need 2 chars for %% plus 1 for \0, so break if written + 3 > dst_size */
+            if (written + 3 > dst_size) {
+                break; /* Not enough space */
+            }
+            dst[written++] = '%';
+            dst[written++] = '%';
+        } else {
+            dst[written++] = src[i];
+        }
+        i++;
+    }
+
+    dst[written] = '\0';
+    return written;
+}
 
 /* =============================================================================
  * Global State
@@ -96,10 +213,10 @@ static void append_dec64(char** buf, uint64_t val, const char* buf_end) {
         append_char(buf, '0', buf_end);
         return;
     }
-    char tmp[24];  /* max 20 digits for uint64_t */
+    char tmp[24]; /* max 20 digits for uint64_t */
     int i = 0;
     while (val > 0) {
-        tmp[i++] = '0' + (int)(val % 10);
+        tmp[i++] = '0' + (int) (val % 10);
         val /= 10;
     }
     while (i > 0) {
@@ -112,9 +229,9 @@ static void append_dec64_signed(char** buf, int64_t val, const char* buf_end) {
     if (val < 0) {
         append_char(buf, '-', buf_end);
         /* Safe negate: avoids UB on INT64_MIN by widening before negation */
-        append_dec64(buf, (uint64_t)(-(val + 1)) + 1, buf_end);
+        append_dec64(buf, (uint64_t) (-(val + 1)) + 1, buf_end);
     } else {
-        append_dec64(buf, (uint64_t)val, buf_end);
+        append_dec64(buf, (uint64_t) val, buf_end);
     }
 }
 
@@ -125,7 +242,7 @@ static void append_dec64_signed(char** buf, int64_t val, const char* buf_end) {
 static void append_hex64(char** buf, uint64_t val, const char* buf_end) {
     append_string(buf, "0x", buf_end);
     for (int shift = 60; shift >= 0; shift -= 4) {
-        int d = (int)((val >> shift) & 0xF);
+        int d = (int) ((val >> shift) & 0xF);
         append_char(buf, (d < 10) ? ('0' + d) : ('A' + d - 10), buf_end);
     }
 }
@@ -171,9 +288,9 @@ static void format_append_arg(char** buf, char fmt_spec, va_list args, const cha
         if (val < 0) {
             append_char(buf, '-', buf_end);
             /* Safe negation: avoids INT32_MIN overflow UB */
-            append_dec(buf, (uint32_t)(-(val + 1)) + 1, buf_end);
+            append_dec(buf, (uint32_t) (-(val + 1)) + 1, buf_end);
         } else {
-            append_dec(buf, (uint32_t)val, buf_end);
+            append_dec(buf, (uint32_t) val, buf_end);
         }
         break;
     }
@@ -229,12 +346,19 @@ static void build_message(char* message, size_t message_size, const char* fmt, v
             }
             /* LOW-002 FIX: Handle multi-char format specifiers %ll*, %z*, %p */
             if (*fmt == 'l' && *(fmt + 1) == 'l') {
-                fmt += 2;  /* skip "ll" */
-                if (!*fmt) break;
+                fmt += 2; /* skip "ll" */
+                if (!*fmt)
+                    break;
                 switch (*fmt) {
-                case 'd': append_dec64_signed(&buf, va_arg(args, int64_t),  buf_end); break;
-                case 'u': append_dec64(&buf,        va_arg(args, uint64_t), buf_end); break;
-                case 'x': append_hex64(&buf,        va_arg(args, uint64_t), buf_end); break;
+                case 'd':
+                    append_dec64_signed(&buf, va_arg(args, int64_t), buf_end);
+                    break;
+                case 'u':
+                    append_dec64(&buf, va_arg(args, uint64_t), buf_end);
+                    break;
+                case 'x':
+                    append_hex64(&buf, va_arg(args, uint64_t), buf_end);
+                    break;
                 default:
                     append_char(&buf, '%', buf_end);
                     append_string(&buf, "ll", buf_end);
@@ -242,10 +366,10 @@ static void build_message(char* message, size_t message_size, const char* fmt, v
                     break;
                 }
             } else if (*fmt == 'z' && *(fmt + 1) == 'u') {
-                fmt++;  /* skip 'z', loop will advance past 'u' */
-                append_dec64(&buf, (uint64_t)va_arg(args, size_t), buf_end);
+                fmt++; /* skip 'z', loop will advance past 'u' */
+                append_dec64(&buf, (uint64_t) va_arg(args, size_t), buf_end);
             } else if (*fmt == 'p') {
-                append_hex64(&buf, (uint64_t)(uintptr_t)va_arg(args, void*), buf_end);
+                append_hex64(&buf, (uint64_t) (uintptr_t) va_arg(args, void*), buf_end);
             } else {
                 format_append_arg(&buf, *fmt, args, buf_end);
             }
@@ -259,11 +383,14 @@ static void build_message(char* message, size_t message_size, const char* fmt, v
      * not fully consumed.  Overwrites the last 3 characters so the NUL slot
      * is always preserved. */
     if (*fmt != '\0' && message_size >= 4) {
-        char* mark = buf_end - 3;  /* positions: buf_end-3, buf_end-2, buf_end-1; NUL at buf_end */
-        if (mark < message) mark = message;
+        char* mark = buf_end - 3; /* positions: buf_end-3, buf_end-2, buf_end-1; NUL at buf_end */
+        if (mark < message)
+            mark = message;
         mark[0] = '.';
-        if (mark + 1 < buf_end) mark[1] = '.';
-        if (mark + 2 < buf_end) mark[2] = '.';
+        if (mark + 1 < buf_end)
+            mark[1] = '.';
+        if (mark + 2 < buf_end)
+            mark[2] = '.';
         buf = (mark + 3 <= buf_end) ? mark + 3 : buf_end;
     }
 
@@ -436,6 +563,15 @@ void log_output(int level, const char* module, const char* file, int line, const
         return;
     }
 
+    /* CRIT-SEC-001 FIX: Validate format string before processing */
+    if (!validate_format_string(fmt)) {
+        /* Format string validation failed - output error instead */
+        if (serial_is_initialized() != 0) {
+            serial_write_str("[LOG SECURITY] Invalid format string rejected\r\n");
+        }
+        return;
+    }
+
     /* Acquire lock for thread safety */
     spinlock_token_t tok = spinlock_acquire(&g_log_lock);
 
@@ -460,7 +596,7 @@ void log_output(int level, const char* module, const char* file, int line, const
 
     /* Handle PANIC level - halt system */
     if (level == LOG_LEVEL_PANIC) {
-        __asm__ volatile("cli" ::: "memory");   /* Disable interrupts before halt */
+        __asm__ volatile("cli" ::: "memory"); /* Disable interrupts before halt */
         for (;;) {
             __asm__ volatile("hlt");
         }
@@ -484,6 +620,15 @@ void log_output(int level, const char* module, const char* file, int line, const
 void log_output_simple(int level, const char* fmt, ...) {
     /* Check log level */
     if (level < g_log_level || g_log_initialized == 0) {
+        return;
+    }
+
+    /* CRIT-SEC-001 FIX: Validate format string before processing */
+    if (!validate_format_string(fmt)) {
+        /* Format string validation failed - output error instead */
+        if (serial_is_initialized() != 0) {
+            serial_write_str("[LOG SECURITY] Invalid format string rejected\r\n");
+        }
         return;
     }
 
@@ -519,8 +664,8 @@ void log_hex_dump(const char* label, const void* addr, size_t len) {
 
     /* Print label before acquiring lock — LOG_DEBUG internally acquires
      * g_log_lock; calling it while the lock is held would self-deadlock. */
-    LOG_DEBUG("%s (%u bytes):", label, (uint32_t)len);
-    (void)label;  /* Suppress unused-parameter warning when LOG_DEBUG is compiled out */
+    LOG_DEBUG("%s (%u bytes):", label, (uint32_t) len);
+    (void) label; /* Suppress unused-parameter warning when LOG_DEBUG is compiled out */
 
     spinlock_token_t tok = spinlock_acquire(&g_log_lock);
 
@@ -534,7 +679,7 @@ void log_hex_dump(const char* label, const void* addr, size_t len) {
 
         /* Offset */
         append_string(&out, "  ", out_end);
-        append_hex64(&out, (uint64_t)((uintptr_t)bytes + i), out_end);
+        append_hex64(&out, (uint64_t) ((uintptr_t) bytes + i), out_end);
         append_string(&out, ":  ", out_end);
 
         /* Hex bytes */
@@ -604,4 +749,17 @@ size_t log_format_to_buf(char* dst, size_t cap, const char* fmt, ...) {
     build_message(dst, cap, fmt, args);
     va_end(args);
     return strlen(dst);
+}
+
+/* =============================================================================
+ * CRIT-SEC-001 FIX: Public Format String Security API
+ * =============================================================================
+ */
+
+size_t log_sanitize_string(char* dst, size_t dst_size, const char* src) {
+    return sanitize_user_string(dst, dst_size, src);
+}
+
+int log_validate_format(const char* fmt) {
+    return validate_format_string(fmt);
 }

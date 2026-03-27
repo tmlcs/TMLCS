@@ -4,20 +4,20 @@
 /* =============================================================================
  * GLOBEX_OS Kernel-Specific Types
  * =============================================================================
- * 
+ *
  * Type-safe wrappers and architecture-specific types for GLOBEX_OS.
  * These types provide:
  *   - Type safety (prevent parameter swapping)
  *   - Clear semantics (vaddr_t vs paddr_t)
  *   - Documentation (purpose of each type)
- * 
+ *
  * @note Depends on stdint.h for base types
  * @note x86_64 architecture specific
  * =============================================================================
  */
 
-#include "stdint.h"
 #include "stddef.h"
+#include "stdint.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -204,7 +204,7 @@ typedef int bool_t;
  * @note Assumes identity mapping for physical memory
  */
 static inline vaddr_t phys_to_virt(paddr_t phys) {
-    return (vaddr_t)phys;  /* Identity mapped */
+    return (vaddr_t) phys; /* Identity mapped */
 }
 
 /**
@@ -214,7 +214,7 @@ static inline vaddr_t phys_to_virt(paddr_t phys) {
  * @note Assumes identity mapping for kernel memory
  */
 static inline paddr_t virt_to_phys(vaddr_t virt) {
-    return (paddr_t)virt;  /* Identity mapped */
+    return (paddr_t) virt; /* Identity mapped */
 }
 
 /**
