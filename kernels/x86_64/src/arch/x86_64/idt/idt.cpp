@@ -9,14 +9,14 @@
  */
 
 #include "idt.h"
-#include "stddef.h"
+#include "constants.h" /* For IDT_, PIC_, EXCEPTION_, IRQ_ constants */
+#include "gdt.h"       /* For GDT_SELECTOR_KERNEL_CODE */
+#include "log.h"       /* For LOG_PANIC macro */
+#include "panic.h"     /* For panic_simple fallback when LOG_PANIC is compiled out */
 #include "print.h"
 #include "serial.h"
 #include "spinlock.h"
-#include "gdt.h" /* For GDT_SELECTOR_KERNEL_CODE */
-#include "constants.h" /* For IDT_, PIC_, EXCEPTION_, IRQ_ constants */
-#include "log.h"   /* For LOG_PANIC macro */
-#include "panic.h" /* For panic_simple fallback when LOG_PANIC is compiled out */
+#include "stddef.h"
 
 /* =============================================================================
  * IDT Table - Static storage
@@ -60,44 +60,44 @@ void idt_load(idt_pointer_t* idtp);
  */
 
 /* Exception handlers (no error code) - Vectors 0-7 */
-extern "C" void isr0(void);  /* Divide Error (#DE) */
-extern "C" void isr1(void);  /* Debug (#DB) */
-extern "C" void isr2(void);  /* Non-Maskable Interrupt (NMI) */
-extern "C" void isr3(void);  /* Breakpoint (#BP) */
-extern "C" void isr4(void);  /* Overflow (#OF) */
-extern "C" void isr5(void);  /* Bound Range Exceeded (#BR) */
-extern "C" void isr6(void);  /* Invalid Opcode (#UD) */
-extern "C" void isr7(void);  /* Device Not Available (#NM) */
+extern "C" void isr0(void); /* Divide Error (#DE) */
+extern "C" void isr1(void); /* Debug (#DB) */
+extern "C" void isr2(void); /* Non-Maskable Interrupt (NMI) */
+extern "C" void isr3(void); /* Breakpoint (#BP) */
+extern "C" void isr4(void); /* Overflow (#OF) */
+extern "C" void isr5(void); /* Bound Range Exceeded (#BR) */
+extern "C" void isr6(void); /* Invalid Opcode (#UD) */
+extern "C" void isr7(void); /* Device Not Available (#NM) */
 
 /* Exception handlers (with error code) - Vectors 8-14 */
-extern "C" void isr8(void);   /* Double Fault (#DF) */
-extern "C" void isr9(void);   /* Reserved (Intel/AMD) - Stub handler */
-extern "C" void isr10(void);  /* Invalid TSS (#TS) */
-extern "C" void isr11(void);  /* Segment Not Present (#NP) */
-extern "C" void isr12(void);  /* Stack Fault (#SS) */
-extern "C" void isr13(void);  /* General Protection Fault (#GP) */
-extern "C" void isr14(void);  /* Page Fault (#PF) */
+extern "C" void isr8(void);  /* Double Fault (#DF) */
+extern "C" void isr9(void);  /* Reserved (Intel/AMD) - Stub handler */
+extern "C" void isr10(void); /* Invalid TSS (#TS) */
+extern "C" void isr11(void); /* Segment Not Present (#NP) */
+extern "C" void isr12(void); /* Stack Fault (#SS) */
+extern "C" void isr13(void); /* General Protection Fault (#GP) */
+extern "C" void isr14(void); /* Page Fault (#PF) */
 
 /* Reserved and other exceptions - Vectors 15-31 */
-extern "C" void isr15(void);  /* Reserved (Intel/AMD) - Stub handler */
-extern "C" void isr16(void);  /* x87 FPU Error (#MF) */
-extern "C" void isr17(void);  /* Alignment Check (#AC) */
-extern "C" void isr18(void);  /* Machine Check (#MC) */
-extern "C" void isr19(void);  /* SIMD FPU Exception (#XM) */
+extern "C" void isr15(void); /* Reserved (Intel/AMD) - Stub handler */
+extern "C" void isr16(void); /* x87 FPU Error (#MF) */
+extern "C" void isr17(void); /* Alignment Check (#AC) */
+extern "C" void isr18(void); /* Machine Check (#MC) */
+extern "C" void isr19(void); /* SIMD FPU Exception (#XM) */
 
 /* Reserved vectors 20-31 - Stub handlers for future CPU extensions */
-extern "C" void isr20(void);  /* Reserved (future CPU extension) */
-extern "C" void isr21(void);  /* Reserved (future CPU extension) */
-extern "C" void isr22(void);  /* Reserved (future CPU extension) */
-extern "C" void isr23(void);  /* Reserved (future CPU extension) */
-extern "C" void isr24(void);  /* Reserved (future CPU extension) */
-extern "C" void isr25(void);  /* Reserved (future CPU extension) */
-extern "C" void isr26(void);  /* Reserved (future CPU extension) */
-extern "C" void isr27(void);  /* Reserved (future CPU extension) */
-extern "C" void isr28(void);  /* Reserved (future CPU extension) */
-extern "C" void isr29(void);  /* Reserved (future CPU extension) */
-extern "C" void isr30(void);  /* Reserved (future CPU extension) */
-extern "C" void isr31(void);  /* Reserved (future CPU extension) */
+extern "C" void isr20(void); /* Reserved (future CPU extension) */
+extern "C" void isr21(void); /* Reserved (future CPU extension) */
+extern "C" void isr22(void); /* Reserved (future CPU extension) */
+extern "C" void isr23(void); /* Reserved (future CPU extension) */
+extern "C" void isr24(void); /* Reserved (future CPU extension) */
+extern "C" void isr25(void); /* Reserved (future CPU extension) */
+extern "C" void isr26(void); /* Reserved (future CPU extension) */
+extern "C" void isr27(void); /* Reserved (future CPU extension) */
+extern "C" void isr28(void); /* Reserved (future CPU extension) */
+extern "C" void isr29(void); /* Reserved (future CPU extension) */
+extern "C" void isr30(void); /* Reserved (future CPU extension) */
+extern "C" void isr31(void); /* Reserved (future CPU extension) */
 
 /* Hardware IRQ handlers - Match interrupts.asm names */
 extern "C" void irq0_stub(void);  /* PIT */
@@ -126,30 +126,30 @@ extern "C" void irq15_stub(void); /* Secondary ATA */
  */
 static const char* exception_messages[] = {
     /* Vectors 0-7: Standard CPU exceptions */
-    "Divide Error (#DE)",              /* 0 */
-    "Debug (#DB)",                     /* 1 */
-    "Non-Maskable Interrupt (NMI)",    /* 2 */
-    "Breakpoint (#BP)",                /* 3 */
-    "Overflow (#OF)",                  /* 4 */
-    "Bound Range Exceeded (#BR)",      /* 5 */
-    "Invalid Opcode (#UD)",            /* 6 */
-    "Device Not Available (#NM)",      /* 7 */
+    "Divide Error (#DE)",           /* 0 */
+    "Debug (#DB)",                  /* 1 */
+    "Non-Maskable Interrupt (NMI)", /* 2 */
+    "Breakpoint (#BP)",             /* 3 */
+    "Overflow (#OF)",               /* 4 */
+    "Bound Range Exceeded (#BR)",   /* 5 */
+    "Invalid Opcode (#UD)",         /* 6 */
+    "Device Not Available (#NM)",   /* 7 */
 
     /* Vectors 8-14: Exceptions with error code */
-    "Double Fault (#DF)",              /* 8 */
-    "Reserved (Intel/AMD)",            /* 9 - Reserved */
-    "Invalid TSS (#TS)",               /* 10 */
-    "Segment Not Present (#NP)",       /* 11 */
-    "Stack Fault (#SS)",               /* 12 */
-    "General Protection Fault (#GP)",  /* 13 */
-    "Page Fault (#PF)",                /* 14 */
+    "Double Fault (#DF)",             /* 8 */
+    "Reserved (Intel/AMD)",           /* 9 - Reserved */
+    "Invalid TSS (#TS)",              /* 10 */
+    "Segment Not Present (#NP)",      /* 11 */
+    "Stack Fault (#SS)",              /* 12 */
+    "General Protection Fault (#GP)", /* 13 */
+    "Page Fault (#PF)",               /* 14 */
 
     /* Vectors 15-19: Reserved and other exceptions */
-    "Reserved (Intel/AMD)",            /* 15 - Reserved */
-    "x87 FPU Error (#MF)",             /* 16 */
-    "Alignment Check (#AC)",           /* 17 */
-    "Machine Check (#MC)",             /* 18 */
-    "SIMD FPU Exception (#XM)",        /* 19 */
+    "Reserved (Intel/AMD)",     /* 15 - Reserved */
+    "x87 FPU Error (#MF)",      /* 16 */
+    "Alignment Check (#AC)",    /* 17 */
+    "Machine Check (#MC)",      /* 18 */
+    "SIMD FPU Exception (#XM)", /* 19 */
 
     /* Vectors 20-31: Reserved for future CPU extensions */
     "Reserved (future CPU extension)", /* 20 */
@@ -170,28 +170,30 @@ static const char* exception_messages[] = {
  * idt_set_gate - Register an interrupt handler
  * =============================================================================
  * Using type-safe wrappers prevents accidentally swapping handler/type_attr/dpl.
- * 
+ *
  * HIGH-004 FIX: Validates handler address is in valid kernel range.
  * Invalid handlers would cause triple fault when interrupt fires.
  */
 
 /* HIGH-004 FIX: Valid handler address range */
-#define VALID_HANDLER_MIN 0x100000ULL       /* Kernel load address (1MB) */
-#define VALID_HANDLER_MAX 0x80000000ULL     /* 2GiB mapped limit */
+#define VALID_HANDLER_MIN 0x100000ULL   /* Kernel load address (1MB) */
+#define VALID_HANDLER_MAX 0x80000000ULL /* 2GiB mapped limit */
 
-void idt_set_gate(uint8_t vector, handler_addr_t handler, type_attr_t type_attr,
-                  dpl_t dpl, uint8_t ist) {
+void idt_set_gate(uint8_t vector, handler_addr_t handler, type_attr_t type_attr, dpl_t dpl,
+                  uint8_t ist) {
     /* HIGH-004 FIX: Validate handler address */
     if (handler.value < VALID_HANDLER_MIN || handler.value >= VALID_HANDLER_MAX) {
-        LOG_PANIC("idt_set_gate: invalid handler for vector %u", (uint32_t)vector);
-        panic_simple("idt_set_gate: invalid handler address"); /* unconditional halt if LOG_PANIC compiled out */
+        LOG_PANIC("idt_set_gate: invalid handler for vector %u", (uint32_t) vector);
+        panic_simple("idt_set_gate: invalid handler address"); /* unconditional halt if LOG_PANIC
+                                                                  compiled out */
     }
 
     idt_table[vector].offset_low = handler.value & IDT_OFFSET_LOW_MASK;
     idt_table[vector].selector = GDT_SELECTOR_KERNEL_CODE; /* Kernel code segment */
-    idt_table[vector].ist = ist;       /* HIGH-003 FIX: caller controls IST */
+    idt_table[vector].ist = ist;                           /* HIGH-003 FIX: caller controls IST */
     idt_table[vector].type_attr = type_attr.value | (dpl.value << 5);
-    idt_table[vector].offset_middle = (handler.value >> IDT_OFFSET_MIDDLE_SHIFT) & IDT_OFFSET_MIDDLE_MASK;
+    idt_table[vector].offset_middle =
+        (handler.value >> IDT_OFFSET_MIDDLE_SHIFT) & IDT_OFFSET_MIDDLE_MASK;
     idt_table[vector].offset_high = (handler.value >> IDT_OFFSET_HIGH_SHIFT) & IDT_OFFSET_HIGH_MASK;
     idt_table[vector].reserved = 0;
 }
@@ -279,8 +281,7 @@ void default_exception_handler(interrupt_frame_t* frame) {
     serial_write_unsafe("\r\n");
 
     /* Per Intel SDM Vol 3A Table 6-1, these vectors push an error code */
-    bool has_errcode = (frame->int_num == 8  ||
-                        (frame->int_num >= 10 && frame->int_num <= 14) ||
+    bool has_errcode = (frame->int_num == 8 || (frame->int_num >= 10 && frame->int_num <= 14) ||
                         frame->int_num == 17);
     if (has_errcode) {
         serial_write_unsafe("Error Code: 0x");
@@ -371,7 +372,8 @@ void idt_init(void) {
     /* Exceptions without error code (vectors 0-7) */
     idt_set_gate(0, handler_addr((uint64_t) isr0), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
     idt_set_gate(1, handler_addr((uint64_t) isr1), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
-    idt_set_gate(2, handler_addr((uint64_t) isr2), type_attr(IDT_INTERRUPT_GATE), dpl(0), 2); /* IST2: NMI dedicated stack */
+    idt_set_gate(2, handler_addr((uint64_t) isr2), type_attr(IDT_INTERRUPT_GATE), dpl(0),
+                 2); /* IST2: NMI dedicated stack */
     idt_set_gate(3, handler_addr((uint64_t) isr3), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
     idt_set_gate(4, handler_addr((uint64_t) isr4), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
     idt_set_gate(5, handler_addr((uint64_t) isr5), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
@@ -379,8 +381,10 @@ void idt_init(void) {
     idt_set_gate(7, handler_addr((uint64_t) isr7), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
 
     /* Exceptions with error code (vectors 8-14) */
-    idt_set_gate(8, handler_addr((uint64_t) isr8), type_attr(IDT_INTERRUPT_GATE), dpl(0), 1); /* IST1: dedicated #DF stack */
-    idt_set_gate(9, handler_addr((uint64_t) isr9), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0); /* Reserved */
+    idt_set_gate(8, handler_addr((uint64_t) isr8), type_attr(IDT_INTERRUPT_GATE), dpl(0),
+                 1); /* IST1: dedicated #DF stack */
+    idt_set_gate(9, handler_addr((uint64_t) isr9), type_attr(IDT_INTERRUPT_GATE), dpl(0),
+                 0); /* Reserved */
     idt_set_gate(10, handler_addr((uint64_t) isr10), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
     idt_set_gate(11, handler_addr((uint64_t) isr11), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
     idt_set_gate(12, handler_addr((uint64_t) isr12), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
@@ -388,10 +392,12 @@ void idt_init(void) {
     idt_set_gate(14, handler_addr((uint64_t) isr14), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
 
     /* Reserved and other exceptions (vectors 15-19) */
-    idt_set_gate(15, handler_addr((uint64_t) isr15), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);  /* Reserved */
+    idt_set_gate(15, handler_addr((uint64_t) isr15), type_attr(IDT_INTERRUPT_GATE), dpl(0),
+                 0); /* Reserved */
     idt_set_gate(16, handler_addr((uint64_t) isr16), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
     idt_set_gate(17, handler_addr((uint64_t) isr17), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
-    idt_set_gate(18, handler_addr((uint64_t) isr18), type_attr(IDT_INTERRUPT_GATE), dpl(0), 3); /* IST3: #MC dedicated stack */
+    idt_set_gate(18, handler_addr((uint64_t) isr18), type_attr(IDT_INTERRUPT_GATE), dpl(0),
+                 3); /* IST3: #MC dedicated stack */
     idt_set_gate(19, handler_addr((uint64_t) isr19), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
 
     /* Reserved vectors 20-31 (future CPU extensions) */

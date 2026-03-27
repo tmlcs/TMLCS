@@ -13,13 +13,14 @@
  */
 
 #include "gdt.h"
+#include "serial.h"
 #include "stddef.h"
 
 /* =============================================================================
  * GDT Table - Static storage
  * =============================================================================
  * Aligned to 16 bytes for LGDT instruction efficiency.
- * 
+ *
  * HIGH-005 FIX: Increased to 7 entries to accommodate 16-byte TSS descriptor.
  * TSS requires two GDT entries (16 bytes total) in x86_64.
  * =============================================================================
@@ -53,16 +54,34 @@ static gdt_pointer_t gdt_pointer;
  * valid stack even if the main kernel stack has overflowed.
  * =============================================================================
  */
-#define IST1_STACK_SIZE 8192  /* 8KB - #DF double-fault handler */
+#define IST1_STACK_SIZE 8192 /* 8KB - #DF double-fault handler */
 static uint8_t g_ist1_stack[IST1_STACK_SIZE] __attribute__((aligned(16)));
 
 /* LOW-006 FIX: Dedicated IST stacks for NMI (IST2) and #MC (IST3).
  * NMI and Machine Check can fire on any stack including a corrupt one;
  * IST forces the CPU to switch to these known-good stacks unconditionally. */
-#define IST2_STACK_SIZE 8192  /* 8KB - NMI handler */
-#define IST3_STACK_SIZE 8192  /* 8KB - #MC machine-check handler */
+#define IST2_STACK_SIZE 8192 /* 8KB - NMI handler */
+#define IST3_STACK_SIZE 8192 /* 8KB - #MC machine-check handler */
 static uint8_t g_ist2_stack[IST2_STACK_SIZE] __attribute__((aligned(16)));
 static uint8_t g_ist3_stack[IST3_STACK_SIZE] __attribute__((aligned(16)));
+
+/* Compile-time validation: IST stacks must be large enough for canary and 8-byte aligned */
+static_assert(IST1_STACK_SIZE >= sizeof(uint64_t), "IST1_STACK_SIZE must be >= 8 bytes for canary");
+static_assert(IST2_STACK_SIZE >= sizeof(uint64_t), "IST2_STACK_SIZE must be >= 8 bytes for canary");
+static_assert(IST3_STACK_SIZE >= sizeof(uint64_t), "IST3_STACK_SIZE must be >= 8 bytes for canary");
+static_assert(IST1_STACK_SIZE % sizeof(uint64_t) == 0, "IST1_STACK_SIZE must be 8-byte aligned");
+static_assert(IST2_STACK_SIZE % sizeof(uint64_t) == 0, "IST2_STACK_SIZE must be 8-byte aligned");
+static_assert(IST3_STACK_SIZE % sizeof(uint64_t) == 0, "IST3_STACK_SIZE must be 8-byte aligned");
+
+/* CRIT-KERN-002 FIX: Stack canary value for detecting overflow.
+ * Using a random-looking value that's unlikely to appear naturally.
+ * This is written at the top of each IST stack and checked periodically. */
+#define STACK_CANARY_VALUE 0xDEADBEEFCAFEBABEULL
+
+/* CRIT-KERN-002: Track canary locations for checking */
+static volatile uint64_t* g_ist1_canary_ptr = nullptr;
+static volatile uint64_t* g_ist2_canary_ptr = nullptr;
+static volatile uint64_t* g_ist3_canary_ptr = nullptr;
 
 /* =============================================================================
  * TSS - Task State Segment
@@ -133,8 +152,8 @@ static void gdt_set_tss_entry(gdt_entry_t* entry, gdt_base_t base, gdt_limit_t l
 
     /* HIGH-005 FIX: Set upper 32 bits of base address (required for x86_64) */
     /* This is stored in the second 8-byte entry following the TSS descriptor */
-    g_tss_high.base_high32 = (uint32_t)(base.value >> 32);
-    g_tss_high.reserved = 0;  /* Must be zero per Intel spec */
+    g_tss_high.base_high32 = (uint32_t) (base.value >> 32);
+    g_tss_high.reserved = 0; /* Must be zero per Intel spec */
 }
 
 /* =============================================================================
@@ -164,34 +183,31 @@ void gdt_init(void) {
      * Type: Execute-only + Readable, DPL: 0 (kernel)
      * 64-bit mode: L=1, D=0
      */
-    gdt_set_entry(&gdt_table[GDT_INDEX_KERNEL_CODE], gdt_base(0x00000000),
-                  gdt_limit(0xFFFFFFFF), gdt_access(GDT_ACCESS_CODE_READABLE),
+    gdt_set_entry(&gdt_table[GDT_INDEX_KERNEL_CODE], gdt_base(0x00000000), gdt_limit(0xFFFFFFFF),
+                  gdt_access(GDT_ACCESS_CODE_READABLE),
                   gdt_granularity(GDT_GRANULARITY_64BIT_CODE));
 
     /* Entry 2: Kernel data segment
      * Base: 0x00000000, Limit: 0xFFFFFFFF
      * Type: Read/Write, DPL: 0 (kernel)
      */
-    gdt_set_entry(&gdt_table[GDT_INDEX_KERNEL_DATA], gdt_base(0x00000000),
-                  gdt_limit(0xFFFFFFFF), gdt_access(GDT_ACCESS_DATA_READWRITE),
-                  gdt_granularity(GDT_GRANULARITY_DATA));
+    gdt_set_entry(&gdt_table[GDT_INDEX_KERNEL_DATA], gdt_base(0x00000000), gdt_limit(0xFFFFFFFF),
+                  gdt_access(GDT_ACCESS_DATA_READWRITE), gdt_granularity(GDT_GRANULARITY_DATA));
 
     /* Entry 3: User code segment
      * Base: 0x00000000, Limit: 0xFFFFFFFF
      * Type: Execute-only + Readable, DPL: 3 (user)
      * 64-bit mode: L=1, D=0
      */
-    gdt_set_entry(&gdt_table[GDT_INDEX_USER_CODE], gdt_base(0x00000000),
-                  gdt_limit(0xFFFFFFFF), gdt_access(GDT_ACCESS_USER_CODE),
-                  gdt_granularity(GDT_GRANULARITY_64BIT_CODE));
+    gdt_set_entry(&gdt_table[GDT_INDEX_USER_CODE], gdt_base(0x00000000), gdt_limit(0xFFFFFFFF),
+                  gdt_access(GDT_ACCESS_USER_CODE), gdt_granularity(GDT_GRANULARITY_64BIT_CODE));
 
     /* Entry 4: User data segment
      * Base: 0x00000000, Limit: 0xFFFFFFFF
      * Type: Read/Write, DPL: 3 (user)
      */
-    gdt_set_entry(&gdt_table[GDT_INDEX_USER_DATA], gdt_base(0x00000000),
-                  gdt_limit(0xFFFFFFFF), gdt_access(GDT_ACCESS_USER_DATA),
-                  gdt_granularity(GDT_GRANULARITY_DATA));
+    gdt_set_entry(&gdt_table[GDT_INDEX_USER_DATA], gdt_base(0x00000000), gdt_limit(0xFFFFFFFF),
+                  gdt_access(GDT_ACCESS_USER_DATA), gdt_granularity(GDT_GRANULARITY_DATA));
 
     /* Entry 5: TSS descriptor (initialized by tss_init) */
     /* Will be set up when tss_init() is called */
@@ -223,10 +239,10 @@ void tss_init(uint64_t kernel_stack) {
     tss_entry.rsp1 = 0;
     tss_entry.rsp2 = 0;
     /* HIGH-005: IST1 points to top of dedicated double-fault stack */
-    tss_entry.ist1 = (uint64_t)(g_ist1_stack + IST1_STACK_SIZE);
+    tss_entry.ist1 = (uint64_t) (g_ist1_stack + IST1_STACK_SIZE);
     /* LOW-006 FIX: IST2 = NMI stack, IST3 = #MC stack */
-    tss_entry.ist2 = (uint64_t)(g_ist2_stack + IST2_STACK_SIZE);
-    tss_entry.ist3 = (uint64_t)(g_ist3_stack + IST3_STACK_SIZE);
+    tss_entry.ist2 = (uint64_t) (g_ist2_stack + IST2_STACK_SIZE);
+    tss_entry.ist3 = (uint64_t) (g_ist3_stack + IST3_STACK_SIZE);
     tss_entry.ist4 = 0;
     tss_entry.ist5 = 0;
     tss_entry.ist6 = 0;
@@ -235,6 +251,20 @@ void tss_init(uint64_t kernel_stack) {
     tss_entry.reserved3 = 0;
     tss_entry.iomap_base = 0; /* No I/O permission bitmap */
 
+    /* CRIT-KERN-002 FIX: Initialize stack canaries for IST stacks.
+     * Place canary value at the top of each IST stack (just below where RSP starts).
+     * Stack overflow will overwrite the canary, allowing detection. */
+    g_ist1_canary_ptr =
+        reinterpret_cast<volatile uint64_t*>(g_ist1_stack + IST1_STACK_SIZE - sizeof(uint64_t));
+    g_ist2_canary_ptr =
+        reinterpret_cast<volatile uint64_t*>(g_ist2_stack + IST2_STACK_SIZE - sizeof(uint64_t));
+    g_ist3_canary_ptr =
+        reinterpret_cast<volatile uint64_t*>(g_ist3_stack + IST3_STACK_SIZE - sizeof(uint64_t));
+
+    *g_ist1_canary_ptr = STACK_CANARY_VALUE;
+    *g_ist2_canary_ptr = STACK_CANARY_VALUE;
+    *g_ist3_canary_ptr = STACK_CANARY_VALUE;
+
     /* Set up TSS descriptor in GDT */
     gdt_set_tss_entry(&gdt_table[GDT_INDEX_TSS], gdt_base((uint64_t) &tss_entry),
                       gdt_limit(sizeof(tss_entry) - 1));
@@ -242,24 +272,26 @@ void tss_init(uint64_t kernel_stack) {
     /* HIGH-005 FIX: Copy TSS high descriptor to next GDT entry
      * In x86_64, TSS descriptor is 16 bytes (two consecutive GDT entries)
      * The high descriptor contains base[32:63] in the first 4 bytes
-     * 
+     *
      * Second GDT entry layout (Intel SDM Vol 3A, Fig 3-8):
      * - Bytes 0-1: Base[32:47] (stored in limit_low field)
      * - Bytes 2-3: Base[48:63] (stored in base_low field)
      * - Bytes 4-7: Reserved (zero)
      */
-    uint32_t base_upper = g_tss_high.base_high32;  /* Bits 32-63 of TSS base */
-    
+    uint32_t base_upper = g_tss_high.base_high32; /* Bits 32-63 of TSS base */
+
     /* Copy upper 32 bits of base to second GDT entry */
-    gdt_table[GDT_INDEX_TSS + 1].limit_low = base_upper & 0xFFFF;         /* Base[32:47] */
-    gdt_table[GDT_INDEX_TSS + 1].base_low = (base_upper >> 16) & 0xFFFF;  /* Base[48:63] */
-    gdt_table[GDT_INDEX_TSS + 1].base_middle = 0;  /* Reserved */
-    gdt_table[GDT_INDEX_TSS + 1].access = 0;       /* Reserved */
-    gdt_table[GDT_INDEX_TSS + 1].granularity = 0;  /* Reserved */
-    gdt_table[GDT_INDEX_TSS + 1].base_high = 0;    /* Reserved */
+    gdt_table[GDT_INDEX_TSS + 1].limit_low = base_upper & 0xFFFF;        /* Base[32:47] */
+    gdt_table[GDT_INDEX_TSS + 1].base_low = (base_upper >> 16) & 0xFFFF; /* Base[48:63] */
+    gdt_table[GDT_INDEX_TSS + 1].base_middle = 0;                        /* Reserved */
+    gdt_table[GDT_INDEX_TSS + 1].access = 0;                             /* Reserved */
+    gdt_table[GDT_INDEX_TSS + 1].granularity = 0;                        /* Reserved */
+    gdt_table[GDT_INDEX_TSS + 1].base_high = 0;                          /* Reserved */
 
     /* Load TSS using LTR instruction */
     tss_load(GDT_SELECTOR_TSS);
+
+    serial_write_str("[GDT] IST stack canaries initialized (CRIT-KERN-002)\r\n");
 }
 
 /* =============================================================================
@@ -284,4 +316,35 @@ gdt_pointer_t* gdt_get_pointer(void) {
  */
 tss_t* tss_get(void) {
     return &tss_entry;
+}
+
+/* =============================================================================
+ * check_ist_stack_canaries - CRIT-KERN-002 FIX
+ * =============================================================================
+ * Check IST stack canaries for overflow detection.
+ *
+ * @return 0 if all canaries valid, bitmask of corrupted stacks otherwise:
+ *   - Bit 0: IST1 (#DF) stack corrupted
+ *   - Bit 1: IST2 (NMI) stack corrupted
+ *   - Bit 2: IST3 (#MC) stack corrupted
+ *
+ * Safe to call from interrupt handlers - no locks, no allocations.
+ * =============================================================================
+ */
+int check_ist_stack_canaries(void) {
+    int corrupted = 0;
+
+    if (g_ist1_canary_ptr != nullptr && *g_ist1_canary_ptr != STACK_CANARY_VALUE) {
+        corrupted |= (1 << 0); /* IST1 corrupted */
+    }
+
+    if (g_ist2_canary_ptr != nullptr && *g_ist2_canary_ptr != STACK_CANARY_VALUE) {
+        corrupted |= (1 << 1); /* IST2 corrupted */
+    }
+
+    if (g_ist3_canary_ptr != nullptr && *g_ist3_canary_ptr != STACK_CANARY_VALUE) {
+        corrupted |= (1 << 2); /* IST3 corrupted */
+    }
+
+    return corrupted;
 }

@@ -1,11 +1,12 @@
 #include "irq.h"
-#include "idt.h"
-#include "serial.h"
-#include "print.h"
+#include "atomic.h"
 #include "barriers.h"
 #include "constants.h"
-#include "atomic.h"
+#include "gdt.h" /* For check_ist_stack_canaries() - CRIT-KERN-002 */
+#include "idt.h"
 #include "io.h"
+#include "print.h"
+#include "serial.h"
 
 /* =============================================================================
  * IRQ System State
@@ -14,7 +15,7 @@
 static int g_irq_initialized = 0;
 static irq_handler_t g_irq_handlers[IRQ_COUNT];
 static uint32_t g_irq_counts[IRQ_COUNT];
-static uint16_t g_irq_mask = 0;  /* Bitmask of enabled IRQs */
+static uint16_t g_irq_mask = 0; /* Bitmask of enabled IRQs */
 
 /* IRQ nesting depth counter.
  * LOW-NEW-010 TODO(SMP): This is a single global, not per-CPU. On SMP,
@@ -24,7 +25,7 @@ static uint16_t g_irq_mask = 0;  /* Bitmask of enabled IRQs */
  * APIC ID (lapic_id() & cpu_index), or use a FS/GS-relative CPU-local
  * storage slot analogous to Linux's per_cpu() infrastructure. */
 static volatile uint32_t g_irq_stack_depth = 0;
-static constexpr uint32_t MAX_IRQ_DEPTH = 8;  /* Maximum nested IRQ depth */
+static constexpr uint32_t MAX_IRQ_DEPTH = 8; /* Maximum nested IRQ depth */
 
 /* =============================================================================
  * PIC Initialization
@@ -33,7 +34,7 @@ static constexpr uint32_t MAX_IRQ_DEPTH = 8;  /* Maximum nested IRQ depth */
 
 /**
  * @brief Remap PIC IRQs to IDT entries 32-47
- * 
+ *
  * The PIC by default uses IRQ0-15 mapped to IDT 0-15.
  * This conflicts with CPU exceptions (0-31).
  * We remap to IDT 32-47 (0x20-0x2F).
@@ -52,21 +53,21 @@ static void pic_remap_impl(void) {
     io_delay();
 
     /* ICW2: Set vector offsets */
-    outb(PIC1_DATA, IRQ_BASE_MASTER);  /* IRQ0-7 -> IDT 32-39 */
+    outb(PIC1_DATA, IRQ_BASE_MASTER); /* IRQ0-7 -> IDT 32-39 */
     io_delay();
-    outb(PIC2_DATA, IRQ_BASE_SLAVE);   /* IRQ8-15 -> IDT 40-47 */
+    outb(PIC2_DATA, IRQ_BASE_SLAVE); /* IRQ8-15 -> IDT 40-47 */
     io_delay();
 
     /* ICW3: Configure cascade */
-    outb(PIC1_DATA, 0x04);  /* Tell master: slave is at IRQ2 */
+    outb(PIC1_DATA, 0x04); /* Tell master: slave is at IRQ2 */
     io_delay();
-    outb(PIC2_DATA, 0x02);  /* Tell slave: cascade identity */
+    outb(PIC2_DATA, 0x02); /* Tell slave: cascade identity */
     io_delay();
 
     /* ICW4: Set mode */
-    outb(PIC1_DATA, 0x01);  /* 8086 mode */
+    outb(PIC1_DATA, 0x01); /* 8086 mode */
     io_delay();
-    outb(PIC2_DATA, 0x01);  /* 8086 mode */
+    outb(PIC2_DATA, 0x01); /* 8086 mode */
     io_delay();
 
     /* Restore masks */
@@ -113,24 +114,24 @@ int irq_init(void) {
 
     /* Register IRQ stubs in IDT */
     /* Master PIC */
-    idt_set_gate(32, handler_addr((uint64_t)irq0_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
-    idt_set_gate(33, handler_addr((uint64_t)irq1_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
-    idt_set_gate(34, handler_addr((uint64_t)irq2_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
-    idt_set_gate(35, handler_addr((uint64_t)irq3_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
-    idt_set_gate(36, handler_addr((uint64_t)irq4_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
-    idt_set_gate(37, handler_addr((uint64_t)irq5_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
-    idt_set_gate(38, handler_addr((uint64_t)irq6_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
-    idt_set_gate(39, handler_addr((uint64_t)irq7_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(32, handler_addr((uint64_t) irq0_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(33, handler_addr((uint64_t) irq1_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(34, handler_addr((uint64_t) irq2_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(35, handler_addr((uint64_t) irq3_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(36, handler_addr((uint64_t) irq4_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(37, handler_addr((uint64_t) irq5_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(38, handler_addr((uint64_t) irq6_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(39, handler_addr((uint64_t) irq7_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
 
     /* Slave PIC */
-    idt_set_gate(40, handler_addr((uint64_t)irq8_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
-    idt_set_gate(41, handler_addr((uint64_t)irq9_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
-    idt_set_gate(42, handler_addr((uint64_t)irq10_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
-    idt_set_gate(43, handler_addr((uint64_t)irq11_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
-    idt_set_gate(44, handler_addr((uint64_t)irq12_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
-    idt_set_gate(45, handler_addr((uint64_t)irq13_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
-    idt_set_gate(46, handler_addr((uint64_t)irq14_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
-    idt_set_gate(47, handler_addr((uint64_t)irq15_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(40, handler_addr((uint64_t) irq8_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(41, handler_addr((uint64_t) irq9_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(42, handler_addr((uint64_t) irq10_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(43, handler_addr((uint64_t) irq11_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(44, handler_addr((uint64_t) irq12_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(45, handler_addr((uint64_t) irq13_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(46, handler_addr((uint64_t) irq14_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
+    idt_set_gate(47, handler_addr((uint64_t) irq15_stub), type_attr(IDT_INTERRUPT_GATE), dpl(0), 0);
 
     serial_write_str("[IRQ] IRQ stubs registered in IDT\r\n");
 
@@ -152,7 +153,7 @@ int irq_is_initialized(void) {
 void irq_shutdown(void) {
     /* Disable all IRQs */
     irq_disable_all();
-    
+
     /* Clear handlers */
     for (int i = 0; i < IRQ_COUNT; i++) {
         g_irq_handlers[i] = nullptr;
@@ -241,7 +242,7 @@ void irq_enable(uint8_t irq) {
          * master means the interrupt never reaches the CPU. */
         uint8_t master_mask = inb(PIC1_DATA);
         io_delay();
-        master_mask &= ~(1 << 2);  /* Unmask IRQ2 (cascade) on master */
+        master_mask &= ~(1 << 2); /* Unmask IRQ2 (cascade) on master */
         outb(PIC1_DATA, master_mask);
         io_delay();
     }
@@ -306,14 +307,14 @@ void irq_disable_all(void) {
 static bool irq_is_spurious(uint8_t irq) {
     if (irq == 7) {
         /* Read master PIC ISR */
-        outb(PIC1_COMMAND, 0x0B);              /* OCW3: read ISR */
+        outb(PIC1_COMMAND, 0x0B);               /* OCW3: read ISR */
         return (inb(PIC1_COMMAND) & 0x80) == 0; /* bit 7 = IRQ7 in service */
     }
     if (irq == 15) {
         /* Read slave PIC ISR */
         outb(PIC2_COMMAND, 0x0B);
         if (inb(PIC2_COMMAND) & 0x80) {
-            return false;  /* Real IRQ15 — proceed normally */
+            return false; /* Real IRQ15 — proceed normally */
         }
         /* Spurious IRQ15: send EOI only to master for the cascade line */
         outb(PIC1_COMMAND, PIC_EOI);
@@ -325,7 +326,7 @@ static bool irq_is_spurious(uint8_t irq) {
 void irq_dispatch(uint8_t irq) {
     /* CRIT-002 FIX: Check for excessive nesting to prevent stack overflow */
     uint32_t current_depth = atomic_inc32(&g_irq_stack_depth);
-    
+
     if (current_depth > MAX_IRQ_DEPTH) {
         /* Stack depth exceeded - log error and skip handler */
         serial_write_str("[IRQ] CRIT-002: Stack depth exceeded (");
@@ -335,22 +336,40 @@ void irq_dispatch(uint8_t irq) {
         serial_write_str(") on IRQ ");
         serial_write_dec(irq);
         serial_write_str("\r\n");
-        
+
         /* Still send EOI to prevent IRQ lockout */
         irq_send_eoi(irq);
         atomic_dec32(&g_irq_stack_depth);
         return;
     }
-    
+
+    /* CRIT-KERN-002 FIX: Check IST stack canaries for overflow detection.
+     * Check only every 100 IRQ0 (~1 second at 100Hz PIT) to reduce overhead.
+     * IRQ0 is the PIT timer interrupt, which fires frequently. */
+    if (irq == 0) {
+        static uint32_t irq0_counter = 0;
+        irq0_counter++;
+
+        if (irq0_counter % 100 == 0) { /* Check once per ~1 second */
+            int corrupted = check_ist_stack_canaries();
+            if (corrupted != 0) {
+                serial_write_str("[IRQ] CRIT-KERN-002: IST stack canary corrupted! Mask: 0x");
+                serial_write_hex(corrupted);
+                serial_write_str("\r\n");
+                /* Continue execution - canary check is diagnostic only */
+            }
+        }
+    }
+
     if (irq_is_spurious(irq)) {
         atomic_dec32(&g_irq_stack_depth);
-        return;  /* EOI already handled for cascade case; skip handler */
+        return; /* EOI already handled for cascade case; skip handler */
     }
 
     /* MED-003 FIX: Use atomic increment — irq_dispatch() can be called
      * concurrently on multiple CPUs; plain ++ is not atomic. Relaxed
      * ordering is sufficient for a statistics counter. */
-    atomic_inc32_relaxed((volatile uint32_t*)&g_irq_counts[irq]);
+    atomic_inc32_relaxed((volatile uint32_t*) &g_irq_counts[irq]);
 
     /* Call handler if registered */
     irq_handler_t handler = g_irq_handlers[irq];
@@ -360,7 +379,7 @@ void irq_dispatch(uint8_t irq) {
 
     /* Send EOI */
     irq_send_eoi(irq);
-    
+
     /* Decrement stack depth */
     atomic_dec32(&g_irq_stack_depth);
 }
@@ -400,7 +419,8 @@ void irq_print_status(void) {
     serial_write_str("IRQ Counts:\r\n");
     for (int i = 0; i < IRQ_COUNT; i++) {
         serial_write_str("  IRQ");
-        if (i < 10) serial_write_str(" ");
+        if (i < 10)
+            serial_write_str(" ");
         serial_write_dec(i);
         serial_write_str(": ");
         serial_write_dec(g_irq_counts[i]);

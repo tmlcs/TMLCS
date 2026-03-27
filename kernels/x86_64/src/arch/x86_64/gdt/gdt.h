@@ -14,7 +14,7 @@ extern "C" {
  * Use explicit constructors to create wrapped values.
  *
  * Example:
- *   gdt_set_entry(entry, gdt_base(0x0), gdt_limit(0xFFFFFFFF), 
+ *   gdt_set_entry(entry, gdt_base(0x0), gdt_limit(0xFFFFFFFF),
  *                 gdt_access(GDT_ACCESS_CODE), gdt_granularity(0xCF));
  * =============================================================================
  */
@@ -23,45 +23,65 @@ extern "C" {
  * @brief Wrapper for GDT base address
  * @note Prevents swapping with limit or access parameters
  */
-typedef struct { uint64_t value; } gdt_base_t;
+typedef struct {
+    uint64_t value;
+} gdt_base_t;
 
 /**
  * @brief Wrapper for GDT limit value
  * @note Prevents swapping with base or access parameters
  */
-typedef struct { uint64_t value; } gdt_limit_t;
+typedef struct {
+    uint64_t value;
+} gdt_limit_t;
 
 /**
  * @brief Wrapper for GDT access byte
  * @note Prevents swapping with base/limit/granularity
  */
-typedef struct { uint8_t value; } gdt_access_t;
+typedef struct {
+    uint8_t value;
+} gdt_access_t;
 
 /**
  * @brief Wrapper for GDT granularity byte
  * @note Prevents swapping with other parameters
  */
-typedef struct { uint8_t value; } gdt_granularity_t;
+typedef struct {
+    uint8_t value;
+} gdt_granularity_t;
 
 /**
  * @brief Helper to create gdt_base_t
  */
-static inline gdt_base_t gdt_base(uint64_t v) { gdt_base_t w = {v}; return w; }
+static inline gdt_base_t gdt_base(uint64_t v) {
+    gdt_base_t w = {v};
+    return w;
+}
 
 /**
  * @brief Helper to create gdt_limit_t
  */
-static inline gdt_limit_t gdt_limit(uint64_t v) { gdt_limit_t w = {v}; return w; }
+static inline gdt_limit_t gdt_limit(uint64_t v) {
+    gdt_limit_t w = {v};
+    return w;
+}
 
 /**
  * @brief Helper to create gdt_access_t
  */
-static inline gdt_access_t gdt_access(uint8_t v) { gdt_access_t w = {v}; return w; }
+static inline gdt_access_t gdt_access(uint8_t v) {
+    gdt_access_t w = {v};
+    return w;
+}
 
 /**
  * @brief Helper to create gdt_granularity_t
  */
-static inline gdt_granularity_t gdt_granularity(uint8_t v) { gdt_granularity_t w = {v}; return w; }
+static inline gdt_granularity_t gdt_granularity(uint8_t v) {
+    gdt_granularity_t w = {v};
+    return w;
+}
 
 /* =============================================================================
  * GDT - Global Descriptor Table
@@ -123,7 +143,7 @@ typedef struct {
 
 /**
  * HIGH-005 FIX: TSS High Descriptor (upper 32 bits of base)
- * 
+ *
  * In x86_64, TSS descriptors are 16 bytes total:
  * - First 8 bytes: Standard descriptor (gdt_entry_t)
  * - Second 8 bytes: Upper 32 bits of base address
@@ -220,7 +240,7 @@ typedef struct {
  * =============================================================================
  */
 
-/* 
+/*
  * HIGH-005 FIX: Increased to 7 entries to accommodate 16-byte TSS descriptor.
  * TSS requires two consecutive GDT entries in x86_64.
  */
@@ -298,6 +318,28 @@ gdt_pointer_t* gdt_get_pointer(void);
  * @note For setting up kernel stack
  */
 tss_t* tss_get(void);
+
+/**
+ * @brief Check IST stack canaries for overflow detection
+ * @return 0 if all canaries are valid, bitmask of corrupted stacks otherwise
+ *
+ * CRIT-KERN-002 FIX: Stack overflow detection for IST stacks.
+ * Checks the canary value at the top of each IST stack:
+ *   - Bit 0: IST1 (#DF double-fault) stack
+ *   - Bit 1: IST2 (NMI) stack
+ *   - Bit 2: IST3 (#MC machine-check) stack
+ *
+ * @note Safe to call from interrupt handlers
+ * @note Returns immediately if canary corruption detected
+ *
+ * @example
+ *   @code
+ *   if (check_ist_stack_canaries()) {
+ *       LOG_PANIC("IST stack overflow detected - system compromised");
+ *   }
+ *   @endcode
+ */
+int check_ist_stack_canaries(void);
 
 #ifdef __cplusplus
 }

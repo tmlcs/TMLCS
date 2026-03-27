@@ -1,8 +1,8 @@
 #ifndef IDT_H
 #define IDT_H
 
+#include "constants.h" /* Centralized IDT/PIC constants */
 #include "stdint.h"
-#include "constants.h"  /* Centralized IDT/PIC constants */
 
 #ifdef __cplusplus
 extern "C" {
@@ -214,7 +214,7 @@ typedef struct {
  * type safety. The compiler will reject swapped arguments.
  *
  * Usage example:
- *   idt_set_gate(0x20, handler_addr(0xFFFFFFFF80100000), 
+ *   idt_set_gate(0x20, handler_addr(0xFFFFFFFF80100000),
  *                type_attr(IDT_INTERRUPT_GATE), dpl(0));
  * =============================================================================
  */
@@ -352,8 +352,8 @@ void idt_init(void);
  */
 /* HIGH-003 FIX: Added ist parameter so IST assignment is atomic with gate
  * write. Pass ist=1 for #DF (vector 8), ist=0 for all other vectors. */
-void idt_set_gate(uint8_t vector, handler_addr_t handler, type_attr_t type_attr,
-                  dpl_t dpl, uint8_t ist);
+void idt_set_gate(uint8_t vector, handler_addr_t handler, type_attr_t type_attr, dpl_t dpl,
+                  uint8_t ist);
 
 /**
  * @brief Send command to PIC

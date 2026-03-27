@@ -1,8 +1,8 @@
 #ifndef IRQ_H
 #define IRQ_H
 
-#include "stdint.h"
 #include "stddef.h"
+#include "stdint.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -11,9 +11,9 @@ extern "C" {
 /* =============================================================================
  * IRQ (Interrupt Request) Handler System
  * =============================================================================
- * 
+ *
  * This module manages hardware interrupt handlers for the 8259 PIC.
- * 
+ *
  * IRQ Mapping (Master + Slave PIC):
  *   IRQ0  - Timer (PIT)
  *   IRQ1  - Keyboard
@@ -31,7 +31,7 @@ extern "C" {
  *   IRQ13 - FPU / Math coprocessor
  *   IRQ14 - Primary ATA
  *   IRQ15 - Secondary ATA
- * 
+ *
  * IDT Entries:
  *   IRQ0-7  -> IDT 32-39 (0x20-0x27)
  *   IRQ8-15 -> IDT 40-47 (0x28-0x2F)
@@ -42,22 +42,22 @@ extern "C" {
  * IRQ Constants
  * =============================================================================
  */
-#define IRQ_BASE_MASTER   0x20    /* Master PIC IRQ base in IDT */
-#define IRQ_BASE_SLAVE    0x28    /* Slave PIC IRQ base in IDT */
-#define IRQ_COUNT         16      /* Total IRQ lines */
+#define IRQ_BASE_MASTER 0x20 /* Master PIC IRQ base in IDT */
+#define IRQ_BASE_SLAVE 0x28  /* Slave PIC IRQ base in IDT */
+#define IRQ_COUNT 16         /* Total IRQ lines */
 
 /* PIC I/O Ports */
-#define PIC1_COMMAND      0x20    /* Master PIC command port */
-#define PIC1_DATA         0x21    /* Master PIC data port */
-#define PIC2_COMMAND      0xA0    /* Slave PIC command port */
-#define PIC2_DATA         0xA1    /* Slave PIC data port */
+#define PIC1_COMMAND 0x20 /* Master PIC command port */
+#define PIC1_DATA 0x21    /* Master PIC data port */
+#define PIC2_COMMAND 0xA0 /* Slave PIC command port */
+#define PIC2_DATA 0xA1    /* Slave PIC data port */
 
 /* PIC Commands */
-#define PIC_EOI           0x20    /* End of Interrupt command */
+#define PIC_EOI 0x20 /* End of Interrupt command */
 
 /* PIC Masks */
-#define PIC_MASK_ALL      0xFF    /* Mask all IRQs */
-#define PIC_MASK_NONE     0x00    /* Unmask all IRQs */
+#define PIC_MASK_ALL 0xFF  /* Mask all IRQs */
+#define PIC_MASK_NONE 0x00 /* Unmask all IRQs */
 
 /* =============================================================================
  * IRQ Handler Type
@@ -73,7 +73,7 @@ typedef void (*irq_handler_t)(void);
 /**
  * @brief Initialize PIC and IRQ system
  * @return 1 on success, 0 on failure
- * 
+ *
  * Remaps PIC to use IDT entries 32-47 (0x20-0x2F)
  * This avoids conflict with CPU exceptions (0-31).
  */
@@ -100,7 +100,7 @@ void irq_shutdown(void);
  * @param irq IRQ number (0-15)
  * @param handler Handler function
  * @return 1 on success, 0 on failure
- * 
+ *
  * Handler is called when the IRQ fires.
  * Only one handler per IRQ is supported.
  */
@@ -162,7 +162,7 @@ void irq_disable_all(void);
 /**
  * @brief Main IRQ dispatcher
  * @param irq IRQ number that fired
- * 
+ *
  * Called from assembly IRQ stub.
  * Dispatches to registered handler and sends EOI.
  */
@@ -171,7 +171,7 @@ void irq_dispatch(uint8_t irq);
 /**
  * @brief Send End of Interrupt to PIC
  * @param irq IRQ number that was handled
- * 
+ *
  * Must be called after handling an IRQ.
  * Tells PIC that interrupt processing is complete.
  */
@@ -184,7 +184,7 @@ void irq_send_eoi(uint8_t irq);
 
 /**
  * @brief Print IRQ status
- * 
+ *
  * Shows enabled/disabled IRQs and registered handlers.
  */
 void irq_print_status(void);
