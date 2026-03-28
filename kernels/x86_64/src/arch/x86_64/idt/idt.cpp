@@ -254,7 +254,21 @@ void default_exception_handler(interrupt_frame_t* frame) {
 
     if (frame->int_num == 2) {
         /* NMI handler: must return (not halt) so iretq executes and re-arms
-         * NMI delivery on x86_64. Uses serial_write_unsafe — no lock. */
+         * NMI delivery on x86_64.
+         *
+         * CRIT-003 FIX: Documentation of correct behavior.
+         * Hardware behavior: CPU automatically masks further NMIs until iretq
+         * executes. By returning (not halting), we allow iretq to execute,
+         * which re-arms NMI delivery. The IF flag state at NMI arrival is
+         * preserved by hardware (CPU pushes rflags with IF unchanged).
+         *
+         * Software note: The token-based spinlock mechanism preserves the
+         * caller's interrupt state across spinlock_acquire()/release() in
+         * regular code paths, but NMI handling is purely hardware-preserved.
+         * If NMI arrived with interrupts disabled (inside a critical section),
+         * they remain disabled after return due to hardware rflags restore.
+         *
+         * Uses serial_write_unsafe — no lock acquisition to avoid deadlock. */
         serial_write_unsafe("[NMI] Non-maskable interrupt received\r\n");
         return;
     }

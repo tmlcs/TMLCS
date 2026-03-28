@@ -303,6 +303,17 @@ void irq_disable_all(void) {
  * Check if IRQ is spurious by reading the PIC In-Service Register.
  * For spurious IRQ15: still sends EOI to master (for the cascade line).
  * Returns true if spurious (caller must skip handler and normal EOI).
+ *
+ * IMP-004 FIX: Documentation of PIC timing limitation.
+ * There is a timing window between reading the ISR register and the PIC
+ * potentially updating it. On real hardware (vs QEMU), the ISR bit could
+ * change between the read and the EOI decision. This implementation has
+ * been tested in QEMU; real hardware may require additional refinement.
+ *
+ * Future mitigation options for real hardware:
+ *   1. Multiple ISR reads with consistency check (read twice, compare)
+ *   2. Small delay (outb(0x80, 0)) between ISR read and EOI decision
+ *   3. Accept spurious IRQs as harmless (current approach - safe fallback)
  */
 static bool irq_is_spurious(uint8_t irq) {
     if (irq == 7) {
