@@ -125,7 +125,7 @@ void* kmalloc(size_t size) {
     }
 
     /* Acquire lock for thread safety */
-    spinlock_token_t tok = spinlock_acquire(&g_heap_lock);
+    spinlock_token_t heap_tok = spinlock_acquire(&g_heap_lock);
 
     /* Calculate pages needed */
     size_t pages = size_to_pages(size);
@@ -142,7 +142,7 @@ void* kmalloc(size_t size) {
     }
 
     /* Release lock */
-    spinlock_release(&g_heap_lock, tok);
+    spinlock_release(&g_heap_lock, heap_tok);
 
     if (start_page == (size_t) -1) {
         return NULL; /* Out of memory */
@@ -225,29 +225,54 @@ void* krealloc(void* ptr, size_t new_size) {
         }
     }
 
+    /* Case 0: Same size - no operation needed (optimization)
+     * Note: Lock was already released in the scope above. */
+    if (new_size == old_size) {
+        return ptr;
+    }
+
     /* Case 3: new size fits in old allocation */
     if (new_size <= old_size) {
         return ptr; /* No change needed */
     }
 
     /* Case 4: Need to grow allocation */
-    /* CRIT-SEC-003 FIX: For slab-to-slab reallocation, don't hold lock across kmem_alloc.
-     * kmem_alloc() acquires g_slab_lock internally, so holding it here would deadlock.
-     * Same applies to kmem_free - cannot call it while holding the lock. */
+    /* CRIT-001 FIX: For slab-to-slab reallocation, use locked functions to avoid
+     * race conditions. We hold g_slab_lock across the entire operation:
+     * 1. Allocate new object using kmem_alloc_locked (assumes lock held)
+     * 2. Copy data (lock still held - protects both allocations)
+     * 3. Free old object using kmem_free_locked (assumes lock held)
+     * This eliminates the window where another CPU could free/reallocate the
+     * old slab page between releasing the lock and completing memcpy(). */
     if (is_slab && needs_slab_copy) {
-        /* Allocate new slab object FIRST (kmem_alloc acquires/releases lock internally) */
-        void* new_ptr = kmem_alloc(new_size);
+        spinlock_token_t slab_tok = spinlock_acquire(&g_slab_lock);
+
+        /* Allocate new slab object (lock already held) */
+        void* new_ptr = kmem_alloc_locked(new_size);
 
         if (new_ptr == NULL) {
-            return NULL; /* Out of memory */
+            /* CRIT-001 FIX: kmem_alloc_locked returns NULL if no partial slab
+             * available (cannot allocate new slab while lock is held).
+             * Release lock and fall back to bitmap allocation. */
+            spinlock_release(&g_slab_lock, slab_tok);
+
+            /* Fall back to bitmap allocation */
+            void* new_ptr_bitmap = kmalloc(new_size);
+            if (new_ptr_bitmap == NULL) {
+                return NULL;
+            }
+            memcpy(new_ptr_bitmap, ptr, old_size);
+            kmem_free_auto(ptr);
+            return new_ptr_bitmap;
         }
 
-        /* Copy old data to new allocation (no lock needed - both are valid allocations) */
+        /* Copy old data to new allocation (lock still held) */
         memcpy(new_ptr, ptr, old_size);
 
-        /* Free old slab object (kmem_free acquires/releases lock internally) */
-        kmem_free(ptr, 0);
+        /* Free old slab object (lock still held) */
+        kmem_free_locked(ptr, 0);
 
+        spinlock_release(&g_slab_lock, slab_tok);
         return new_ptr;
     }
 
@@ -304,10 +329,10 @@ int is_slab_address(void* ptr) {
 
     /* LOW-001 FIX: Bounds check before dereferencing the potential slab header.
      * Heap/slab pages are allocated above the kernel image and within the
-     * 2GiB identity-mapped window. A pointer outside this range cannot be
+     * physical memory window. A pointer outside this range cannot be
      * a slab object, so skip the magic read entirely. */
     uintptr_t heap_base = (uintptr_t) &__kernel_end;
-    uintptr_t heap_limit = IDENTITY_MAP_END;
+    uintptr_t heap_limit = PHYSICAL_MEMORY_END;
     if (page_start < heap_base || page_start >= heap_limit) {
         return 0;
     }
@@ -345,24 +370,21 @@ void kmem_free_auto(void* ptr) {
         return;
     }
 
-    /* Check if this is a slab allocation.
-     * HIGH-2 FIX (kmem_free_auto): Hold g_slab_lock across is_slab_address to
-     * prevent a concurrent kmem_free() from clearing magic between the check
-     * and the dispatch, which would cause bitmap_free_contiguous to be called
-     * on a slab-owned pointer (bitmap corruption).  Release BEFORE calling
-     * kmem_free() — kmem_free internally acquires g_slab_lock (deadlock guard).
-     * NOTE: A window exists between release and kmem_free re-acquiring the lock.
-     * On this uniprocessor kernel (interrupts disabled by spinlock_acquire), this
-     * is safe.  A fully race-free SMP solution requires an internal locked-dispatch
-     * path — deferred until SMP support is added. */
+    /* CRIT-002 FIX: Hold g_slab_lock across type check AND dispatch to eliminate
+     * the race window where another CPU could reallocate the slab page between
+     * releasing the lock and calling kmem_free(). We use kmem_free_locked()
+     * which assumes the lock is already held. */
     spinlock_token_t slab_tok = spinlock_acquire(&g_slab_lock);
     bool is_slab = is_slab_address(ptr);
-    spinlock_release(&g_slab_lock, slab_tok);
+
     if (is_slab) {
-        /* Slab allocation - use slab free with size=0 (ignored) */
-        kmem_free(ptr, 0);
+        /* Slab allocation - use locked free (lock already held) */
+        kmem_free_locked(ptr, 0);
+        spinlock_release(&g_slab_lock, slab_tok);
     } else {
-        /* Not slab — bitmap allocation; free pages directly */
+        /* Not slab — bitmap allocation; release slab lock first, then free */
+        spinlock_release(&g_slab_lock, slab_tok);
+
         if (!g_heap_initialized) {
             return;
         }
@@ -380,8 +402,25 @@ void kmem_free_auto(void* ptr) {
             return; /* Invalid address */
         }
 
-        /* Acquire lock */
-        spinlock_token_t tok = spinlock_acquire(&g_heap_lock);
+        /* Acquire heap lock for bitmap operations */
+        spinlock_token_t heap_tok = spinlock_acquire(&g_heap_lock);
+
+        /* CRIT-002 FIX: Re-verify page type after acquiring heap lock.
+         * SMP SAFETY: Between releasing g_slab_lock (line 386) and acquiring
+         * g_heap_lock (line 406), another CPU could have reallocated this page
+         * as a slab page via kmem_alloc(). Without this re-check, we would call
+         * bitmap_free_contiguous() on a slab-owned page, causing corruption.
+         *
+         * On uniprocessor systems with interrupts disabled, this check is
+         * redundant but harmless. For SMP, it is critical. */
+        if (is_slab_address(ptr)) {
+            /* Page was converted to slab - release heap lock and free via slab */
+            spinlock_release(&g_heap_lock, heap_tok);
+            spinlock_token_t slab_tok2 = spinlock_acquire(&g_slab_lock);
+            kmem_free_locked(ptr, 0);
+            spinlock_release(&g_slab_lock, slab_tok2);
+            return;
+        }
 
         /* MED-001 FIX: Read page count from metadata instead of scanning the
          * bitmap forward.  The forward scan merged adjacent allocations into
@@ -393,8 +432,8 @@ void kmem_free_auto(void* ptr) {
             bitmap_free_contiguous(start_page, pages);
         }
 
-        /* Release lock */
-        spinlock_release(&g_heap_lock, tok);
+        /* Release heap lock */
+        spinlock_release(&g_heap_lock, heap_tok);
     }
 }
 
@@ -518,6 +557,12 @@ size_t kmalloc_size(void* ptr) {
         return 0;
     }
 
-    /* MED-001 FIX: Read page count from metadata (O(1), no scan) */
-    return g_page_alloc_count[start_page] * PAGE_SIZE;
+    /* MED-001 FIX: Read page count from metadata (O(1), no scan)
+     * CRIT-003 FIX: Use atomic load to prevent race condition with concurrent
+     * kmem_free_auto() or kmalloc() modifying g_page_alloc_count. On x86_64,
+     * uint16_t reads are atomic, but without explicit atomic semantics, the
+     * compiler/CPU could reorder this load. Using __ATOMIC_RELAXED is sufficient
+     * here because: (1) we only need atomicity, not ordering, and (2) the caller
+     * (krealloc) holds appropriate locks for the subsequent operations. */
+    return (size_t) __atomic_load_n(&g_page_alloc_count[start_page], __ATOMIC_RELAXED) * PAGE_SIZE;
 }

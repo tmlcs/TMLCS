@@ -5,7 +5,7 @@
 **GLOBEX_OS** is a freestanding 64-bit x86_64 kernel written in C++ and assembly. It is a hobby operating system kernel that boots via GRUB, implements its own memory management subsystems, interrupt handling, and basic drivers (VGA, serial, PIT).
 
 **Key characteristics:**
-- **Freestanding**: No standard library (`-ffreestanding`, `-fno-exceptions`, `-fno-rtti`, `-nostdlib`)
+- **Freestanding**: No standard library (`-nostdlib`, `-ffreestanding`, `-fno-exceptions`, `-fno-rtti`)
 - **C++17**: Uses modern C++ features without exceptions or RTTI
 - **Identity-mapped memory**: 2 GiB mapped (0x00000000–0x7FFFFFFF)
 - **In-kernel testing**: All tests compiled into kernel binary, run on every boot
@@ -202,6 +202,21 @@ After `popaq`, `add rsp, 16` discards `int_num + err_code` before `iretq`.
 - Acquiring disables interrupts on the current CPU
 - Recursive acquisition on the same CPU **deadlocks** (spins forever with interrupts disabled)
 
+### Lock Hierarchy
+
+To prevent deadlocks in SMP systems, locks must always be acquired in this order:
+
+```
+1. g_slab_lock    (slab allocator)
+2. g_heap_lock    (bitmap allocator)
+```
+
+**Critical rule:** NEVER hold `g_heap_lock` while trying to acquire `g_slab_lock`. If you need both locks, release `g_heap_lock` first, then acquire `g_slab_lock`.
+
+**Implementation:** The memory subsystem provides `_locked` variants (`kmem_alloc_locked()`, `kmem_free_locked()`) that assume the caller already holds `g_slab_lock`. Use these when performing multiple slab operations atomically.
+
+**SMP Safety:** On uniprocessor systems with interrupts disabled, lock ordering is less critical. For SMP, strict ordering prevents ABBA deadlocks.
+
 ---
 
 ## Key Conventions
@@ -355,7 +370,8 @@ Look for lines ending in `PASSED` or `FAILED`.
 | Test | Purpose |
 |------|---------|
 | `test_bss` | BSS zero-initialization |
-| `test_color` | VGA color verification |
+| `test_memory` | Memory mapping verification |
+| `test_color` | VGA color validation |
 | `test_debug` | Debug macros |
 | `test_gdt_idt` | GDT/IDT initialization |
 | `test_print` | Console output functions |

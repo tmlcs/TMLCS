@@ -263,6 +263,52 @@ void* kmalloc_align(size_t size, size_t alignment);
  */
 size_t kmalloc_size(void* ptr);
 
+/* =============================================================================
+ * Lock Hierarchy
+ * =============================================================================
+ * To prevent deadlocks, always acquire locks in this order:
+ *   1. g_slab_lock (slab allocator)
+ *   2. g_heap_lock (bitmap allocator)
+ *
+ * NEVER hold g_heap_lock while trying to acquire g_slab_lock.
+ * If you need both locks, release g_heap_lock first, then acquire g_slab_lock.
+ * =============================================================================
+ */
+
+/* =============================================================================
+ * Internal Functions (for use within memory subsystem only)
+ * =============================================================================
+ * These functions assume the caller already holds g_slab_lock or g_heap_lock.
+ * DO NOT call these from outside the memory subsystem.
+ * =============================================================================
+ */
+
+/**
+ * @brief Allocate from slab allocator (internal, lock must be held)
+ * @param size Number of bytes to allocate
+ * @return Pointer to allocated memory, or NULL on failure
+ *
+ * CRIT-001 FIX: Internal allocation function that assumes g_slab_lock is held.
+ * Used by krealloc() to avoid race conditions during slab-to-slab reallocation.
+ *
+ * @warning DO NOT call from outside memory subsystem
+ * @warning Caller must hold g_slab_lock
+ */
+void* kmem_alloc_locked(size_t size);
+
+/**
+ * @brief Free to slab allocator (internal, lock must be held)
+ * @param ptr Pointer to memory to free
+ * @param size Object size (0 = use slab metadata)
+ *
+ * CRIT-002 FIX: Internal free function that assumes g_slab_lock is held.
+ * Used by kmem_free_auto() to avoid race conditions during type dispatch.
+ *
+ * @warning DO NOT call from outside memory subsystem
+ * @warning Caller must hold g_slab_lock
+ */
+void kmem_free_locked(void* ptr, size_t size);
+
 #ifdef __cplusplus
 }
 #endif
