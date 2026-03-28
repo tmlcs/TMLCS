@@ -344,6 +344,60 @@ void log_output_simple(int level, const char* fmt, ...);
 #define LOG_HEX_DUMP(label, addr, len) log_hex_dump(label, addr, len)
 
 /* =============================================================================
+ * CRIT-SEC-001 FIX: Safe User Input Logging Macro
+ * =============================================================================
+ * LOG_USER - Safely log untrusted user-controlled strings
+ *
+ * This macro automatically sanitizes user input by escaping '%' characters,
+ * preventing format string attacks. Use this whenever logging data that
+ * may come from untrusted sources (user input, external devices, etc.).
+ *
+ * Usage:
+ *   @code
+ *   char* user_data = get_user_input();  // Untrusted input
+ *   LOG_USER("User provided: %s", user_data);  // Safe - % escaped as %%
+ *   @endcode
+ *
+ * How it works:
+ *   1. Declares a static buffer (256 bytes)
+ *   2. Calls log_sanitize_string() to escape '%' characters
+ *   3. Logs the sanitized string with LOG_INFO
+ *
+ * @note Buffer size is 256 bytes - longer strings will be truncated
+ * @note Use LOG_USER_STRING() for custom buffer sizes
+ * @see log_sanitize_string() for the sanitization implementation
+ */
+#define LOG_USER(fmt, user_str)                                                                    \
+    do {                                                                                           \
+        char _safe_buf[256];                                                                       \
+        log_sanitize_string(_safe_buf, sizeof(_safe_buf), (user_str));                             \
+        LOG_INFO(fmt, _safe_buf);                                                                  \
+    } while (0)
+
+/**
+ * @brief Log user string with custom buffer size
+ * @param fmt Format string (should contain %s for the sanitized string)
+ * @param user_str User-controlled string to sanitize
+ * @param buf_size Size of temporary buffer (e.g., 512 for longer strings)
+ *
+ * Use this when the default 256-byte buffer is insufficient.
+ *
+ * Usage:
+ *   @code
+ *   LOG_USER_STRING("Long input: %s", very_long_string, 512);
+ *   @endcode
+ *
+ * @note Buffer is allocated on stack - use reasonable sizes
+ * @see LOG_USER() for the default 256-byte buffer version
+ */
+#define LOG_USER_STRING(fmt, user_str, buf_size)                                                   \
+    do {                                                                                           \
+        char _safe_buf[buf_size];                                                                  \
+        log_sanitize_string(_safe_buf, buf_size, (user_str));                                      \
+        LOG_INFO(fmt, _safe_buf);                                                                  \
+    } while (0)
+
+/* =============================================================================
  * Hex Dump Function
  * =============================================================================
  */

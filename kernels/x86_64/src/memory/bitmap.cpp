@@ -442,6 +442,76 @@ void bitmap_print_stats(void) {
     size_t allocated_pages = bitmap_count_allocated_pages();
     size_t largest = bitmap_largest_free_region();
 
+    /* MED-003 FIX: Enhanced fragmentation metrics */
+    size_t total_free_regions = 0;
+    size_t total_allocated_regions = 0;
+    size_t smallest_free = TOTAL_PAGES + 1;
+    size_t smallest_alloc = TOTAL_PAGES + 1;
+
+    /* Count regions and find smallest sizes */
+    size_t current_free_count = 0;
+    size_t current_alloc_count = 0;
+    bool in_free = false;
+    bool in_alloc = false;
+
+    for (size_t page = 0; page < TOTAL_PAGES; page++) {
+        int is_free = (test_bit(page) == 0);
+
+        if (is_free) {
+            if (!in_free) {
+                /* Starting a new free region */
+                in_free = true;
+                total_free_regions++;
+                current_free_count = 1;
+            } else {
+                current_free_count++;
+            }
+            /* Ending an allocated region? */
+            if (in_alloc) {
+                in_alloc = false;
+                if (current_alloc_count < smallest_alloc) {
+                    smallest_alloc = current_alloc_count;
+                }
+            }
+        } else {
+            if (!in_alloc) {
+                /* Starting a new allocated region */
+                in_alloc = true;
+                total_allocated_regions++;
+                current_alloc_count = 1;
+            } else {
+                current_alloc_count++;
+            }
+            /* Ending a free region? */
+            if (in_free) {
+                in_free = false;
+                if (current_free_count < smallest_free) {
+                    smallest_free = current_free_count;
+                }
+            }
+        }
+    }
+
+    /* Handle regions that extend to end of bitmap */
+    if (in_free && current_free_count < smallest_free) {
+        smallest_free = current_free_count;
+    }
+    if (in_alloc && current_alloc_count < smallest_alloc) {
+        smallest_alloc = current_alloc_count;
+    }
+
+    /* Calculate average free region size */
+    size_t avg_free = (total_free_regions > 0) ? (free_pages / total_free_regions) : 0;
+
+    /* Calculate external fragmentation index:
+     * 0% = no fragmentation (all free memory contiguous)
+     * 100% = maximum fragmentation (all free regions are 1 page)
+     */
+    size_t frag_index =
+        (total_free_regions > 1 && free_pages > 0)
+            ? ((total_free_regions - 1) * 100 / (free_pages > 1 ? free_pages - 1 : 1))
+            : 0;
+
     serial_write_str("\r\n=== Bitmap Statistics ===\r\n");
     serial_write_str("Total pages:      ");
     serial_write_dec(TOTAL_PAGES);
@@ -457,22 +527,48 @@ void bitmap_print_stats(void) {
 
     serial_write_str("Largest free:     ");
     serial_write_dec(largest);
-    serial_write_str(" pages\r\n");
+    serial_write_str(" pages (");
+    serial_write_dec(largest * PAGE_SIZE / 1024 / 1024);
+    serial_write_str(" MB)\r\n");
 
     serial_write_str("Free memory:      ");
     serial_write_dec(free_pages * PAGE_SIZE / 1024 / 1024);
     serial_write_str(" MB\r\n");
 
-    serial_write_str("Fragmentation:    ");
-    if (allocated_pages > 0) {
-        /* Simple fragmentation metric */
-        size_t frag =
-            (allocated_pages > largest) ? ((allocated_pages - largest) * 100 / allocated_pages) : 0;
-        serial_write_dec(frag);
-        serial_write_str("%\r\n");
-    } else {
-        serial_write_str("0%\r\n");
+    /* MED-003 FIX: Enhanced fragmentation metrics */
+    serial_write_str("Free regions:     ");
+    serial_write_dec(total_free_regions);
+    serial_write_str(" (avg ");
+    serial_write_dec(avg_free);
+    serial_write_str(" pages)\r\n");
+
+    serial_write_str("Alloc regions:    ");
+    serial_write_dec(total_allocated_regions);
+    serial_write_str("\r\n");
+
+    if (smallest_free <= TOTAL_PAGES) {
+        serial_write_str("Smallest free:  ");
+        serial_write_dec(smallest_free);
+        serial_write_str(" pages\r\n");
     }
+
+    if (smallest_alloc <= TOTAL_PAGES) {
+        serial_write_str("Smallest alloc: ");
+        serial_write_dec(smallest_alloc);
+        serial_write_str(" pages\r\n");
+    }
+
+    serial_write_str("Fragmentation:    ");
+    serial_write_dec(frag_index);
+    serial_write_str("% (external)\r\n");
+
+    /* Simple fragmentation metric (legacy) */
+    size_t simple_frag = (allocated_pages > largest && allocated_pages > 0)
+                             ? ((allocated_pages - largest) * 100 / allocated_pages)
+                             : 0;
+    serial_write_str("Fragmentation:    ");
+    serial_write_dec(simple_frag);
+    serial_write_str("% (size-based)\r\n");
 
     serial_write_str("=========================\r\n");
 }

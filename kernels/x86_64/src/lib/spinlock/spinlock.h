@@ -30,6 +30,89 @@ extern "C" {
  *
  * Always initialise global/static locks with = SPINLOCK_INIT.
  * Never acquire the same lock recursively — spins forever with IF=0.
+ *
+ * =============================================================================
+ * MED-002 FIX: DEADLOCK PREVENTION GUIDE
+ * =============================================================================
+ *
+ * COMMON DEADLOCK SCENARIOS AND HOW TO AVOID THEM:
+ *
+ * ❌ WRONG: Recursive acquisition (same CPU)
+ * ─────────────────────────────────────────────
+ *   spinlock_lock(&lock);
+ *   // ... do something ...
+ *   spinlock_lock(&lock);  // DEADLOCK! Spins forever with interrupts disabled
+ *
+ *   WHY: The lock is already held by this CPU. The second acquisition tries
+ *        to CAS from 0→1, but the lock is already 1. Since interrupts are
+ *        disabled, nothing can release the lock. CPU spins forever.
+ *
+ * ✅ CORRECT: Use a single acquisition for the entire critical section
+ * ─────────────────────────────────────────────────────────────────────
+ *   spinlock_lock(&lock);
+ *   // ... do all work while holding lock ...
+ *   spinlock_unlock(&lock);
+ *
+ *
+ * ❌ WRONG: Calling code that acquires the same lock
+ * ───────────────────────────────────────────────────
+ *   spinlock_lock(&g_serial_lock);
+ *   LOG_INFO("Serial status: %d", status);  // DEADLOCK RISK!
+ *   spinlock_unlock(&g_serial_lock);
+ *
+ *   WHY: LOG_INFO() internally acquires g_log_lock, which may call serial
+ *        output functions that try to acquire g_serial_lock. Even if not,
+ *        any function call while holding a lock is risky.
+ *
+ * ✅ CORRECT: Minimize critical section, call external functions outside
+ * ───────────────────────────────────────────────────────────────────────
+ *   // Gather data while holding lock (fast, no external calls)
+ *   spinlock_lock(&g_serial_lock);
+ *   int local_status = g_serial_state.status;
+ *   spinlock_unlock(&g_serial_lock);
+ *
+ *   // Now safe to call external functions
+ *   LOG_INFO("Serial status: %d", local_status);
+ *
+ *
+ * ❌ WRONG: Holding lock across blocking operations
+ * ─────────────────────────────────────────────────
+ *   spinlock_lock(&lock);
+ *   pit_wait_ms(100);  // Blocks for 100ms while holding lock!
+ *   spinlock_unlock(&lock);
+ *
+ *   WHY: Other CPUs spin waiting for the lock, wasting CPU cycles and
+ *        potentially causing timeout failures in time-sensitive code.
+ *
+ * ✅ CORRECT: Never block while holding a spinlock
+ * ────────────────────────────────────────────────
+ *   // Copy data, release lock, then wait
+ *   spinlock_lock(&lock);
+ *   void* local_copy = data;
+ *   spinlock_unlock(&lock);
+ *   pit_wait_ms(100);  // Safe - lock is released
+ *
+ *
+ * =============================================================================
+ * LOCK ORDERING (to prevent ABBA deadlocks in SMP)
+ * =============================================================================
+ * When acquiring multiple locks, always acquire in this order:
+ *
+ *   1. g_slab_lock    (slab allocator)
+ *   2. g_heap_lock    (bitmap/heap allocator)
+ *   3. g_log_lock     (logging system)
+ *   4. g_vga_lock     (VGA driver)
+ *   5. g_serial_lock  (serial driver)
+ *
+ * Example of correct ordering:
+ *   spinlock_lock(&g_slab_lock);
+ *   // ... slab work ...
+ *   spinlock_lock(&g_heap_lock);
+ *   // ... work needing both locks ...
+ *   spinlock_unlock(&g_heap_lock);
+ *   spinlock_unlock(&g_slab_lock);
+ *
+ * NEVER acquire in reverse order (heap then slab) - ABBA deadlock!
  * =============================================================================
  */
 

@@ -344,7 +344,7 @@ static void build_message(char* message, size_t message_size, const char* fmt, v
             if (!*fmt) {
                 break;
             }
-            /* LOW-002 FIX: Handle multi-char format specifiers %ll*, %z*, %p */
+            /* LOW-002 FIX: Handle multi-char format specifiers %ll*, %z*, %p, %lu */
             if (*fmt == 'l' && *(fmt + 1) == 'l') {
                 fmt += 2; /* skip "ll" */
                 if (!*fmt)
@@ -363,6 +363,28 @@ static void build_message(char* message, size_t message_size, const char* fmt, v
                     append_char(&buf, '%', buf_end);
                     append_string(&buf, "ll", buf_end);
                     append_char(&buf, *fmt, buf_end);
+                    break;
+                }
+            } else if (*fmt == 'l' &&
+                       (*(fmt + 1) == 'u' || *(fmt + 1) == 'd' || *(fmt + 1) == 'x')) {
+                /* HIGH-004 FIX: Handle %lu, %ld, %lx - treat as 64-bit on x86_64 */
+                char next = *(fmt + 1);
+                fmt += 2; /* skip "l" and the specifier */
+                switch (next) {
+                case 'u':
+                    append_dec64(&buf, (uint64_t) va_arg(args, unsigned long), buf_end);
+                    break;
+                case 'd':
+                    append_dec64_signed(&buf, (int64_t) va_arg(args, long), buf_end);
+                    break;
+                case 'x':
+                    append_hex64(&buf, (uint64_t) va_arg(args, unsigned long), buf_end);
+                    break;
+                default:
+                    /* Should not reach here, but handle gracefully */
+                    append_char(&buf, '%', buf_end);
+                    append_char(&buf, 'l', buf_end);
+                    append_char(&buf, next, buf_end);
                     break;
                 }
             } else if (*fmt == 'z' && *(fmt + 1) == 'u') {

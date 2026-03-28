@@ -44,14 +44,52 @@ static_assert(sizeof(slab_t) <= SLAB_HEADER_SIZE,
               "slab_t exceeds SLAB_HEADER_SIZE -- update SLAB_HEADER_SIZE in slab.h");
 
 /* =============================================================================
- * MED-001 FIX: Slab Timing Delays Configuration
+ * HIGH-001: QEMU UART Timing Dependency Documentation
  * =============================================================================
- * These serial_write_str(".") calls were added as timing delays to work
- * around a QEMU UART emulation bug. They are NOT needed for normal operation
- * and add unnecessary overhead.
  *
- * Enable SLAB_DEBUG_TIMING only when debugging QEMU UART timing issues.
- * For production builds or real hardware, set to 0.
+ * PROBLEM DESCRIPTION:
+ * During slab initialization (slab_init()), rapid serial_write_str() calls
+ * can cause UART transmit buffer overflow in QEMU's emulated 16550 UART.
+ *
+ * SYMPTOMS:
+ * - Serial output corruption during boot (e.g., "Allocated: 5/5" -> "Allocate5")
+ * - Characters dropped when writing many strings in quick succession
+ * - Issue NOT present on real hardware or with slower serial output
+ *
+ * ROOT CAUSE ANALYSIS:
+ * The QEMU UART 16550 emulation has a timing bug where the transmit holding
+ * register (THR) is not properly synchronized with the line status register
+ * (LSR). When the guest polls LSR.THRE (bit 5) and writes to THR immediately,
+ * QEMU may drop the character if the previous write hasn't fully propagated
+ * through the emulated UART state machine.
+ *
+ * INVESTIGATION TIMELINE:
+ * - 2026-03-19: Serial corruption first observed during slab tests
+ * - 2026-03-19: Guard band tests prove slab memory NOT corrupted
+ * - 2026-03-19: Issue isolated to QEMU UART emulation timing
+ * - 2026-03-28: SLAB_DEBUG_TIMING added as workaround
+ *
+ * WORKAROUND:
+ * The SLAB_TIMING_DELAY() macro provides a small delay between serial writes.
+ * When SLAB_DEBUG_TIMING=1, each delay writes a '.' character which serendipitously
+ * provides enough time for the UART state machine to settle.
+ *
+ * HARDWARE BEHAVIOR:
+ * On real x86_64 hardware, the 16550 UART properly handles back-to-back writes
+ * at full CPU speed. The memory barrier (mb()) alone is sufficient because:
+ * - Real UART has proper hardware handshaking
+ * - LSR.THRE accurately reflects transmitter status
+ * - No emulated state machine synchronization issues
+ *
+ * RECOMMENDATIONS:
+ * 1. For QEMU testing: Keep SLAB_DEBUG_TIMING=0 (default), issue is cosmetic
+ * 2. For real hardware: SLAB_DEBUG_TIMING=0 is correct and optimal
+ * 3. For debugging UART issues: Set SLAB_DEBUG_TIMING=1 temporarily
+ * 4. Future: Consider implementing proper UART FIFO emulation fix in QEMU
+ *
+ * RELATED FILES:
+ * - src/drivers/serial/serial.cpp: serial_wait_transmit_empty_timeout()
+ * - QEMU source: hw/char/serial.c (upstream bug tracker)
  * =============================================================================
  */
 #define SLAB_DEBUG_TIMING 0 /* Set to 1 only when debugging QEMU UART */
@@ -573,6 +611,11 @@ void* kmem_alloc(size_t size) {
         return 0;
     }
 
+    /* IMP-003 FIX: Initialize list_state immediately after allocation.
+     * This ensures list_state is always valid, even if an error occurs
+     * during the rest of the initialization. */
+    slab->list_state = SLAB_LIST_FREE;
+
     /* Initialize slab */
     slab->free_list = 0;
     slab->num_free = cache->objects_per_slab;
@@ -582,7 +625,6 @@ void* kmem_alloc(size_t size) {
     slab->next = 0;
     slab->prev = 0;
     slab->magic = SLAB_MAGIC;
-    slab->list_state = SLAB_LIST_FREE;
 
     SLAB_TIMING_DELAY(); /* MED-001 FIX: Conditional timing delay */
 
@@ -631,6 +673,153 @@ void* kmem_alloc(size_t size) {
     spinlock_release(&g_slab_lock, tok);
 
     return obj;
+}
+
+/* =============================================================================
+ * CRIT-001/CRIT-002 FIX: Internal Locked Functions
+ * =============================================================================
+ * These functions assume the caller already holds g_slab_lock.
+ * They are used by krealloc() and kmem_free_auto() to avoid race conditions
+ * during slab-to-slab reallocation and type dispatch.
+ *
+ * DO NOT call these functions from outside the memory subsystem.
+ * =============================================================================
+ */
+
+void* kmem_alloc_locked(size_t size) {
+    /* Caller must hold g_slab_lock - no lock acquisition here */
+    if (!g_slab_initialized || size == 0 || size > SLAB_MAX_SIZE) {
+        return 0;
+    }
+
+    int idx = get_cache_index(size);
+    if (idx < 0) {
+        return 0;
+    }
+
+    slab_cache_t* cache = get_cache(idx);
+    if (cache == 0) {
+        return 0;
+    }
+
+    /* First, try to allocate from partial slabs */
+    if (cache->partial) {
+        slab_t* slab = cache->partial;
+
+        /* Allocate from free list */
+        void* obj = slab->free_list;
+        slab->free_list = slab->free_list->next;
+        slab->num_free--;
+
+        cache->num_allocations++;
+        SLAB_TIMING_DELAY();
+        g_slab_total_allocs++;
+        SLAB_TIMING_DELAY();
+
+        /* Move slab to full list if exhausted */
+        if (slab->num_free == 0) {
+            remove_slab_from_list(slab, &cache->partial);
+            add_slab_to_list(slab, &cache->full, SLAB_LIST_FULL);
+        }
+
+        return obj;
+    }
+
+    /* No partial slabs, allocate a new slab */
+    /* CRIT-001 FIX: kmem_alloc_locked is called with g_slab_lock held.
+     * We must NOT call kmalloc() here as it also acquires g_slab_lock (via
+     * kmem_alloc), which would deadlock. Instead, return NULL to force the
+     * caller (krealloc) to fall back to bitmap allocation. */
+    return 0; /* Cannot allocate new slab while lock is held - caller must use bitmap */
+}
+
+void kmem_free_locked(void* ptr, size_t size) {
+    (void) size;
+
+    /* Caller must hold g_slab_lock - no lock acquisition here */
+    if (!g_slab_initialized) {
+        return;
+    }
+
+    /* NULL is safe to free (no-op) */
+    if (ptr == 0) {
+        return;
+    }
+
+    /* MED-001 FIX: O(1) slab lookup via page alignment */
+    slab_t* slab = (slab_t*) ((uintptr_t) ptr & ~((uintptr_t) (SLAB_SIZE - 1)));
+
+    /* Validate slab magic */
+    if (slab->magic != SLAB_MAGIC) {
+        return; /* Not a live slab page */
+    }
+
+    slab_cache_t* cache = slab->cache;
+    if (cache == 0 || cache->object_size == 0) {
+        return; /* Invalid slab */
+    }
+
+    /* Validate object alignment */
+    uintptr_t offset = (uintptr_t) ptr - ((uintptr_t) slab + SLAB_HEADER_SIZE);
+    if (offset % cache->object_size != 0) {
+        return; /* Not aligned to object boundary */
+    }
+
+#if SLAB_DEBUG
+    /* Check for double-free */
+    slab_free_node_t* check = slab->free_list;
+    while (check) {
+        if (check == (slab_free_node_t*) ptr) {
+            g_slab_double_frees++;
+            return; /* Double-free detected */
+        }
+        check = check->next;
+    }
+
+    /* Check guard bytes */
+    uint8_t* obj = (uint8_t*) ptr;
+    uint8_t* before_guard = obj - GUARD_SIZE;
+    uint8_t* after_guard = obj + cache->object_size;
+    uint32_t before_val = *(uint32_t*) before_guard;
+    uint32_t after_val = *(uint32_t*) after_guard;
+    if (before_val != SLAB_GUARD_PATTERN || after_val != SLAB_GUARD_PATTERN) {
+        g_slab_corruptions_detected++;
+        /* Continue with free anyway */
+    }
+#endif
+
+    /* Return object to free list */
+    slab_free_node_t* node = (slab_free_node_t*) ptr;
+    node->next = slab->free_list;
+    slab->free_list = node;
+    slab->num_free++;
+
+    cache->num_allocations--;
+    g_slab_total_frees++;
+
+    /* Move slab to appropriate list */
+    if (slab->num_free == 1) {
+        /* Was full, now partial */
+        if (slab->list_state == SLAB_LIST_FULL) {
+            remove_slab_from_list(slab, &cache->full);
+            add_slab_to_list(slab, &cache->partial, SLAB_LIST_PARTIAL);
+        }
+    } else if (slab->num_free == slab->num_objects) {
+        /* Slab is now empty - free it */
+        if (slab->list_state == SLAB_LIST_PARTIAL) {
+            remove_slab_from_list(slab, &cache->partial);
+        }
+
+        g_slab_total_slabs--;
+        cache->num_slabs--;
+
+        /* CRIT-002 FIX: Cannot call kmem_free_auto here (would deadlock).
+         * Use bitmap_free_contiguous directly since we know slab is page-aligned. */
+        size_t start_page = addr_to_page(slab);
+        if (start_page != (size_t) -1) {
+            bitmap_free_contiguous(start_page, 1);
+        }
+    }
 }
 
 /**
